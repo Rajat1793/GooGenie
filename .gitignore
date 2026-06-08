@@ -3,7 +3,7 @@ corsair-google-demo-implementation-guide.md
 enhancement.md
 enterprise-rbac-blueprint.md
 hackathon-demo-script.txt
-nimbus-team-poc-versionwise-plan.md
+googenie-team-poc-versionwise-plan.md
 plan.md
 SKILL.md
 backend/docs/sprint0
@@ -13,10 +13,13 @@ backend/docs/sprint2
 backend/docs/deployment-options.md
 backend/docs/local-test-runbook.md
 backend/docs/sprint1-implementation.md
+sprint-execution-checklist.md
+
 
 # Caches
 .cache/
-backend/.npm-cache
+
+.pnpm-store/
 
 # Dependencies
 node_modules/

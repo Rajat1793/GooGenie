@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: Nimbus API
+  title: Googenie API
   version: 0.1.0
   description: Sprint 0 API skeleton for web and mobile client readiness.
 servers:

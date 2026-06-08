@@ -1,5 +1,5 @@
 {
-  "name": "nimbus-backend",
+  "name": "googenie-backend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,8 +12,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "audit:deps": "npm audit --audit-level=high",
-    "check": "npm run lint && npm run typecheck && npm run test"
+    "audit:deps": "pnpm audit --audit-level high",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test"
   },
   "dependencies": {
     "cors": "^2.8.5",

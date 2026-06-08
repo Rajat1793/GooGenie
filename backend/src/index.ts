@@ -25,7 +25,7 @@ const managerRateLimit = createRateLimitMiddleware({ windowMs: 60_000, max: 60 }
 app.get("/health", (_req: Request, res: Response) => {
   res.status(200).json({
     status: "ok",
-    service: "nimbus-backend",
+    service: "googenie-backend",
     roles: ALL_ROLES
   });
 });
@@ -100,5 +100,5 @@ app.use((err: ApiError, _req: Request, res: Response, _next: NextFunction) => {
 
 const port = env.PORT;
 app.listen(port, () => {
-  console.log(`Nimbus backend listening on port ${port}`);
+  console.log(`Googenie backend listening on port ${port}`);
 });

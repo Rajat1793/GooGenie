@@ -1,0 +1,10 @@
+{
+  "name": "googenie-monorepo",
+  "private": true,
+  "packageManager": "pnpm@11.1.3",
+  "scripts": {
+    "dev:backend": "pnpm --filter googenie-backend dev",
+    "check:backend": "pnpm --filter googenie-backend check",
+    "build:backend": "pnpm --filter googenie-backend build"
+  }
+}

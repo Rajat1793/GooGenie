@@ -1,9 +1,9 @@
 services:
   postgres:
     image: postgres:16
-    container_name: nimbus-postgres
+    container_name: googenie-postgres
     environment:
-      POSTGRES_DB: nimbus
+      POSTGRES_DB: googenie
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
@@ -11,7 +11,7 @@ services:
     volumes:
       - nimbus_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d nimbus"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d googenie"]
       interval: 5s
       timeout: 3s
       retries: 20
