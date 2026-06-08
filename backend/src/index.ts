@@ -2,7 +2,9 @@ import cors from "cors";
 import express, { type Request, type Response, type NextFunction } from "express";
 
 import { requireAuth, requireRole, attachTraceId } from "./auth/middleware.js";
+import { requireFeature } from "./auth/feature-gate.js";
 import { ALL_ROLES, ROLE } from "./auth/roles.js";
+import { requireUserScope, resolveAllowedUserIds } from "./auth/scope.js";
 import type { ApiError } from "./contracts/api-error.js";
 import { emitAuditEvent } from "./security/audit.js";
 import { env } from "./security/env.js";
@@ -59,9 +61,32 @@ app.get(
   managerRateLimit,
   (req: Request, res: Response) => {
     emitAuditEvent(req, "manager_users_read");
-    res.status(200).json({ users: [] });
+    const auth = req.auth;
+    if (!auth) {
+      throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+    }
+
+    const scopedUserIds = [...resolveAllowedUserIds(auth)];
+    res.status(200).json({ users: scopedUserIds });
   }
 );
+
+app.get(
+  "/v1/manager/users/:userId/activity",
+  requireAuth,
+  requireRole([ROLE.SUPER_ADMIN, ROLE.MANAGER_ADMIN]),
+  managerRateLimit,
+  requireUserScope((req) => req.params.userId),
+  (req: Request, res: Response) => {
+    emitAuditEvent(req, "manager_user_activity_read", { target_user_id: req.params.userId });
+    res.status(200).json({ activity: [], target_user_id: req.params.userId });
+  }
+);
+
+app.get("/v1/email/threads", requireAuth, requireFeature("email_read"), (req: Request, res: Response) => {
+  emitAuditEvent(req, "email_threads_read");
+  res.status(200).json({ threads: [] });
+});
 
 app.use((_req: Request, _res: Response, next: NextFunction) => {
   const error: ApiError = createApiError("NOT_FOUND", "Route not found", false, _req.traceId);

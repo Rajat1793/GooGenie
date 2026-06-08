@@ -1,3 +1,23 @@
+# Files
+corsair-google-demo-implementation-guide.md
+enhancement.md
+enterprise-rbac-blueprint.md
+hackathon-demo-script.txt
+nimbus-team-poc-versionwise-plan.md
+plan.md
+SKILL.md
+backend/docs/sprint0
+backend/docs/sprint1
+backend/docs/sprint2
+
+backend/docs/deployment-options.md
+backend/docs/local-test-runbook.md
+backend/docs/sprint1-implementation.md
+
+# Caches
+.cache/
+backend/.npm-cache
+
 # Dependencies
 node_modules/
 .pnp
