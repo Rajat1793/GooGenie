@@ -1,0 +1,98 @@
+openapi: 3.1.0
+info:
+  title: Nimbus API
+  version: 0.1.0
+  description: Sprint 0 API skeleton for web and mobile client readiness.
+servers:
+  - url: http://localhost:4000
+paths:
+  /health:
+    get:
+      summary: Service health check
+      responses:
+        "200":
+          description: Healthy status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  service:
+                    type: string
+                  roles:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Role"
+  /v1/me/profile:
+    get:
+      summary: Get current user profile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Missing or invalid auth
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Authenticated but not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Role:
+      type: string
+      enum:
+        - super_admin
+        - manager_admin
+        - user
+    UserProfile:
+      type: object
+      required:
+        - id
+        - tenant_id
+        - role
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        role:
+          $ref: "#/components/schemas/Role"
+    ApiError:
+      type: object
+      required:
+        - code
+        - message
+        - trace_id
+        - retryable
+      properties:
+        code:
+          type: string
+          enum:
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - VALIDATION_ERROR
+            - INTERNAL_ERROR
+        message:
+          type: string
+        trace_id:
+          type: string
+        retryable:
+          type: boolean
