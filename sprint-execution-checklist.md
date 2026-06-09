@@ -46,8 +46,8 @@ Sprint 1 total effort: 11.5 days
 | S2-2 | Patch calendar endpoints with tenant and scope filters | BE | 1.5 | Hardened calendar APIs | Integration tests pass |
 | S2-3 | Add admin APIs (users, role changes, activity) | BE | 2.5 | Admin route group | Role-based endpoint tests pass |
 | S2-4 | Add manager APIs (team users, scoped activity, feature toggles) | BE | 2.0 | Manager route group | Scope guard tests pass |
-| S2-5 | Build super admin UI pages for users and activity | FE | 2.5 | Admin UI screens | UX acceptance complete |
-| S2-6 | Build manager UI pages for team visibility and feature control | FE | 2.0 | Manager UI screens | UX acceptance complete |
+| S2-5 | Build super admin UI pages for users and activity | FE | 2.5 | Admin UI screens ✅ | **DONE** — `apps/web` users table + role edit modal + activity log, Nimbus Elegant Pastel design system |
+| S2-6 | Build manager UI pages for team visibility and feature control | FE | 2.0 | Manager UI screens ✅ | **DONE** — `apps/web` manager team view with per-user feature toggles + activity panel + bulk actions |
 | S2-7 | Add user self-service pages (features and own activity) | FE | 1.5 | User UI screens | Functional checks passed |
 | S2-8 | Add audit log emission to privileged actions | BE | 1.5 | Structured audit events | Audit event validation passed |
 
