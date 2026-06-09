@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Nimbus",
+    "slug": "nimbus",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "nimbus",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#f8f9fd"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nimbus.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#f8f9fd"
+      },
+      "package": "com.nimbus.app"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
