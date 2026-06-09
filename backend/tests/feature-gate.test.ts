@@ -12,6 +12,6 @@ describe("feature toggles", () => {
   });
 
   it("returns false for unknown feature keys", () => {
-    expect(isFeatureEnabled("demo-tenant", "user-1", "calendar_write")).toBe(false);
+    expect(isFeatureEnabled("demo-tenant", "user-1", "calendar_delete")).toBe(false);
   });
 });

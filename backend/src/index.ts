@@ -1,12 +1,16 @@
 import cors from "cors";
 import express, { type Request, type Response, type NextFunction } from "express";
+import { z } from "zod";
 
 import { requireAuth, requireRole, attachTraceId } from "./auth/middleware.js";
 import { requireFeature } from "./auth/feature-gate.js";
 import { ALL_ROLES, ROLE } from "./auth/roles.js";
 import { requireUserScope, resolveAllowedUserIds } from "./auth/scope.js";
+import { assignManager, listRoleChanges, listTenantUsers, updateUserRole } from "./auth/policy-store.js";
 import type { ApiError } from "./contracts/api-error.js";
-import { emitAuditEvent } from "./security/audit.js";
+import { createCalendarEvent, listCalendarEvents } from "./domain/calendar-store.js";
+import { getEmailThreadById, listEmailThreads } from "./domain/email-store.js";
+import { emitAuditEvent, listAuditEvents } from "./security/audit.js";
 import { env } from "./security/env.js";
 import { createApiError, statusFromApiError } from "./security/errors.js";
 import { createRateLimitMiddleware } from "./security/rate-limit.js";
@@ -21,6 +25,33 @@ app.use(express.json());
 
 const adminRateLimit = createRateLimitMiddleware({ windowMs: 60_000, max: 30 });
 const managerRateLimit = createRateLimitMiddleware({ windowMs: 60_000, max: 60 });
+
+const adminUpdateRoleSchema = z.object({
+  role: z.enum([ROLE.SUPER_ADMIN, ROLE.MANAGER_ADMIN, ROLE.USER]),
+  reason: z.string().min(3).max(200).default("admin update")
+});
+
+const adminUpdateManagerSchema = z.object({
+  manager_user_id: z.string().min(1).optional()
+});
+
+const createCalendarEventSchema = z.object({
+  title: z.string().min(3),
+  starts_at: z.string().datetime(),
+  ends_at: z.string().datetime(),
+  attendees: z.array(z.string().email()).default([])
+});
+
+function getScopedUserIds(req: Request): Set<string> {
+  const auth = req.auth;
+  if (!auth) {
+    throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+  }
+
+  const scoped = resolveAllowedUserIds(auth);
+  scoped.add(auth.userId);
+  return scoped;
+}
 
 app.get("/health", (_req: Request, res: Response) => {
   res.status(200).json({
@@ -50,7 +81,105 @@ app.get(
   adminRateLimit,
   (req: Request, res: Response) => {
     emitAuditEvent(req, "admin_activity_read");
-    res.status(200).json({ activity: [] });
+    const auth = req.auth;
+    if (!auth) {
+      throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+    }
+
+    const actorUserId = typeof req.query.userId === "string" ? req.query.userId : undefined;
+    const action = typeof req.query.action === "string" ? req.query.action : undefined;
+    const activity = listAuditEvents(auth.tenantId, { actorUserId, action });
+    res.status(200).json({ activity });
+  }
+);
+
+app.get(
+  "/v1/admin/users",
+  requireAuth,
+  requireRole([ROLE.SUPER_ADMIN]),
+  adminRateLimit,
+  (req: Request, res: Response) => {
+    const auth = req.auth;
+    if (!auth) {
+      throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+    }
+
+    const users = listTenantUsers(auth.tenantId);
+    emitAuditEvent(req, "admin_users_list_read", { count: users.length });
+    res.status(200).json({ users });
+  }
+);
+
+app.patch(
+  "/v1/admin/users/:userId/role",
+  requireAuth,
+  requireRole([ROLE.SUPER_ADMIN]),
+  adminRateLimit,
+  (req: Request, res: Response) => {
+    const auth = req.auth;
+    if (!auth) {
+      throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+    }
+
+    const parsed = adminUpdateRoleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw createApiError("VALIDATION_ERROR", "Invalid role update payload", false, req.traceId);
+    }
+
+    const updated = updateUserRole({
+      tenantId: auth.tenantId,
+      targetUserId: req.params.userId,
+      newRole: parsed.data.role,
+      changedByUserId: auth.userId,
+      reason: parsed.data.reason
+    });
+
+    if (!updated) {
+      throw createApiError("NOT_FOUND", "Target user not found in tenant", false, req.traceId);
+    }
+
+    emitAuditEvent(req, "admin_user_role_update", {
+      target_user_id: updated.id,
+      new_role: parsed.data.role,
+      reason: parsed.data.reason
+    });
+
+    res.status(200).json({ user: updated, role_changes: listRoleChanges(auth.tenantId) });
+  }
+);
+
+app.patch(
+  "/v1/admin/users/:userId/manager",
+  requireAuth,
+  requireRole([ROLE.SUPER_ADMIN]),
+  adminRateLimit,
+  (req: Request, res: Response) => {
+    const auth = req.auth;
+    if (!auth) {
+      throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+    }
+
+    const parsed = adminUpdateManagerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw createApiError("VALIDATION_ERROR", "Invalid manager update payload", false, req.traceId);
+    }
+
+    const updated = assignManager({
+      tenantId: auth.tenantId,
+      targetUserId: req.params.userId,
+      managerUserId: parsed.data.manager_user_id
+    });
+
+    if (!updated) {
+      throw createApiError("NOT_FOUND", "Target user or manager not found in tenant", false, req.traceId);
+    }
+
+    emitAuditEvent(req, "admin_user_manager_update", {
+      target_user_id: updated.id,
+      manager_user_id: parsed.data.manager_user_id ?? null
+    });
+
+    res.status(200).json({ user: updated });
   }
 );
 
@@ -66,7 +195,7 @@ app.get(
       throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
     }
 
-    const scopedUserIds = [...resolveAllowedUserIds(auth)];
+    const scopedUserIds = [...getScopedUserIds(req)];
     res.status(200).json({ users: scopedUserIds });
   }
 );
@@ -84,8 +213,81 @@ app.get(
 );
 
 app.get("/v1/email/threads", requireAuth, requireFeature("email_read"), (req: Request, res: Response) => {
-  emitAuditEvent(req, "email_threads_read");
-  res.status(200).json({ threads: [] });
+  const auth = req.auth;
+  if (!auth) {
+    throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+  }
+
+  const requestedUserId = typeof req.query.userId === "string" ? req.query.userId : auth.userId;
+  const scopedUserIds = getScopedUserIds(req);
+  if (!scopedUserIds.has(requestedUserId)) {
+    throw createApiError("FORBIDDEN", "Requested user is out of scope", false, req.traceId);
+  }
+
+  const threads = listEmailThreads(auth.tenantId, new Set([requestedUserId]));
+  emitAuditEvent(req, "email_threads_read", { requested_user_id: requestedUserId, count: threads.length });
+  res.status(200).json({ threads });
+});
+
+app.get(
+  "/v1/email/threads/:threadId",
+  requireAuth,
+  requireFeature("email_read"),
+  (req: Request, res: Response) => {
+    const auth = req.auth;
+    if (!auth) {
+      throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+    }
+
+    const thread = getEmailThreadById(auth.tenantId, req.params.threadId, getScopedUserIds(req));
+    if (!thread) {
+      throw createApiError("NOT_FOUND", "Thread not found in tenant scope", false, req.traceId);
+    }
+
+    emitAuditEvent(req, "email_thread_read", { thread_id: thread.id });
+    res.status(200).json({ thread });
+  }
+);
+
+app.get("/v1/calendar/events", requireAuth, requireFeature("calendar_read"), (req: Request, res: Response) => {
+  const auth = req.auth;
+  if (!auth) {
+    throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+  }
+
+  const requestedUserId = typeof req.query.userId === "string" ? req.query.userId : auth.userId;
+  const scopedUserIds = getScopedUserIds(req);
+  if (!scopedUserIds.has(requestedUserId)) {
+    throw createApiError("FORBIDDEN", "Requested user is out of scope", false, req.traceId);
+  }
+
+  const events = listCalendarEvents(auth.tenantId, new Set([requestedUserId]));
+  emitAuditEvent(req, "calendar_events_read", { requested_user_id: requestedUserId, count: events.length });
+  res.status(200).json({ events });
+});
+
+app.post("/v1/calendar/events", requireAuth, requireFeature("calendar_write"), (req: Request, res: Response) => {
+  const auth = req.auth;
+  if (!auth) {
+    throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+  }
+
+  const parsed = createCalendarEventSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw createApiError("VALIDATION_ERROR", "Invalid calendar event payload", false, req.traceId);
+  }
+
+  const created = createCalendarEvent({
+    tenantId: auth.tenantId,
+    ownerUserId: auth.userId,
+    title: parsed.data.title,
+    startsAt: parsed.data.starts_at,
+    endsAt: parsed.data.ends_at,
+    attendees: parsed.data.attendees
+  });
+
+  emitAuditEvent(req, "calendar_event_create", { event_id: created.id });
+  res.status(201).json({ event: created });
 });
 
 app.use((_req: Request, _res: Response, next: NextFunction) => {
