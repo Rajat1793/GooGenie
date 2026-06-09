@@ -136,6 +136,35 @@ export function isFeatureEnabled(tenantId: string, userId: string, key: string):
   return Boolean(toggle?.isEnabled);
 }
 
+export function listFeatureTogglesForUser(tenantId: string, userId: string): FeatureToggle[] {
+  return [...featureToggles.values()].filter(
+    (toggle) => toggle.tenantId === tenantId && toggle.userId === userId
+  );
+}
+
+export function setFeatureToggle(args: {
+  tenantId: string;
+  userId: string;
+  featureKey: string;
+  isEnabled: boolean;
+}): FeatureToggle | undefined {
+  const user = users.get(args.userId);
+  if (!user || user.tenantId !== args.tenantId) {
+    return undefined;
+  }
+
+  const key = featureKey(args.tenantId, args.userId, args.featureKey);
+  const nextToggle: FeatureToggle = {
+    tenantId: args.tenantId,
+    userId: args.userId,
+    featureKey: args.featureKey,
+    isEnabled: args.isEnabled
+  };
+
+  featureToggles.set(key, nextToggle);
+  return nextToggle;
+}
+
 export function updateUserRole(args: {
   tenantId: string;
   targetUserId: string;

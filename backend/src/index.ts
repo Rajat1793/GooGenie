@@ -6,7 +6,14 @@ import { requireAuth, requireRole, attachTraceId } from "./auth/middleware.js";
 import { requireFeature } from "./auth/feature-gate.js";
 import { ALL_ROLES, ROLE } from "./auth/roles.js";
 import { requireUserScope, resolveAllowedUserIds } from "./auth/scope.js";
-import { assignManager, listRoleChanges, listTenantUsers, updateUserRole } from "./auth/policy-store.js";
+import {
+  assignManager,
+  listFeatureTogglesForUser,
+  listRoleChanges,
+  listTenantUsers,
+  setFeatureToggle,
+  updateUserRole
+} from "./auth/policy-store.js";
 import type { ApiError } from "./contracts/api-error.js";
 import { createCalendarEvent, listCalendarEvents } from "./domain/calendar-store.js";
 import { getEmailThreadById, listEmailThreads } from "./domain/email-store.js";
@@ -16,7 +23,7 @@ import { createApiError, statusFromApiError } from "./security/errors.js";
 import { createRateLimitMiddleware } from "./security/rate-limit.js";
 import { secureHeaders } from "./security/secure-headers.js";
 
-const app = express();
+export const app = express();
 app.disable("x-powered-by");
 app.use(attachTraceId);
 app.use(secureHeaders);
@@ -40,6 +47,20 @@ const createCalendarEventSchema = z.object({
   starts_at: z.string().datetime(),
   ends_at: z.string().datetime(),
   attendees: z.array(z.string().email()).default([])
+});
+
+const managerFeatureAccessSchema = z.object({
+  feature_key: z.string().min(3).max(64),
+  is_enabled: z.boolean()
+});
+
+const managerBulkActionSchema = z.object({
+  action: z.enum(["set_feature_access"]),
+  user_ids: z.array(z.string().min(1)).min(1),
+  payload: z.object({
+    feature_key: z.string().min(3).max(64),
+    is_enabled: z.boolean()
+  })
 });
 
 function getScopedUserIds(req: Request): Set<string> {
@@ -195,8 +216,9 @@ app.get(
       throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
     }
 
-    const scopedUserIds = [...getScopedUserIds(req)];
-    res.status(200).json({ users: scopedUserIds });
+    const scopedUserIds = getScopedUserIds(req);
+    const users = listTenantUsers(auth.tenantId).filter((user) => scopedUserIds.has(user.id));
+    res.status(200).json({ users });
   }
 );
 
@@ -209,6 +231,94 @@ app.get(
   (req: Request, res: Response) => {
     emitAuditEvent(req, "manager_user_activity_read", { target_user_id: req.params.userId });
     res.status(200).json({ activity: [], target_user_id: req.params.userId });
+  }
+);
+
+app.patch(
+  "/v1/manager/users/:userId/feature-access",
+  requireAuth,
+  requireRole([ROLE.SUPER_ADMIN, ROLE.MANAGER_ADMIN]),
+  managerRateLimit,
+  requireUserScope((req) => req.params.userId),
+  (req: Request, res: Response) => {
+    const auth = req.auth;
+    if (!auth) {
+      throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+    }
+
+    const parsed = managerFeatureAccessSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw createApiError("VALIDATION_ERROR", "Invalid feature access payload", false, req.traceId);
+    }
+
+    const toggle = setFeatureToggle({
+      tenantId: auth.tenantId,
+      userId: req.params.userId,
+      featureKey: parsed.data.feature_key,
+      isEnabled: parsed.data.is_enabled
+    });
+
+    if (!toggle) {
+      throw createApiError("NOT_FOUND", "Target user not found in tenant", false, req.traceId);
+    }
+
+    emitAuditEvent(req, "manager_user_feature_update", {
+      target_user_id: req.params.userId,
+      feature_key: parsed.data.feature_key,
+      is_enabled: parsed.data.is_enabled
+    });
+
+    res.status(200).json({
+      feature_access: listFeatureTogglesForUser(auth.tenantId, req.params.userId)
+    });
+  }
+);
+
+app.post(
+  "/v1/manager/bulk-actions",
+  requireAuth,
+  requireRole([ROLE.SUPER_ADMIN, ROLE.MANAGER_ADMIN]),
+  managerRateLimit,
+  (req: Request, res: Response) => {
+    const auth = req.auth;
+    if (!auth) {
+      throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+    }
+
+    const parsed = managerBulkActionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw createApiError("VALIDATION_ERROR", "Invalid bulk action payload", false, req.traceId);
+    }
+
+    const scopedUsers = getScopedUserIds(req);
+    const deniedUserIds = parsed.data.user_ids.filter((userId) => !scopedUsers.has(userId));
+    if (deniedUserIds.length > 0) {
+      throw createApiError("FORBIDDEN", "Bulk action contains out-of-scope users", false, req.traceId);
+    }
+
+    const updated = parsed.data.user_ids
+      .map((userId) =>
+        setFeatureToggle({
+          tenantId: auth.tenantId,
+          userId,
+          featureKey: parsed.data.payload.feature_key,
+          isEnabled: parsed.data.payload.is_enabled
+        })
+      )
+      .filter((value): value is NonNullable<typeof value> => Boolean(value));
+
+    emitAuditEvent(req, "manager_bulk_set_feature_access", {
+      user_ids: parsed.data.user_ids,
+      feature_key: parsed.data.payload.feature_key,
+      is_enabled: parsed.data.payload.is_enabled,
+      updated_count: updated.length
+    });
+
+    res.status(200).json({
+      action: parsed.data.action,
+      updated_count: updated.length,
+      updated
+    });
   }
 );
 
@@ -301,6 +411,8 @@ app.use((err: ApiError, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 const port = env.PORT;
-app.listen(port, () => {
-  console.log(`Googenie backend listening on port ${port}`);
-});
+if (process.env.NODE_ENV !== "test") {
+  app.listen(port, () => {
+    console.log(`Googenie backend listening on port ${port}`);
+  });
+}
