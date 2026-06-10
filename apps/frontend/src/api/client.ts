@@ -117,3 +117,12 @@ export const authApi = {
   getProfile: () =>
     apiFetch<{ id: string; tenant_id: string; role: string }>("/v1/me/profile")
 };
+
+// Self-service (S2-7)
+export const meApi = {
+  getFeatures: () =>
+    apiFetch<{ features: FeatureToggle[] }>("/v1/me/features"),
+
+  getActivity: () =>
+    apiFetch<{ activity: AuditEvent[] }>("/v1/me/activity")
+};

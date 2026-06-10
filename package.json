@@ -5,6 +5,9 @@
   "scripts": {
     "dev:backend": "pnpm --filter googenie-backend dev",
     "check:backend": "pnpm --filter googenie-backend check",
-    "build:backend": "pnpm --filter googenie-backend build"
+    "build:backend": "pnpm --filter googenie-backend build",
+    "dev:frontend": "pnpm --filter nimbus-web dev",
+    "build:frontend": "pnpm --filter nimbus-web build",
+    "typecheck:frontend": "pnpm --filter nimbus-web typecheck"
   }
 }

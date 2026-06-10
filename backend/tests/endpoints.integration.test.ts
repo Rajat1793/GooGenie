@@ -32,6 +32,38 @@ describe("backend endpoints complete check", () => {
     expect(profile.body.id).toBe("user-1");
   });
 
+  it("returns self-service features and activity for any role (S2-7/S2-8)", async () => {
+    const userToken = tokenFor("user", "user-1");
+    const managerToken = tokenFor("manager_admin", "manager-1");
+
+    // user-1 has email_read, calendar_read, calendar_write seeded
+    const features = await request(app)
+      .get("/v1/me/features")
+      .set("Authorization", `Bearer ${userToken}`);
+    expect(features.status).toBe(200);
+    expect(Array.isArray(features.body.features)).toBe(true);
+    expect(features.body.features.length).toBeGreaterThan(0);
+
+    // call profile first so there's at least one audit event
+    await request(app).get("/v1/me/profile").set("Authorization", `Bearer ${userToken}`);
+    const activity = await request(app)
+      .get("/v1/me/activity")
+      .set("Authorization", `Bearer ${userToken}`);
+    expect(activity.status).toBe(200);
+    expect(Array.isArray(activity.body.activity)).toBe(true);
+    // all returned events must belong to the calling user
+    for (const ev of activity.body.activity) {
+      expect(ev.actor_user_id).toBe("user-1");
+    }
+
+    // manager can also access their own features
+    const mgrFeatures = await request(app)
+      .get("/v1/me/features")
+      .set("Authorization", `Bearer ${managerToken}`);
+    expect(mgrFeatures.status).toBe(200);
+    expect(Array.isArray(mgrFeatures.body.features)).toBe(true);
+  });
+
   it("enforces admin endpoints by role", async () => {
     const adminToken = tokenFor("super_admin", "super-1");
     const managerToken = tokenFor("manager_admin", "manager-1");

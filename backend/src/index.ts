@@ -88,11 +88,34 @@ app.get("/v1/me/profile", requireAuth, (req: Request, res: Response) => {
     throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
   }
 
+  emitAuditEvent(req, "me_profile_read");
   res.status(200).json({
     id: auth.userId,
     tenant_id: auth.tenantId,
     role: auth.role
   });
+});
+
+app.get("/v1/me/features", requireAuth, (req: Request, res: Response) => {
+  const auth = req.auth;
+  if (!auth) {
+    throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+  }
+
+  const features = listFeatureTogglesForUser(auth.tenantId, auth.userId);
+  emitAuditEvent(req, "me_features_read", { count: features.length });
+  res.status(200).json({ features });
+});
+
+app.get("/v1/me/activity", requireAuth, (req: Request, res: Response) => {
+  const auth = req.auth;
+  if (!auth) {
+    throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+  }
+
+  const activity = listAuditEvents(auth.tenantId, { actorUserId: auth.userId });
+  emitAuditEvent(req, "me_activity_read", { count: activity.length });
+  res.status(200).json({ activity });
 });
 
 app.get(

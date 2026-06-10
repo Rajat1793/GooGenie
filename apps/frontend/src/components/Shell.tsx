@@ -6,7 +6,8 @@ const navItems = [
   { to: "/admin", icon: "shield_person", label: "Admin", roles: ["super_admin"] },
   { to: "/manager", icon: "group", label: "Team", roles: ["super_admin", "manager_admin"] },
   { to: "/inbox", icon: "inbox", label: "Inbox", roles: ["super_admin", "manager_admin", "user"] },
-  { to: "/calendar", icon: "calendar_month", label: "Calendar", roles: ["super_admin", "manager_admin", "user"] }
+  { to: "/calendar", icon: "calendar_month", label: "Calendar", roles: ["super_admin", "manager_admin", "user"] },
+  { to: "/profile", icon: "account_circle", label: "Profile", roles: ["super_admin", "manager_admin", "user"] }
 ] as const;
 
 export function Shell({ children }: { children: ReactNode }) {

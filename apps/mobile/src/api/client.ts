@@ -85,3 +85,9 @@ export const managerApi = {
       }
     )
 };
+
+// Self-service (S2-7)
+export const meApi = {
+  getFeatures: () => apiFetch<{ features: FeatureToggle[] }>("/v1/me/features"),
+  getActivity: () => apiFetch<{ activity: AuditEvent[] }>("/v1/me/activity")
+};

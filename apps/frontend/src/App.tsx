@@ -8,6 +8,7 @@ import { AdminUsersPage } from "./pages/admin/AdminUsersPage.tsx";
 import { AdminActivityPage } from "./pages/admin/AdminActivityPage.tsx";
 import { ManagerLayout } from "./pages/manager/ManagerLayout.tsx";
 import { ManagerTeamPage } from "./pages/manager/ManagerTeamPage.tsx";
+import { UserProfilePage } from "./pages/user/UserProfilePage.tsx";
 import type { ReactNode } from "react";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -46,6 +47,7 @@ function AppRoutes() {
                 {/* Placeholder routes for future sprints */}
                 <Route path="inbox" element={<PlaceholderPage title="Inbox" icon="inbox" />} />
                 <Route path="calendar" element={<PlaceholderPage title="Calendar" icon="calendar_month" />} />
+                <Route path="profile" element={<UserProfilePage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Shell>
