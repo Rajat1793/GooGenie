@@ -20,6 +20,8 @@ import { getEmailThreadById, listEmailThreads } from "./domain/email-store.js";
 import { emitAuditEvent, listAuditEvents } from "./security/audit.js";
 import { env } from "./security/env.js";
 import { createApiError, statusFromApiError } from "./security/errors.js";
+import { idempotency } from "./security/idempotency.js";
+import { paginate } from "./security/pagination.js";
 import { createRateLimitMiddleware } from "./security/rate-limit.js";
 import { secureHeaders } from "./security/secure-headers.js";
 
@@ -29,6 +31,7 @@ app.use(attachTraceId);
 app.use(secureHeaders);
 app.use(cors());
 app.use(express.json());
+app.use(idempotency);
 
 const adminRateLimit = createRateLimitMiddleware({ windowMs: 60_000, max: 30 });
 const managerRateLimit = createRateLimitMiddleware({ windowMs: 60_000, max: 60 });
@@ -104,7 +107,10 @@ app.get("/v1/me/features", requireAuth, (req: Request, res: Response) => {
 
   const features = listFeatureTogglesForUser(auth.tenantId, auth.userId);
   emitAuditEvent(req, "me_features_read", { count: features.length });
-  res.status(200).json({ features });
+  const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+  const limit = typeof req.query.limit === "string" ? req.query.limit : undefined;
+  const page = paginate(features, cursor, limit);
+  res.status(200).json({ features: page.items, total: page.total, next_cursor: page.next_cursor });
 });
 
 app.get("/v1/me/activity", requireAuth, (req: Request, res: Response) => {
@@ -115,7 +121,10 @@ app.get("/v1/me/activity", requireAuth, (req: Request, res: Response) => {
 
   const activity = listAuditEvents(auth.tenantId, { actorUserId: auth.userId });
   emitAuditEvent(req, "me_activity_read", { count: activity.length });
-  res.status(200).json({ activity });
+  const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+  const limit = typeof req.query.limit === "string" ? req.query.limit : undefined;
+  const page = paginate(activity, cursor, limit);
+  res.status(200).json({ activity: page.items, total: page.total, next_cursor: page.next_cursor });
 });
 
 app.get(
@@ -133,7 +142,10 @@ app.get(
     const actorUserId = typeof req.query.userId === "string" ? req.query.userId : undefined;
     const action = typeof req.query.action === "string" ? req.query.action : undefined;
     const activity = listAuditEvents(auth.tenantId, { actorUserId, action });
-    res.status(200).json({ activity });
+    const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+    const limit = typeof req.query.limit === "string" ? req.query.limit : undefined;
+    const page = paginate(activity, cursor, limit);
+    res.status(200).json({ activity: page.items, total: page.total, next_cursor: page.next_cursor });
   }
 );
 
@@ -150,7 +162,10 @@ app.get(
 
     const users = listTenantUsers(auth.tenantId);
     emitAuditEvent(req, "admin_users_list_read", { count: users.length });
-    res.status(200).json({ users });
+    const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+    const limit = typeof req.query.limit === "string" ? req.query.limit : undefined;
+    const page = paginate(users, cursor, limit);
+    res.status(200).json({ users: page.items, total: page.total, next_cursor: page.next_cursor });
   }
 );
 
@@ -358,8 +373,11 @@ app.get("/v1/email/threads", requireAuth, requireFeature("email_read"), (req: Re
   }
 
   const threads = listEmailThreads(auth.tenantId, new Set([requestedUserId]));
+  const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+  const limit = typeof req.query.limit === "string" ? req.query.limit : undefined;
+  const page = paginate(threads, cursor, limit);
   emitAuditEvent(req, "email_threads_read", { requested_user_id: requestedUserId, count: threads.length });
-  res.status(200).json({ threads });
+  res.status(200).json({ threads: page.items, total: page.total, next_cursor: page.next_cursor });
 });
 
 app.get(
@@ -395,8 +413,11 @@ app.get("/v1/calendar/events", requireAuth, requireFeature("calendar_read"), (re
   }
 
   const events = listCalendarEvents(auth.tenantId, new Set([requestedUserId]));
+  const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+  const limit = typeof req.query.limit === "string" ? req.query.limit : undefined;
+  const page = paginate(events, cursor, limit);
   emitAuditEvent(req, "calendar_events_read", { requested_user_id: requestedUserId, count: events.length });
-  res.status(200).json({ events });
+  res.status(200).json({ events: page.items, total: page.total, next_cursor: page.next_cursor });
 });
 
 app.post("/v1/calendar/events", requireAuth, requireFeature("calendar_write"), (req: Request, res: Response) => {
