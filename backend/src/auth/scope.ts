@@ -1,3 +1,4 @@
+/// <reference path="../contracts/request.d.ts" />
 import type { NextFunction, Request, Response } from "express";
 
 import { ROLE } from "./roles.js";

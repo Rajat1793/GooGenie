@@ -1,3 +1,4 @@
+/// <reference path="../contracts/request.d.ts" />
 import type { Request } from "express";
 
 import { redactSensitive } from "./redaction.js";

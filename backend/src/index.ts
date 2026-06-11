@@ -1,3 +1,4 @@
+/// <reference path="./contracts/request.d.ts" />
 import cors from "cors";
 import express, { type Request, type Response, type NextFunction } from "express";
 import { z } from "zod";
@@ -286,6 +287,22 @@ app.get(
   (req: Request, res: Response) => {
     emitAuditEvent(req, "manager_user_activity_read", { target_user_id: req.params.userId });
     res.status(200).json({ activity: [], target_user_id: req.params.userId });
+  }
+);
+
+app.get(
+  "/v1/manager/users/:userId/feature-access",
+  requireAuth,
+  requireRole([ROLE.SUPER_ADMIN, ROLE.MANAGER_ADMIN]),
+  managerRateLimit,
+  requireUserScope((req) => req.params.userId),
+  (req: Request, res: Response) => {
+    const auth = req.auth;
+    if (!auth) {
+      throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+    }
+    const features = listFeatureTogglesForUser(auth.tenantId, req.params.userId);
+    res.status(200).json({ feature_access: features });
   }
 );
 
