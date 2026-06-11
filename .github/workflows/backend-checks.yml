@@ -13,9 +13,6 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
 
     steps:
       - name: Checkout
@@ -37,14 +34,14 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: pnpm run lint
+        run: pnpm --filter googenie-backend run lint
 
       - name: Typecheck
-        run: pnpm run typecheck
+        run: pnpm --filter googenie-backend run typecheck
 
       - name: Test
-        run: pnpm run test
+        run: pnpm --filter googenie-backend run test
 
       - name: Dependency audit (high and above)
-        run: pnpm run audit:deps
+        run: pnpm --filter googenie-backend run audit:deps
         continue-on-error: true
