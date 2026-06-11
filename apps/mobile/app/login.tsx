@@ -17,7 +17,7 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.logo}>Nimbus</Text>
+      <Text style={styles.logo}>Googenie</Text>
       <Text style={styles.subtitle}>Paste your bearer token to sign in</Text>
       <TextInput
         style={styles.input}

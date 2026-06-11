@@ -11,7 +11,7 @@ export function Card({ header, children, className = "", padded = true }: Props)
   return (
     <div className={`glass-panel rounded-2xl overflow-hidden ${className}`}>
       {header && (
-        <div className="px-6 py-4 border-b border-outline-variant/30 bg-surface-container-low/50 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-outline-variant/20 bg-surface-container-low/40 flex items-center justify-between">
           {header}
         </div>
       )}

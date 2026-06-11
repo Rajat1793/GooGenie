@@ -2,7 +2,7 @@ import { API_BASE } from "../context/AuthContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = await AsyncStorage.getItem("nimbus_token") ?? "";
+  const token = await AsyncStorage.getItem("googenie_token") ?? "";
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {

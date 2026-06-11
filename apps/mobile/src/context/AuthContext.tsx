@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
-const TOKEN_KEY = "nimbus_token";
+const TOKEN_KEY = "googenie_token";
 
 interface AuthState {
   userId: string | null;

@@ -2,7 +2,7 @@
 const BASE = "";
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = sessionStorage.getItem("nimbus_token") ?? "";
+  const token = sessionStorage.getItem("googenie_token") ?? "";
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
@@ -86,6 +86,11 @@ export const adminApi = {
 // Manager APIs
 export const managerApi = {
   getUsers: () => apiFetch<{ users: PolicyUser[] }>("/v1/manager/users"),
+
+  getFeatureAccess: (userId: string) =>
+    apiFetch<{ feature_access: FeatureToggle[] }>(
+      `/v1/manager/users/${userId}/feature-access`
+    ),
 
   getUserActivity: (userId: string) =>
     apiFetch<{ activity: AuditEvent[]; target_user_id: string }>(

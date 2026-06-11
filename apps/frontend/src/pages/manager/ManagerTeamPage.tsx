@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import { managerApi, type PolicyUser, type FeatureToggle } from "../../api/client.ts";
+import { managerApi, type PolicyUser } from "../../api/client.ts";
 import { PageHeader } from "../../components/PageHeader.tsx";
-import { Card } from "../../components/Card.tsx";
 import { RoleBadge } from "../../components/RoleBadge.tsx";
 import { DataState } from "../../components/DataState.tsx";
 import { Toggle } from "../../components/Toggle.tsx";
@@ -15,6 +14,11 @@ const FEATURE_KEYS = [
   "ai_compose"
 ] as const;
 
+const FEATURE_ICONS: Record<string, string> = {
+  email_read: "inbox", email_write: "edit", calendar_read: "calendar_month",
+  calendar_write: "edit_calendar", ai_summary: "auto_awesome", ai_compose: "draw"
+};
+
 interface UserRowProps {
   user: PolicyUser;
   onViewActivity: (user: PolicyUser) => void;
@@ -22,28 +26,46 @@ interface UserRowProps {
 
 function UserFeatureRow({ user, onViewActivity }: UserRowProps) {
   const [toggles, setToggles] = useState<Map<string, boolean>>(new Map());
-  const [loading, setLoading] = useState(false);
+  const [initialised, setInitialised] = useState(false);
+  const [mutating, setMutating] = useState(false);
+
+  // Load real initial state from backend
+  useEffect(() => {
+    managerApi.getFeatureAccess(user.id)
+      .then((r) => {
+        const m = new Map<string, boolean>();
+        for (const t of r.feature_access) m.set(t.featureKey, t.isEnabled);
+        setToggles(m);
+      })
+      .catch(console.error)
+      .finally(() => setInitialised(true));
+  }, [user.id]);
 
   async function handleToggle(key: string, val: boolean) {
-    setLoading(true);
+    setMutating(true);
+    // Optimistic update
+    setToggles((prev) => new Map(prev).set(key, val));
     try {
       const res = await managerApi.setFeatureAccess(user.id, key, val);
-      const next = new Map(toggles);
-      for (const t of res.feature_access) {
-        next.set(t.featureKey, t.isEnabled);
-      }
+      const next = new Map<string, boolean>();
+      for (const t of res.feature_access) next.set(t.featureKey, t.isEnabled);
       setToggles(next);
+    } catch {
+      // Revert on failure
+      setToggles((prev) => new Map(prev).set(key, !val));
     } finally {
-      setLoading(false);
+      setMutating(false);
     }
   }
 
+  const enabledCount = FEATURE_KEYS.filter((k) => toggles.get(k)).length;
+
   return (
-    <div className="glass-panel rounded-2xl overflow-hidden">
+    <div className="glass-panel rounded-2xl overflow-hidden card-hover">
       {/* User header */}
-      <div className="px-6 py-4 border-b border-outline-variant/20 flex items-center justify-between bg-surface-container-low/40">
+      <div className="px-6 py-4 border-b border-outline-variant/15 flex items-center justify-between bg-gradient-to-r from-surface-container-low/60 to-transparent">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-semibold">
+          <div className="avatar-md">
             {(user.displayName ?? user.email ?? user.id).charAt(0).toUpperCase()}
           </div>
           <div>
@@ -52,46 +74,51 @@ function UserFeatureRow({ user, onViewActivity }: UserRowProps) {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-1.5 text-xs text-on-surface-variant">
+            <span className={`w-2 h-2 rounded-full ${enabledCount > 0 ? "bg-primary" : "bg-outline-variant"}`} />
+            {initialised ? `${enabledCount}/${FEATURE_KEYS.length} on` : "loading…"}
+          </div>
           <RoleBadge role={user.role} />
-          <button
-            onClick={() => onViewActivity(user)}
-            className="btn-ghost text-xs"
-          >
-            <span className="material-symbols-outlined text-base mr-1">history</span>
+          <button onClick={() => onViewActivity(user)} className="btn-ghost text-xs">
+            <span className="material-symbols-outlined text-[15px]">history</span>
             Activity
           </button>
         </div>
       </div>
 
       {/* Feature toggles */}
-      <div className="p-5 grid grid-cols-2 md:grid-cols-3 gap-4">
-        {FEATURE_KEYS.map((key) => (
-          <div key={key} className="flex items-center justify-between p-3 rounded-xl bg-surface-container-low/60 border border-outline-variant/10">
-            <div>
-              <p className="text-xs font-medium text-ink-text">{key.replace("_", " ")}</p>
-              <p className="text-xs text-on-surface-variant">{toggles.get(key) ? "enabled" : "disabled"}</p>
+      <div className="p-5 grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {FEATURE_KEYS.map((key) => {
+          const on = toggles.get(key) ?? false;
+          return (
+            <div
+              key={key}
+              className={on ? "feature-chip-on" : "feature-chip-off"}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className={`material-symbols-outlined text-[16px] flex-shrink-0 ${on ? "text-primary" : "text-outline"}`}>
+                  {FEATURE_ICONS[key] ?? "toggle_on"}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-ink-text capitalize truncate">{key.replace(/_/g, " ")}</p>
+                  <p className={`text-[10px] ${on ? "text-primary" : "text-outline"}`}>{on ? "on" : "off"}</p>
+                </div>
+              </div>
+              <Toggle
+                enabled={on}
+                onChange={(v) => handleToggle(key, v)}
+                disabled={mutating || !initialised}
+              />
             </div>
-            <Toggle
-              enabled={toggles.get(key) ?? false}
-              onChange={(v) => handleToggle(key, v)}
-              disabled={loading}
-            />
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
-interface ActivityPanelProps {
-  user: PolicyUser;
-  onClose: () => void;
-}
-
-function ActivityPanel({ user, onClose }: ActivityPanelProps) {
-  const [events, setEvents] = useState<Array<{
-    at: string; action: string; method: string; route: string;
-  }>>([]);
+function ActivityPanel({ user, onClose }: { user: PolicyUser; onClose: () => void }) {
+  const [events, setEvents] = useState<Array<{ at: string; action: string; method: string; route: string }>>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -102,31 +129,28 @@ function ActivityPanel({ user, onClose }: ActivityPanelProps) {
   }, [user.id]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-end p-0 md:p-6">
-      <div className="glass-panel rounded-2xl w-full md:w-[420px] h-[70vh] flex flex-col shadow-xl">
-        <div className="px-6 py-4 border-b border-outline-variant/30 flex items-center justify-between bg-surface-container-low/50 rounded-t-2xl">
+    <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end md:items-center justify-end">
+      <div className="glass-panel w-full md:w-[400px] h-[65vh] md:h-[75vh] md:m-6 flex flex-col rounded-t-3xl md:rounded-2xl shadow-2xl">
+        <div className="px-6 py-4 border-b border-outline-variant/20 flex items-center justify-between bg-surface-container-low/40 rounded-t-3xl md:rounded-t-2xl">
           <div>
-            <h3 className="font-semibold text-ink-text text-sm">User Activity</h3>
-            <p className="text-xs text-on-surface-variant">{user.displayName ?? user.id}</p>
+            <p className="font-semibold text-ink-text text-sm">Activity — {user.displayName ?? user.id}</p>
+            <p className="text-xs text-on-surface-variant">{user.email}</p>
           </div>
-          <button onClick={onClose} className="btn-ghost">
-            <span className="material-symbols-outlined">close</span>
+          <button onClick={onClose} className="btn-ghost p-1.5">
+            <span className="material-symbols-outlined text-lg">close</span>
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-5 space-y-2">
-          {loading && (
-            <div className="flex justify-center py-10">
-              <span className="material-symbols-outlined animate-spin text-2xl text-outline">progress_activity</span>
-            </div>
-          )}
-          {!loading && events.length === 0 && (
-            <p className="text-xs text-on-surface-variant text-center py-10">No activity yet.</p>
-          )}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+          {loading && <div className="empty-state"><span className="material-symbols-outlined animate-spin text-2xl">progress_activity</span></div>}
+          {!loading && events.length === 0 && <div className="empty-state text-sm">No activity yet.</div>}
           {events.map((ev, i) => (
-            <div key={i} className="p-3 rounded-xl border border-outline-variant/20 bg-surface-container-lowest">
-              <p className="text-xs font-medium text-ink-text">{ev.action.replace(/_/g, " ")}</p>
-              <p className="text-xs text-on-surface-variant mt-0.5">{ev.method} {ev.route}</p>
-              <p className="text-xs text-outline mt-1">{new Date(ev.at).toLocaleString()}</p>
+            <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-white/60 border border-outline-variant/15">
+              <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-ink-text">{ev.action.replace(/_/g, " ")}</p>
+                <p className="text-[10px] text-on-surface-variant mt-0.5">{ev.method} {ev.route}</p>
+              </div>
+              <p className="text-[10px] text-outline flex-shrink-0">{new Date(ev.at).toLocaleTimeString()}</p>
             </div>
           ))}
         </div>
@@ -143,7 +167,7 @@ export function ManagerTeamPage() {
   const [bulkFeature, setBulkFeature] = useState("email_read");
   const [bulkEnabled, setBulkEnabled] = useState(true);
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkResult, setBulkResult] = useState<string | null>(null);
+  const [bulkResult, setBulkResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -166,9 +190,9 @@ export function ManagerTeamPage() {
     try {
       const ids = users.map((u) => u.id);
       const res = await managerApi.bulkSetFeatureAccess(ids, bulkFeature, bulkEnabled);
-      setBulkResult(`Updated ${res.updated_count} users`);
+      setBulkResult({ ok: true, msg: `Updated ${res.updated_count} team members` });
     } catch (e) {
-      setBulkResult((e as Error).message);
+      setBulkResult({ ok: false, msg: (e as Error).message });
     } finally {
       setBulkLoading(false);
     }
@@ -178,76 +202,56 @@ export function ManagerTeamPage() {
     <div>
       <PageHeader
         title="My Team"
-        subtitle="Manage feature access and monitor activity for your direct reports."
+        subtitle="Manage feature access and activity for your direct reports."
         action={
-          <button onClick={load} className="btn-ghost flex items-center gap-1">
-            <span className="material-symbols-outlined text-base">refresh</span>
+          <button onClick={load} className="btn-secondary flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-[16px]">refresh</span>
             Refresh
           </button>
         }
       />
 
-      {/* Bulk actions */}
-      <Card className="mb-8 bg-peach-accent/20">
-        <div className="flex flex-wrap items-end gap-4">
+      {/* Bulk action bar */}
+      <div className="glass-panel rounded-2xl p-5 mb-8 border-l-4 border-[#FFEBCC]">
+        <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-4">
+          Bulk action — apply to whole team
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-1.5">
-              Feature
-            </label>
-            <select
-              value={bulkFeature}
-              onChange={(e) => setBulkFeature(e.target.value)}
-              className="input-field rounded-xl text-xs"
-            >
-              {FEATURE_KEYS.map((k) => (
-                <option key={k} value={k}>{k.replace("_", " ")}</option>
-              ))}
+            <label className="section-label block mb-1.5">Feature</label>
+            <select value={bulkFeature} onChange={(e) => setBulkFeature(e.target.value)} className="input-field w-44">
+              {FEATURE_KEYS.map((k) => <option key={k} value={k}>{k.replace(/_/g, " ")}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-1.5">
-              Set to
-            </label>
-            <select
-              value={String(bulkEnabled)}
-              onChange={(e) => setBulkEnabled(e.target.value === "true")}
-              className="input-field rounded-xl text-xs"
-            >
+            <label className="section-label block mb-1.5">Set to</label>
+            <select value={String(bulkEnabled)} onChange={(e) => setBulkEnabled(e.target.value === "true")} className="input-field w-32">
               <option value="true">Enabled</option>
               <option value="false">Disabled</option>
             </select>
           </div>
-          <div className="flex flex-col gap-1">
-            <button
-              onClick={handleBulk}
-              disabled={bulkLoading || users.length === 0}
-              className="btn-primary disabled:opacity-50 flex items-center gap-1"
-            >
-              <span className="material-symbols-outlined text-base">sync</span>
-              Apply to All
-            </button>
-            {bulkResult && (
-              <p className="text-xs text-primary">{bulkResult}</p>
-            )}
-          </div>
+          <button onClick={handleBulk} disabled={bulkLoading || users.length === 0} className="btn-primary disabled:opacity-50">
+            <span className="material-symbols-outlined text-[16px]">sync</span>
+            Apply to all
+          </button>
+          {bulkResult && (
+            <p className={`text-xs font-medium ${bulkResult.ok ? "text-primary" : "text-error"}`}>
+              {bulkResult.ok ? "✓" : "✗"} {bulkResult.msg}
+            </p>
+          )}
         </div>
-      </Card>
+      </div>
 
-      <DataState loading={loading} error={error} show={users.length > 0} empty="No team members found in your scope.">
-        <div className="space-y-6">
+      <DataState loading={loading} error={error} show={users.length > 0} empty="No team members in your scope.">
+        <div className="space-y-5">
           {users.map((u) => (
-            <UserFeatureRow
-              key={u.id}
-              user={u}
-              onViewActivity={setActiveUser}
-            />
+            <UserFeatureRow key={u.id} user={u} onViewActivity={setActiveUser} />
           ))}
         </div>
       </DataState>
 
-      {activeUser && (
-        <ActivityPanel user={activeUser} onClose={() => setActiveUser(null)} />
-      )}
+      {activeUser && <ActivityPanel user={activeUser} onClose={() => setActiveUser(null)} />}
     </div>
   );
 }
+
