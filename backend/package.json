@@ -13,6 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "audit:deps": "pnpm audit --audit-level high",
+    "seed:staging": "tsx scripts/seed-staging.ts",
+    "perf:baseline": "tsx scripts/perf-baseline.ts",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test"
   },
   "dependencies": {

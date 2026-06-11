@@ -1,0 +1,544 @@
+{
+  "users": [
+    {
+      "id": "alpha-super-1",
+      "tenantId": "alpha-corp",
+      "role": "super_admin",
+      "email": "admin@alpha-corp.dev",
+      "displayName": "Alpha Super Admin",
+      "isActive": true
+    },
+    {
+      "id": "alpha-mgr-1",
+      "tenantId": "alpha-corp",
+      "role": "manager_admin",
+      "email": "mgr1@alpha-corp.dev",
+      "displayName": "Alpha Manager 1",
+      "managerUserId": "alpha-super-1",
+      "isActive": true
+    },
+    {
+      "id": "alpha-mgr-2",
+      "tenantId": "alpha-corp",
+      "role": "manager_admin",
+      "email": "mgr2@alpha-corp.dev",
+      "displayName": "Alpha Manager 2",
+      "managerUserId": "alpha-super-1",
+      "isActive": true
+    },
+    {
+      "id": "alpha-mgr-3",
+      "tenantId": "alpha-corp",
+      "role": "manager_admin",
+      "email": "mgr3@alpha-corp.dev",
+      "displayName": "Alpha Sub-Manager",
+      "managerUserId": "alpha-mgr-1",
+      "isActive": true
+    },
+    {
+      "id": "alpha-user-1",
+      "tenantId": "alpha-corp",
+      "role": "user",
+      "email": "user1@alpha-corp.dev",
+      "displayName": "Alpha User 1",
+      "managerUserId": "alpha-mgr-1",
+      "isActive": true
+    },
+    {
+      "id": "alpha-user-2",
+      "tenantId": "alpha-corp",
+      "role": "user",
+      "email": "user2@alpha-corp.dev",
+      "displayName": "Alpha User 2",
+      "managerUserId": "alpha-mgr-1",
+      "isActive": true
+    },
+    {
+      "id": "alpha-user-3",
+      "tenantId": "alpha-corp",
+      "role": "user",
+      "email": "user3@alpha-corp.dev",
+      "displayName": "Alpha User 3",
+      "managerUserId": "alpha-mgr-3",
+      "isActive": true
+    },
+    {
+      "id": "alpha-user-4",
+      "tenantId": "alpha-corp",
+      "role": "user",
+      "email": "user4@alpha-corp.dev",
+      "displayName": "Alpha User 4",
+      "managerUserId": "alpha-mgr-2",
+      "isActive": true
+    },
+    {
+      "id": "alpha-user-5",
+      "tenantId": "alpha-corp",
+      "role": "user",
+      "email": "user5@alpha-corp.dev",
+      "displayName": "Alpha User 5 (inactive)",
+      "managerUserId": "alpha-mgr-2",
+      "isActive": false
+    },
+    {
+      "id": "beta-super-1",
+      "tenantId": "beta-org",
+      "role": "super_admin",
+      "email": "admin@beta-org.dev",
+      "displayName": "Beta Super Admin",
+      "isActive": true
+    },
+    {
+      "id": "beta-mgr-1",
+      "tenantId": "beta-org",
+      "role": "manager_admin",
+      "email": "mgr1@beta-org.dev",
+      "displayName": "Beta Manager 1",
+      "managerUserId": "beta-super-1",
+      "isActive": true
+    },
+    {
+      "id": "beta-user-1",
+      "tenantId": "beta-org",
+      "role": "user",
+      "email": "user1@beta-org.dev",
+      "displayName": "Beta User 1",
+      "managerUserId": "beta-mgr-1",
+      "isActive": true
+    }
+  ],
+  "featureToggles": [
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-super-1",
+      "featureKey": "email_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-super-1",
+      "featureKey": "email_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-super-1",
+      "featureKey": "calendar_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-super-1",
+      "featureKey": "calendar_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-super-1",
+      "featureKey": "ai_summary",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-super-1",
+      "featureKey": "ai_compose",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-1",
+      "featureKey": "email_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-1",
+      "featureKey": "email_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-1",
+      "featureKey": "calendar_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-1",
+      "featureKey": "calendar_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-1",
+      "featureKey": "ai_summary",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-1",
+      "featureKey": "ai_compose",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-2",
+      "featureKey": "email_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-2",
+      "featureKey": "email_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-2",
+      "featureKey": "calendar_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-2",
+      "featureKey": "calendar_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-2",
+      "featureKey": "ai_summary",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-2",
+      "featureKey": "ai_compose",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-3",
+      "featureKey": "email_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-3",
+      "featureKey": "email_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-3",
+      "featureKey": "calendar_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-3",
+      "featureKey": "calendar_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-3",
+      "featureKey": "ai_summary",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-mgr-3",
+      "featureKey": "ai_compose",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-1",
+      "featureKey": "email_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-1",
+      "featureKey": "email_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-1",
+      "featureKey": "calendar_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-1",
+      "featureKey": "calendar_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-1",
+      "featureKey": "ai_summary",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-1",
+      "featureKey": "ai_compose",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-2",
+      "featureKey": "email_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-2",
+      "featureKey": "email_write",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-2",
+      "featureKey": "calendar_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-2",
+      "featureKey": "calendar_write",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-2",
+      "featureKey": "ai_summary",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-2",
+      "featureKey": "ai_compose",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-3",
+      "featureKey": "email_read",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-3",
+      "featureKey": "email_write",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-3",
+      "featureKey": "calendar_read",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-3",
+      "featureKey": "calendar_write",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-3",
+      "featureKey": "ai_summary",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-3",
+      "featureKey": "ai_compose",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-4",
+      "featureKey": "email_read",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-4",
+      "featureKey": "email_write",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-4",
+      "featureKey": "calendar_read",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-4",
+      "featureKey": "calendar_write",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-4",
+      "featureKey": "ai_summary",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-4",
+      "featureKey": "ai_compose",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-5",
+      "featureKey": "email_read",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-5",
+      "featureKey": "email_write",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-5",
+      "featureKey": "calendar_read",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-5",
+      "featureKey": "calendar_write",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-5",
+      "featureKey": "ai_summary",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "alpha-corp",
+      "userId": "alpha-user-5",
+      "featureKey": "ai_compose",
+      "isEnabled": false
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-super-1",
+      "featureKey": "email_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-super-1",
+      "featureKey": "email_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-super-1",
+      "featureKey": "calendar_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-super-1",
+      "featureKey": "calendar_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-super-1",
+      "featureKey": "ai_summary",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-super-1",
+      "featureKey": "ai_compose",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-mgr-1",
+      "featureKey": "email_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-mgr-1",
+      "featureKey": "email_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-mgr-1",
+      "featureKey": "calendar_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-mgr-1",
+      "featureKey": "calendar_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-mgr-1",
+      "featureKey": "ai_summary",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-mgr-1",
+      "featureKey": "ai_compose",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-user-1",
+      "featureKey": "email_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-user-1",
+      "featureKey": "email_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-user-1",
+      "featureKey": "calendar_read",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-user-1",
+      "featureKey": "calendar_write",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-user-1",
+      "featureKey": "ai_summary",
+      "isEnabled": true
+    },
+    {
+      "tenantId": "beta-org",
+      "userId": "beta-user-1",
+      "featureKey": "ai_compose",
+      "isEnabled": true
+    }
+  ]
+}
