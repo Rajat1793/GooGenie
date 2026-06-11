@@ -85,6 +85,23 @@ app.get("/health", (_req: Request, res: Response) => {
   });
 });
 
+/**
+ * S3-3: Token lifecycle configuration — no auth required.
+ * Web and mobile clients fetch this on startup to configure their token refresh logic.
+ */
+app.get("/v1/auth/config", (_req: Request, res: Response) => {
+  res.status(200).json({
+    token_type: "Bearer",
+    algorithm: "HMAC-SHA256",
+    access_token_ttl_seconds: 3600,
+    refresh_token_ttl_seconds: 604800,   // 7 days
+    refresh_window_seconds: 300,          // refresh when < 5 min remaining
+    clock_skew_tolerance_seconds: 30,
+    roles: ALL_ROLES,
+    scopes: ["email_read", "email_write", "calendar_read", "calendar_write", "ai_summary", "ai_compose"]
+  });
+});
+
 app.get("/v1/me/profile", requireAuth, (req: Request, res: Response) => {
   const auth = req.auth;
   if (!auth) {
