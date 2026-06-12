@@ -16,8 +16,15 @@ import type { ReactNode } from "react";
 
 /** Wires Clerk's getToken into the API client so all fetch calls carry the JWT */
 function ClerkTokenWirer() {
-  const { getToken } = useClerkAuthDirect();
-  useEffect(() => { setClerkTokenGetter(() => getToken()); }, [getToken]);
+  const { getToken, isSignedIn } = useClerkAuthDirect();
+  useEffect(() => {
+    if (isSignedIn) {
+      setClerkTokenGetter(async () => {
+        const t = await getToken();
+        return t;
+      });
+    }
+  }, [getToken, isSignedIn]);
   return null;
 }
 

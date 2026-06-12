@@ -54,13 +54,12 @@ export function Shell({ children }: { children: ReactNode }) {
           ))}
         </nav>
 
-        {/* Clerk UserButton — handles avatar, profile, sign out */}
-        <div className="flex items-center gap-3">
+        {/* Clerk UserButton + name */}
+        <div className="flex items-center gap-2.5">
           {user && (
-            <div className="hidden md:flex items-center gap-2">
-              <span className="text-xs font-medium text-on-surface-variant truncate max-w-[120px]">
-                {user.firstName ?? user.emailAddresses[0]?.emailAddress}
-              </span>
+            <div className="hidden md:flex flex-col items-end leading-tight">
+              <span className="text-xs font-semibold text-ink-text">{user.fullName ?? user.firstName ?? user.emailAddresses[0]?.emailAddress}</span>
+              <span className="text-[10px] text-outline">{user.primaryEmailAddress?.emailAddress}</span>
             </div>
           )}
           <UserButton />

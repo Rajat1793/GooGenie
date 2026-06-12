@@ -4,6 +4,7 @@ import type { NextFunction, Request, Response } from "express";
 
 import type { Role } from "./roles.js";
 import { verifyAccessToken } from "./token.js";
+import { verifyClerkJWT, looksLikeClerkJWT } from "./clerk-jwt.js";
 import { createApiError } from "../security/errors.js";
 
 export function attachTraceId(req: Request, _res: Response, next: NextFunction): void {
@@ -11,6 +12,11 @@ export function attachTraceId(req: Request, _res: Response, next: NextFunction):
   next();
 }
 
+/**
+ * Accepts two token formats:
+ *  1. Clerk RS256 JWT — issued by Clerk after sign-in (primary auth)
+ *  2. Legacy HMAC token — used by existing tests, backward compat
+ */
 export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
   const header = req.headers.authorization;
   if (!header || !header.startsWith("Bearer ")) {
@@ -19,19 +25,38 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
   }
 
   const token = header.slice("Bearer ".length);
-  const payload = verifyAccessToken(token);
-  if (!payload) {
-    next(createApiError("UNAUTHORIZED", "Invalid or expired access token", false, req.traceId));
+
+  if (looksLikeClerkJWT(token)) {
+    // Clerk JWT — verify async then continue
+    verifyClerkJWT(token).then((payload) => {
+      if (!payload) {
+        next(createApiError("UNAUTHORIZED", "Invalid or expired Clerk token", false, req.traceId));
+        return;
+      }
+      // Map Clerk userId to our auth context
+      // Role: check publicMetadata via Clerk dashboard, default to "user"
+      const role: Role = ((payload as unknown as Record<string, unknown>)["role"] as Role) ?? "user";
+      req.auth = {
+        userId: payload.sub,
+        tenantId: "demo-tenant",
+        role
+      };
+      next();
+    }).catch(() => {
+      next(createApiError("UNAUTHORIZED", "Token verification failed", false, req.traceId));
+    });
     return;
   }
 
-  req.auth = {
-    userId: payload.sub,
-    tenantId: payload.tenant_id,
-    role: payload.role
-  };
+  // Legacy HMAC token (tests + gen-tokens.ts)
+  const hmacPayload = verifyAccessToken(token);
+  if (hmacPayload) {
+    req.auth = { userId: hmacPayload.sub, tenantId: hmacPayload.tenant_id, role: hmacPayload.role };
+    next();
+    return;
+  }
 
-  next();
+  next(createApiError("UNAUTHORIZED", "Invalid or expired access token", false, req.traceId));
 }
 
 export function requireRole(roles: Role[]) {
@@ -41,12 +66,10 @@ export function requireRole(roles: Role[]) {
       next(createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId));
       return;
     }
-
     if (!roles.includes(role)) {
       next(createApiError("FORBIDDEN", "Role is not allowed for this operation", false, req.traceId));
       return;
     }
-
     next();
   };
 }

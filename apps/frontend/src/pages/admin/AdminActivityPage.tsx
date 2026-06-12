@@ -1,3 +1,4 @@
+import { useClerkReady } from "../../hooks/useClerkReady.ts";
 import { useEffect, useState } from "react";
 import { adminApi, type AuditEvent } from "../../api/client.ts";
 import { PageHeader } from "../../components/PageHeader.tsx";
@@ -71,7 +72,7 @@ export function AdminActivityPage() {
     }
   }
 
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const clerkReady = useClerkReady(); useEffect(() => { if (clerkReady) load(); }, [clerkReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>

@@ -1,3 +1,4 @@
+import { useClerkReady } from "../../hooks/useClerkReady.ts";
 import { useEffect, useState } from "react";
 import { adminApi, type PolicyUser, type RoleChangeRecord } from "../../api/client.ts";
 import { PageHeader } from "../../components/PageHeader.tsx";
@@ -138,7 +139,7 @@ export function AdminUsersPage() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  const clerkReady = useClerkReady(); useEffect(() => { if (clerkReady) load(); }, [clerkReady]);
 
   async function handleSave(userId: string, role: string, reason: string, managerId?: string) {
     const updated = await adminApi.updateRole(userId, role, reason);

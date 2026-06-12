@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAuth as useClerkAuth } from "@clerk/react";
 import { useAuth } from "../../context/AuthContext.tsx";
 import { meApi, type FeatureToggle, type AuditEvent } from "../../api/client.ts";
 import { PageHeader } from "../../components/PageHeader.tsx";
@@ -65,7 +66,8 @@ function ActivityRow({ event }: { event: AuditEvent }) {
 }
 
 export function UserProfilePage() {
-  const { userId, tenantId, role } = useAuth();
+  const { userId, tenantId, role, fullName, email, imageUrl } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
   const [features, setFeatures] = useState<FeatureToggle[]>([]);
   const [activity, setActivity] = useState<AuditEvent[]>([]);
   const [loadingF, setLoadingF] = useState(true);
@@ -74,18 +76,32 @@ export function UserProfilePage() {
   const [errorA, setErrorA] = useState<string | null>(null);
 
   useEffect(() => {
-    meApi.getFeatures()
-      .then((r) => setFeatures(r.features))
-      .catch((e: Error) => setErrorF(e.message))
-      .finally(() => setLoadingF(false));
+    // Wait until Clerk has a valid session before calling protected endpoints
+    if (!isLoaded || !isSignedIn) return;
 
-    meApi.getActivity()
-      .then((r) => setActivity(r.activity.slice().reverse()))
-      .catch((e: Error) => setErrorA(e.message))
-      .finally(() => setLoadingA(false));
-  }, []);
+    // Ensure the token getter is wired before we fetch
+    const doFetch = async () => {
+      // Prime the token getter with a fresh token
+      const token = await getToken();
+      if (!token) return;
+
+      meApi.getFeatures()
+        .then((r) => setFeatures(r.features))
+        .catch((e: Error) => setErrorF(e.message))
+        .finally(() => setLoadingF(false));
+
+      meApi.getActivity()
+        .then((r) => setActivity(r.activity.slice().reverse()))
+        .catch((e: Error) => setErrorA(e.message))
+        .finally(() => setLoadingA(false));
+    };
+
+    doFetch();
+  }, [isLoaded, isSignedIn, getToken]);
 
   const enabledCount = features.filter((f) => f.isEnabled).length;
+  const displayName = fullName ?? email ?? userId ?? "—";
+  const initials = displayName.charAt(0).toUpperCase();
 
   return (
     <div>
@@ -93,12 +109,18 @@ export function UserProfilePage() {
 
       {/* Identity card */}
       <div className="glass-panel rounded-2xl p-6 mb-8 flex items-center gap-6">
-        <div className="w-16 h-16 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-semibold text-2xl flex-shrink-0">
-          {(userId ?? "?").charAt(0).toUpperCase()}
-        </div>
+        {imageUrl ? (
+          <img src={imageUrl} alt={displayName} className="w-16 h-16 rounded-full object-cover border-2 border-primary/20 flex-shrink-0" />
+        ) : (
+          <div className="w-16 h-16 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-semibold text-2xl flex-shrink-0">
+            {initials}
+          </div>
+        )}
         <div className="flex-1 min-w-0">
-          <h2 className="font-headline text-xl text-ink-text">{userId}</h2>
+          <h2 className="font-headline text-xl text-ink-text">{displayName}</h2>
           <p className="text-sm text-on-surface-variant mt-0.5">Tenant: {tenantId}</p>
+          {email && <p className="text-sm text-on-surface-variant mt-0.5">{email}</p>}
+          <p className="text-xs text-outline mt-0.5">Tenant: {tenantId}</p>
           <div className="mt-2">
             <RoleBadge role={role ?? "user"} />
           </div>
