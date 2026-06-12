@@ -22,6 +22,7 @@ import { emitAuditEvent, listAuditEvents } from "./security/audit.js";
 import { env } from "./security/env.js";
 import { createApiError, statusFromApiError } from "./security/errors.js";
 import { idempotency } from "./security/idempotency.js";
+import { recordRequest, getCounters, getLatency, evaluateAlerts, resetMetrics } from "./security/metrics.js";
 import { paginate } from "./security/pagination.js";
 import { createRateLimitMiddleware } from "./security/rate-limit.js";
 import { secureHeaders } from "./security/secure-headers.js";
@@ -31,8 +32,17 @@ app.disable("x-powered-by");
 app.use(attachTraceId);
 app.use(secureHeaders);
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "64kb" }));
 app.use(idempotency);
+
+// S4-3: request timing → metrics
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    recordRequest({ durationMs: Date.now() - start, statusCode: res.statusCode, wasAuthz: Boolean(req.auth), wasGranted: res.statusCode < 400 });
+  });
+  next();
+});
 
 const adminRateLimit = createRateLimitMiddleware({ windowMs: 60_000, max: 30 });
 const managerRateLimit = createRateLimitMiddleware({ windowMs: 60_000, max: 60 });
@@ -79,11 +89,24 @@ function getScopedUserIds(req: Request): Set<string> {
 }
 
 app.get("/health", (_req: Request, res: Response) => {
-  res.status(200).json({
-    status: "ok",
-    service: "googenie-backend",
-    roles: ALL_ROLES
-  });
+  res.status(200).json({ status: "ok", service: "googenie-backend", roles: ALL_ROLES });
+});
+
+// S4-3: metrics + alerts (no auth — monitoring agents)
+app.get("/v1/metrics", (_req: Request, res: Response) => {
+  res.status(200).json({ counters: getCounters(), latency: getLatency(), collected_at: new Date().toISOString() });
+});
+
+app.get("/v1/alerts", (_req: Request, res: Response) => {
+  const alerts = evaluateAlerts();
+  const status = alerts.some((a) => a.status === "critical") ? "critical" : alerts.some((a) => a.status === "warn") ? "warn" : "ok";
+  res.status(200).json({ status, alerts });
+});
+
+app.post("/v1/metrics/reset", (_req: Request, res: Response) => {
+  if (env.NODE_ENV === "production") { res.status(403).json({ message: "Not available in production" }); return; }
+  resetMetrics();
+  res.status(200).json({ reset: true });
 });
 
 /**
