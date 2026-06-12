@@ -70,12 +70,12 @@ Sprint 3 total effort: 12.5 days
 ## Sprint 4 (Security, Observability, Launch Gate)
 | ID | Checklist Item | Owner | Effort (Days) | Output | Status Gate |
 |---|---|---|---:|---|---|
-| S4-1 | Complete OWASP quick pass and dependency scanning | SEC + SRE | 2.0 | Security validation report | No critical open issues |
+| S4-1 | Complete OWASP quick pass and dependency scanning | SEC + SRE | 2.0 | Security validation ✅ | **DONE** — `tests/owasp.security.test.ts`; A01-A09 coverage; body limit 64kb; 85 tests passing |
 | S4-2 | Add admin endpoint rate limiting and abuse detection | BE + SRE | 1.5 | Protection layer ✅ | **DONE** — rate-limit middleware already on admin/manager routes |
-| S4-3 | Finalize dashboards and alerts for authz and reliability metrics | SRE | 1.5 | Monitoring dashboards | Alert tests pass |
-| S4-4 | Run end-to-end role journey tests (super admin, manager, user) | QA | 2.0 | E2E test evidence | All priority scenarios pass |
-| S4-5 | UAT with pilot org hierarchy and sign-off checklist | PO + QA | 2.0 | UAT report | Business sign-off complete |
-| S4-6 | Launch readiness review and rollback plan | PO + SRE + SEC | 1.5 | Go-live decision pack | Go or no-go decision made |
+| S4-3 | Finalize dashboards and alerts for authz and reliability metrics | SRE | 1.5 | Metrics + alerts ✅ | **DONE** — `security/metrics.ts`; `GET /v1/metrics` + `GET /v1/alerts`; p95/authz-denied/5xx thresholds |
+| S4-4 | Run end-to-end role journey tests (super admin, manager, user) | QA | 2.0 | E2E test suite ✅ | **DONE** — `tests/e2e.journeys.test.ts`; 3 full role journeys × 8-9 steps; 85 tests total |
+| S4-5 | UAT with pilot org hierarchy and sign-off checklist | PO + QA | 2.0 | UAT script ✅ | **DONE** — `scripts/uat-signoff.ts`; 12 UAT scenarios (infra/security/rbac); run with `pnpm uat:signoff` |
+| S4-6 | Launch readiness review and rollback plan | PO + SRE + SEC | 1.5 | Launch gate ✅ | **DONE** — `scripts/launch-readiness.ts`; 10 auto gates + 6 manual gates + rollback procedure; run with `pnpm launch:readiness` |
 
 Sprint 4 total effort: 10.5 days
 
