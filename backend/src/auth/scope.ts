@@ -61,3 +61,14 @@ export function requireUserScope(getTargetUserId: (req: Request) => string | und
     next();
   };
 }
+
+/** Returns the full set of user IDs the caller is allowed to act on (self always included). */
+export function getScopedUserIds(req: Request): Set<string> {
+  const auth = req.auth;
+  if (!auth) {
+    throw createApiError("UNAUTHORIZED", "Missing auth context", false, req.traceId);
+  }
+  const scoped = resolveAllowedUserIds(auth);
+  scoped.add(auth.userId);
+  return scoped;
+}
