@@ -2,17 +2,16 @@ import { useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 import { useAuth } from "../context/AuthContext.tsx";
 
-/** Redirect users to their default landing page based on role */
 export function HomePage() {
   const { role, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     if (loading) return;
-    if (!role) { navigate("/login"); return; }
+    // Default landing by role — user without a role yet goes to profile
     if (role === "super_admin") navigate("/admin/users");
     else if (role === "manager_admin") navigate("/manager/team");
-    else navigate("/inbox");
+    else navigate("/profile");
   }, [role, loading, navigate]);
 
   return (
@@ -21,3 +20,4 @@ export function HomePage() {
     </div>
   );
 }
+

@@ -1,5 +1,10 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
-import { authApi } from "../api/client.ts";
+/**
+ * Clerk-backed auth context.
+ * Wraps @clerk/react so the rest of the app (Shell, HomePage, pages)
+ * can keep using the same useAuth() interface.
+ */
+import { useUser, useAuth as useClerkAuth } from "@clerk/react";
+import { createContext, useContext, type ReactNode } from "react";
 
 interface AuthState {
   userId: string | null;
@@ -7,77 +12,36 @@ interface AuthState {
   role: "super_admin" | "manager_admin" | "user" | null;
   loading: boolean;
   token: string | null;
-  setToken: (t: string) => void;
-  logout: () => void;
 }
 
-const AuthCtx = createContext<AuthState | null>(null);
+const AuthCtx = createContext<AuthState>({
+  userId: null, tenantId: null, role: null, loading: true, token: null
+});
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setTokenState] = useState<string | null>(
-    () => sessionStorage.getItem("googenie_token")
-  );
-  const [userId, setUserId] = useState<string | null>(null);
-  const [tenantId, setTenantId] = useState<string | null>(null);
-  const [role, setRole] = useState<AuthState["role"]>(null);
-  const [loading, setLoading] = useState(Boolean(sessionStorage.getItem("googenie_token")));
+  const { user, isLoaded } = useUser();
+  const { getToken } = useClerkAuth();
 
-  const fetchProfile = useCallback(async (t: string) => {
-    setLoading(true);
-    try {
-      const p = await authApi.getProfile();
-      setUserId(p.id);
-      setTenantId(p.tenant_id);
-      setRole(p.role as AuthState["role"]);
-    } catch {
-      // token invalid — clear everything
-      sessionStorage.removeItem("googenie_token");
-      setTokenState(null);
-      setUserId(null);
-      setTenantId(null);
-      setRole(null);
-    } finally {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Fetch on initial mount if token already in sessionStorage
-  useEffect(() => {
-    const stored = sessionStorage.getItem("googenie_token");
-    if (stored) {
-      fetchProfile(stored);
-    } else {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function setToken(t: string) {
-    sessionStorage.setItem("googenie_token", t);
-    setTokenState(t);
-    // Always fetch profile when a new token is explicitly set
-    fetchProfile(t);
-  }
-
-  function logout() {
-    sessionStorage.removeItem("googenie_token");
-    setTokenState(null);
-    setUserId(null);
-    setTenantId(null);
-    setRole(null);
-    setLoading(false);
-  }
+  // Map Clerk user to our auth shape
+  // Role comes from Clerk public metadata (set in Clerk Dashboard or via API)
+  const role = (user?.publicMetadata?.role as AuthState["role"]) ?? (user ? "user" : null);
 
   return (
-    <AuthCtx.Provider value={{ userId, tenantId, role, loading, token, setToken, logout }}>
+    <AuthCtx.Provider value={{
+      userId: user?.id ?? null,
+      tenantId: (user?.publicMetadata?.tenantId as string) ?? "demo-tenant",
+      role,
+      loading: !isLoaded,
+      token: null  // Clerk tokens fetched on-demand via getToken() in API calls
+    }}>
       {children}
     </AuthCtx.Provider>
   );
 }
 
 export function useAuth(): AuthState {
-  const ctx = useContext(AuthCtx);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
-  return ctx;
+  return useContext(AuthCtx);
 }
+
+// Export getToken helper for API client use
+export { useClerkAuth };

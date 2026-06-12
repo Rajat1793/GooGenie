@@ -1,8 +1,12 @@
 /** Base URL for backend API. Vite proxies /v1 to localhost:4000 in dev. */
 const BASE = "";
 
+// Clerk token getter — set by ClerkTokenProvider below
+let _getToken: (() => Promise<string | null>) | null = null;
+export function setClerkTokenGetter(fn: () => Promise<string | null>) { _getToken = fn; }
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = sessionStorage.getItem("googenie_token") ?? "";
+  const token = _getToken ? await _getToken() : null;
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {

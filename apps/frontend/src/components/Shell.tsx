@@ -1,4 +1,5 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
+import { UserButton, useUser } from "@clerk/react";
 import { useAuth } from "../context/AuthContext.tsx";
 import type { ReactNode } from "react";
 
@@ -11,14 +12,15 @@ const navItems = [
 ] as const;
 
 export function Shell({ children }: { children: ReactNode }) {
-  const { role, userId, logout } = useAuth();
-  const navigate = useNavigate();
+  const { role } = useAuth();
+  const { user } = useUser();
 
   const visible = navItems.filter(
     (item) => role && (item.roles as readonly string[]).includes(role)
   );
 
-  const initials = (userId ?? "?").charAt(0).toUpperCase();
+  // Show all nav items when role not yet loaded (user just signed in)
+  const navToShow = visible.length > 0 ? visible : navItems.filter(i => (i.roles as readonly string[]).includes("user"));
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -34,7 +36,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
         {/* Nav pill */}
         <nav className="hidden md:flex items-center gap-0.5 bg-surface-container/60 rounded-full px-2 py-1.5 border border-outline-variant/20">
-          {visible.map((item) => (
+          {navToShow.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -52,19 +54,16 @@ export function Shell({ children }: { children: ReactNode }) {
           ))}
         </nav>
 
-        {/* User + sign out */}
+        {/* Clerk UserButton — handles avatar, profile, sign out */}
         <div className="flex items-center gap-3">
-          <div className="hidden md:flex items-center gap-2 text-sm text-on-surface-variant">
-            <div className="avatar-sm">{initials}</div>
-            <span className="text-xs font-medium">{userId}</span>
-          </div>
-          <button
-            onClick={() => { logout(); navigate("/login"); }}
-            className="flex items-center gap-1 text-sm text-on-surface-variant hover:text-error transition-colors"
-            title="Sign out"
-          >
-            <span className="material-symbols-outlined text-[18px]">logout</span>
-          </button>
+          {user && (
+            <div className="hidden md:flex items-center gap-2">
+              <span className="text-xs font-medium text-on-surface-variant truncate max-w-[120px]">
+                {user.firstName ?? user.emailAddresses[0]?.emailAddress}
+              </span>
+            </div>
+          )}
+          <UserButton />
         </div>
       </header>
 
@@ -75,7 +74,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
       {/* Mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-white/90 backdrop-blur-xl border-t border-outline-variant/25 flex justify-around py-2 px-4">
-        {visible.map((item) => (
+        {navToShow.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -93,3 +92,4 @@ export function Shell({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
