@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: googenie-frontend
+    runtime: static
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter nimbus-web build
+    staticPublishPath: apps/frontend/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_API_URL
+        sync: false
