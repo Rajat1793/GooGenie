@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { calendarApi, type CalendarEvent } from "../api/client.ts";
 import { useClerkReady } from "../hooks/useClerkReady.ts";
-import { ConnectBanner, useConnectionStatus } from "../components/ConnectBanner.tsx";
+import { ConnectionBar, useConnectionStatus } from "../components/ConnectBanner.tsx";
 
 function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreated: (e: CalendarEvent) => void }) {
   const [title, setTitle] = useState("");
@@ -247,7 +247,7 @@ export function CalendarPage() {
     return (
       <div className="pt-4">
         <h1 className="font-headline text-3xl mb-6" style={{ color: "var(--c-on-surface)" }}>Calendar</h1>
-        <ConnectBanner plugin="googlecalendar" onConnected={() => { refreshConn(); loadEvents(); }} />
+        <ConnectionBar plugins={["googlecalendar"]} status={connStatus} loading={connLoading} onConnected={() => { refreshConn(); loadEvents(); }} />
       </div>
     );
   }
@@ -264,6 +264,13 @@ export function CalendarPage() {
 
   return (
     <div>
+      {/* Always-visible connection bar */}
+      <ConnectionBar
+        plugins={["googlecalendar"]}
+        status={connStatus}
+        loading={connLoading}
+        onConnected={() => { refreshConn(); loadEvents(); }}
+      />
       {/* AI Insight banner */}
       <div className="ai-insight mb-6">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "color-mix(in srgb, var(--c-primary) 15%, transparent)" }}>

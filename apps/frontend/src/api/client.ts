@@ -312,10 +312,10 @@ export const authApi2 = {
       method: "POST",
       body: JSON.stringify({ email, password })
     }),
-  clerkSync: (email: string, displayName: string) =>
+  clerkSync: (email: string, displayName: string, role?: "super_admin" | "manager_admin" | "user") =>
     apiFetch<{ user: DbUser; needsManager: boolean }>("/v1/auth/clerk-sync", {
       method: "POST",
-      body: JSON.stringify({ email, displayName })
+      body: JSON.stringify({ email, displayName, ...(role ? { role } : {}) })
     }),
   me: () => apiFetch<{ user: DbUser }>("/v1/auth/me"),
   managers: () => apiFetch<{ managers: Array<{ id: string; displayName: string; email: string }> }>("/v1/auth/managers"),

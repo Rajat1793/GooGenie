@@ -1,16 +1,18 @@
 /**
- * ConnectBanner — shown when the user hasn't connected a Google plugin yet.
- * Renders a card prompting them to connect Gmail or Google Calendar.
+ * ConnectionBar — always-visible strip showing Gmail / Calendar status.
+ * Renders on every page load; shows Connect / Reconnect for each plugin.
+ *
+ * ConnectBanner is kept as a thin alias for backwards compatibility.
  */
 import { useState, useEffect, useCallback } from "react";
 import { connectApi } from "../api/client.ts";
 
-interface ConnectionStatus {
+export interface ConnectionStatus {
   gmail: boolean;
   googlecalendar: boolean;
 }
 
-// Shared hook — call once per page that needs connection status
+// ── Shared hook ───────────────────────────────────────────────────────────────
 export function useConnectionStatus() {
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -20,7 +22,6 @@ export function useConnectionStatus() {
       const data = await connectApi.status();
       setStatus(data.connected);
     } catch {
-      // API error — treat as not connected so the banner shows
       setStatus({ gmail: false, googlecalendar: false });
     } finally {
       setLoading(false);
@@ -31,62 +32,102 @@ export function useConnectionStatus() {
   return { status, loading, refresh };
 }
 
-interface ConnectBannerProps {
-  plugin: "gmail" | "googlecalendar";
-  onConnected: () => void;
+// ── ConnectionBar — always shown ──────────────────────────────────────────────
+
+const PLUGIN_META = {
+  gmail:          { label: "Gmail",           icon: "mail",           short: "Gmail" },
+  googlecalendar: { label: "Google Calendar", icon: "calendar_month", short: "Calendar" },
+} as const;
+
+interface ConnectionBarProps {
+  plugins: Array<"gmail" | "googlecalendar">;
+  status: ConnectionStatus | null;
+  loading?: boolean;
+  onConnected: (plugin: "gmail" | "googlecalendar") => void;
 }
 
-export function ConnectBanner({ plugin, onConnected }: ConnectBannerProps) {
-  const [connecting, setConnecting] = useState(false);
+export function ConnectionBar({ plugins, status, loading = false, onConnected }: ConnectionBarProps) {
+  const [connecting, setConnecting] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  const label = plugin === "gmail" ? "Gmail" : "Google Calendar";
-  const icon = plugin === "gmail" ? "mail" : "calendar_month";
-  const description = plugin === "gmail"
-    ? "Connect your Gmail account to read, send, and manage emails directly in GooGenie."
-    : "Connect your Google Calendar to view, create, and update events in GooGenie.";
-
-  async function handleConnect() {
-    setConnecting(true);
-    setErr(null);
+  async function handleConnect(plugin: "gmail" | "googlecalendar") {
+    setConnecting(plugin); setErr(null);
     try {
       await connectApi.connectPlugin(plugin);
-      onConnected();
+      onConnected(plugin);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Connection failed");
-    } finally {
-      setConnecting(false);
-    }
+    } finally { setConnecting(null); }
   }
 
+  if (loading) return null;
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[40vh] gap-6 px-4">
-      <div className="glass-panel rounded-2xl p-8 max-w-md w-full flex flex-col items-center gap-5 text-center shadow-lg">
-        <div className="w-16 h-16 rounded-2xl bg-primary-container flex items-center justify-center">
-          <span className="material-symbols-outlined text-3xl text-primary">{icon}</span>
+    <div className="mb-4">
+      {err && (
+        <div className="text-xs px-3 py-1.5 rounded-lg mb-2"
+          style={{ background: "var(--c-error-container)", color: "var(--c-error)" }}>
+          {err}
         </div>
-        <div className="flex flex-col gap-2">
-          <h2 className="font-headline text-xl text-ink-text">Connect {label}</h2>
-          <p className="text-sm text-on-surface-variant">{description}</p>
-        </div>
-        {err && (
-          <div className="w-full rounded-xl bg-error-container px-4 py-2 text-sm text-error text-left">
-            {err}
-          </div>
-        )}
-        <button
-          onClick={handleConnect}
-          disabled={connecting}
-          className="btn-primary w-full flex items-center justify-center gap-2 py-3"
-        >
-          {connecting ? (
-            <span className="material-symbols-outlined animate-spin text-xl">progress_activity</span>
-          ) : (
-            <span className="material-symbols-outlined text-xl">add_link</span>
-          )}
-          {connecting ? "Connecting…" : `Connect ${label}`}
-        </button>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {plugins.map((p) => {
+          const meta = PLUGIN_META[p];
+          const connected = status?.[p] ?? false;
+          const isConnecting = connecting === p;
+          return (
+            <div
+              key={p}
+              className="flex items-center gap-3 px-4 py-2.5 rounded-xl flex-1 min-w-[200px] transition-all"
+              style={connected
+                ? { background: "color-mix(in srgb, var(--c-primary) 7%, var(--c-surface-container))", border: "1px solid color-mix(in srgb, var(--c-primary) 20%, transparent)" }
+                : { background: "color-mix(in srgb, var(--c-outline) 5%, var(--c-surface-container))", border: "1px dashed var(--c-outline-variant)" }}
+            >
+              <span
+                className="material-symbols-outlined text-xl shrink-0"
+                style={{
+                  color: connected ? "var(--c-primary)" : "var(--c-outline)",
+                  fontVariationSettings: connected ? "'FILL' 1" : "'FILL' 0",
+                }}
+              >
+                {connected ? "check_circle" : meta.icon}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold" style={{ color: connected ? "var(--c-primary)" : "var(--c-on-surface)" }}>
+                  {meta.label}
+                </p>
+                <p className="text-[10px]" style={{ color: "var(--c-on-surface-variant)" }}>
+                  {connected ? "Connected" : "Not connected"}
+                </p>
+              </div>
+              <button
+                onClick={() => handleConnect(p)}
+                disabled={isConnecting}
+                className="text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1.5 shrink-0 transition-all disabled:opacity-50"
+                style={connected
+                  ? { background: "var(--c-surface-container-high)", color: "var(--c-on-surface-variant)" }
+                  : { background: "var(--c-primary)", color: "var(--c-on-primary)" }}
+              >
+                {isConnecting
+                  ? <><span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>Connecting…</>
+                  : <><span className="material-symbols-outlined text-sm">{connected ? "sync" : "add_link"}</span>{connected ? "Reconnect" : "Connect"}</>
+                }
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
+  );
+}
+
+// ── ConnectBanner — alias for backwards compat ────────────────────────────────
+export function ConnectBanner({ plugin, onConnected }: { plugin: "gmail" | "googlecalendar"; onConnected: () => void }) {
+  return (
+    <ConnectionBar
+      plugins={[plugin]}
+      status={{ gmail: false, googlecalendar: false }}
+      onConnected={onConnected}
+    />
   );
 }

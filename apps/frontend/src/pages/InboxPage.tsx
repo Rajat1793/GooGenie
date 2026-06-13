@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
-import { emailApi, connectApi, type EmailThread } from "../api/client.ts";
+import { emailApi, type EmailThread } from "../api/client.ts";
 import { useClerkReady } from "../hooks/useClerkReady.ts";
-import { ConnectBanner, useConnectionStatus } from "../components/ConnectBanner.tsx";
+import { ConnectionBar, useConnectionStatus } from "../components/ConnectBanner.tsx";
 
 // ── Compose modal ─────────────────────────────────────────────────────────────
 function ComposeModal({ onClose }: { onClose: () => void }) {
@@ -173,7 +173,7 @@ export function InboxPage() {
     return (
       <div className="pt-4">
         <h1 className="font-headline text-3xl mb-6" style={{ color: "var(--c-on-surface)" }}>Inbox</h1>
-        <ConnectBanner plugin="gmail" onConnected={() => { refreshConn(); loadThreads(); }} />
+        <ConnectionBar plugins={["gmail"]} status={connStatus} loading={connLoading} onConnected={() => { refreshConn(); loadThreads(); }} />
       </div>
     );
   }
@@ -196,7 +196,14 @@ export function InboxPage() {
     <div className="flex h-[calc(100vh-112px)] -mx-8 -my-8 overflow-hidden">
       {/* ── Thread list ── */}
       <div className="w-[380px] flex flex-col shrink-0" style={{ background: "var(--c-surface-container-low)", borderRight: "1px solid var(--c-outline-variant)" }}>
-        <div className="px-6 pt-6 pb-3">
+        <div className="px-6 pt-4 pb-3">
+          {/* Always-visible connection bar */}
+          <ConnectionBar
+            plugins={["gmail"]}
+            status={connStatus}
+            loading={connLoading}
+            onConnected={() => { refreshConn(); loadThreads(); }}
+          />
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <h2 className="font-headline text-2xl" style={{ color: "var(--c-on-surface)" }}>Inbox</h2>

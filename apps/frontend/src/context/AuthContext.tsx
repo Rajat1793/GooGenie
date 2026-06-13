@@ -37,7 +37,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch { /* ignore */ }
   }
 
-  const role = demoRole ?? ((user?.publicMetadata?.role as AuthState["role"]) ?? (user ? "user" : null));
+  // For Clerk users: role comes from DB (set by the login tab via clerkSync).
+  // We store it in sessionStorage after clerkSync resolves so AuthContext can read it.
+  // Fall back to "user" if not set yet.
+  let dbRole: AuthState["role"] = null;
+  if (user && !demoRole) {
+    const stored = sessionStorage.getItem(`googenie-role-${user.id}`);
+    dbRole = (stored as AuthState["role"]) ?? "user";
+  }
+
+  const role = demoRole ?? dbRole;
 
   return (
     <AuthCtx.Provider value={{

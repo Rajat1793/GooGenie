@@ -61,7 +61,9 @@ authRouter.post("/auth/clerk-sync", requireAuth, async (req: Request, res: Respo
     const { userId: clerkUserId, tenantId } = req.auth!;
     const parsed = z.object({
       email: z.string().email(),
-      displayName: z.string().min(1)
+      displayName: z.string().min(1),
+      // Role set by the login tab — determines what the user sees after sign-in
+      role: z.enum(["super_admin", "manager_admin", "user"]).optional(),
     }).safeParse(req.body);
     if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Email and displayName required", false, req.traceId);
 
@@ -69,10 +71,12 @@ authRouter.post("/auth/clerk-sync", requireAuth, async (req: Request, res: Respo
       clerkUserId,
       tenantId,
       email: parsed.data.email,
-      displayName: parsed.data.displayName
+      displayName: parsed.data.displayName,
+      role: parsed.data.role as import("../auth/roles.js").Role | undefined,
     });
 
-    const needsManager = !user.managerUserId;
+    // Only ask students to pick a teacher; Big Boss and Teachers don't need one
+    const needsManager = user.role === "user" && !user.managerUserId;
     res.json({ user, needsManager });
   } catch (err) { next(err); }
 });

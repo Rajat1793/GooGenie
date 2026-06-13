@@ -20,15 +20,13 @@ export interface DbUser {
 // ── Upsert Clerk user ──────────────────────────────────────────────────────────
 export async function upsertClerkUser(opts: {
   clerkUserId: string;
-  tenantId: string;   // should always be DEFAULT_TENANT_ID ("dev")
+  tenantId: string;
   email: string;
   displayName: string;
+  /** Role chosen by the login tab. Always applied — allows switching role by re-logging in. */
+  role?: Role;
 }): Promise<DbUser> {
-  // Check if already exists by clerkUserId
-  const existing = await db.query.users.findFirst({
-    where: eq(schema.users.clerkUserId, opts.clerkUserId)
-  });
-  if (existing) return existing as DbUser;
+  const chosenRole: Role = opts.role ?? "user";
 
   // Ensure tenant exists
   await db.insert(schema.tenants)
@@ -36,17 +34,27 @@ export async function upsertClerkUser(opts: {
     .onConflictDoNothing();
 
   const id = `clerk_${opts.clerkUserId}`;
+
+  // Upsert: insert new or update role/displayName on re-login
   await db.insert(schema.users).values({
     id,
     tenantId: opts.tenantId,
     email: opts.email,
     displayName: opts.displayName,
-    role: "user",
+    role: chosenRole,
     clerkUserId: opts.clerkUserId,
-    isActive: true
-  }).onConflictDoNothing();
+    isActive: true,
+  }).onConflictDoUpdate({
+    target: schema.users.id,
+    set: {
+      role: chosenRole,
+      displayName: opts.displayName,
+      email: opts.email,
+      updatedAt: new Date(),
+    },
+  });
 
-  // Insert default feature toggles
+  // Ensure feature toggles exist (onConflictDoNothing — don't override manual overrides)
   const features = ["email_read", "calendar_read", "calendar_write"];
   await db.insert(schema.userFeatureAccess)
     .values(features.map(fk => ({ tenantId: opts.tenantId, userId: id, featureKey: fk, isEnabled: true })))

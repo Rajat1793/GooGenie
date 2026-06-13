@@ -3,26 +3,22 @@ import { useAuth as useClerkAuth } from "@clerk/react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext.tsx";
 import { useEffect, useState } from "react";
-import { authApi2, setDemoToken, type DemoAccount, demoApi } from "../api/client.ts";
+import { setDemoToken, type DemoAccount, demoApi } from "../api/client.ts";
 
-// Role display labels
+// Role accent colors — these are role-specific and intentionally not in the theme palette
+const ROLE_ACCENT: Record<string, string> = {
+  super_admin:   "#ef4444",
+  manager_admin: "#6366f1",
+  user:          "#10b981",
+};
 const ROLE_LABEL: Record<string, string> = { super_admin: "Big Boss", manager_admin: "Teacher", user: "Student" };
 const ROLE_ICON:  Record<string, string> = { super_admin: "admin_panel_settings", manager_admin: "school", user: "person" };
-const ROLE_COLOR: Record<string, { bg: string; text: string; border: string }> = {
-  super_admin:   { bg: "color-mix(in srgb, var(--c-error) 10%, transparent)",     text: "var(--c-error)",     border: "color-mix(in srgb, var(--c-error) 25%, transparent)" },
-  manager_admin: { bg: "color-mix(in srgb, var(--c-primary) 10%, transparent)",   text: "var(--c-primary)",   border: "color-mix(in srgb, var(--c-primary) 25%, transparent)" },
-  user:          { bg: "color-mix(in srgb, var(--c-secondary) 10%, transparent)", text: "var(--c-secondary)", border: "color-mix(in srgb, var(--c-secondary) 25%, transparent)" },
-};
 
 export function LoginPage() {
   const { isSignedIn, isLoaded } = useClerkAuth();
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"clerk" | "bigboss" | "teacher">("clerk");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
-  const [loggingIn, setLoggingIn] = useState(false);
+  const [tab, setTab] = useState<"user" | "super_admin" | "manager_admin">("user");
   const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>([]);
   const [enteringAs, setEnteringAs] = useState<string | null>(null);
 
@@ -32,17 +28,9 @@ export function LoginPage() {
     demoApi.getAccounts().then((r) => setDemoAccounts(r.accounts)).catch(() => {});
   }, []);
 
-  async function handleLocalLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setLocalError(null); setLoggingIn(true);
-    try {
-      const { token } = await authApi2.localLogin(email, password);
-      setDemoToken(token);
-      navigate("/inbox");
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : "Login failed");
-    } finally { setLoggingIn(false); }
-  }
+  useEffect(() => {
+    localStorage.setItem("googenie-pending-role", tab);
+  }, [tab]);
 
   async function enterAs(acc: DemoAccount) {
     setEnteringAs(acc.label);
@@ -50,205 +38,151 @@ export function LoginPage() {
     navigate("/inbox");
   }
 
-  const DEFAULT_CREDS: Record<string, { email: string; password: string }> = {
-    bigboss: { email: "anirudh@googenie.ai",  password: "SuperAdmin@2024" },
-    teacher: { email: "hitesh@googenie.ai",   password: "Hitesh@2024" },
+  const isDark = theme === "dark";
+  const accent = ROLE_ACCENT[tab];
+
+  // Clerk appearance mirrors the app's CSS variable values for the active theme
+  const clerkAppearance = {
+    variables: {
+      colorBackground:      isDark ? "#191b22" : "#f3f3f7",
+      colorInputBackground: isDark ? "#1d1f26" : "#edeef1",
+      colorText:            isDark ? "#e2e2ea" : "#191c1e",
+      colorTextSecondary:   isDark ? "#c1c7cf" : "#41474e",
+      colorPrimary:         accent,
+      colorInputText:       isDark ? "#e2e2ea" : "#191c1e",
+      borderRadius:         "12px",
+      fontFamily:           "inherit",
+      fontSize:             "14px",
+    },
+    elements: {
+      rootBox:                  "w-full",
+      card:                     "w-full shadow-none !bg-transparent border-0 p-0",
+      header:                   "hidden",
+      headerTitle:              "hidden",
+      headerSubtitle:           "hidden",
+      logoBox:                  "hidden",
+      socialButtonsBlockButton: "w-full rounded-xl font-semibold text-sm h-11 transition-all",
+      dividerLine:              "!bg-[var(--c-outline-variant)]",
+      dividerText:              "!text-[var(--c-outline)]",
+      formFieldInput:           "rounded-xl text-sm h-11",
+      formFieldLabel:           "text-xs font-medium",
+      formButtonPrimary:        "w-full h-11 rounded-xl font-semibold text-sm transition-all hover:opacity-90",
+      footerActionLink:         "font-semibold",
+      footer:                   "!bg-transparent",
+      card__main:               "!p-0",
+    },
   };
 
   return (
-    <div className="min-h-screen flex" style={{ background: "var(--c-background)" }}>
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden"
+      style={{ background: "var(--c-background)" }}>
 
-      {/* ── Left panel ── */}
-      <div className="hidden lg:flex flex-col w-[420px] shrink-0 relative overflow-hidden" style={{ background: "var(--c-surface-container-low)" }}>
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-20" style={{ background: "var(--c-primary)", filter: "blur(80px)" }} />
-          <div className="absolute -bottom-20 left-20 w-72 h-72 rounded-full opacity-15" style={{ background: "var(--c-tertiary)", filter: "blur(60px)" }} />
-        </div>
+      {/* Background orbs — use primary color from theme */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute w-[600px] h-[600px] rounded-full -top-40 -left-40 opacity-[0.08] animate-pulse"
+          style={{ background: `radial-gradient(circle, ${accent} 0%, transparent 70%)`, filter: "blur(60px)", transition: "background 0.6s ease" }} />
+        <div className="absolute w-[500px] h-[500px] rounded-full -bottom-32 -right-32 opacity-[0.06]"
+          style={{ background: `radial-gradient(circle, var(--c-primary) 0%, transparent 70%)`, filter: "blur(60px)" }} />
+        <div className="absolute inset-0 opacity-[0.025]"
+          style={{ backgroundImage: "linear-gradient(var(--c-on-surface) 1px, transparent 1px), linear-gradient(90deg, var(--c-on-surface) 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
+      </div>
 
-        {/* Logo */}
-        <div className="relative flex items-center gap-3 px-10 py-8">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "var(--c-primary)" }}>
-            <span className="material-symbols-outlined text-sm" style={{ color: "var(--c-on-primary)", fontVariationSettings: "FILL 1" }}>cloud</span>
+      {/* Theme toggle */}
+      <button onClick={toggle} className="btn-ghost absolute top-5 right-5 p-2.5 z-10">
+        <span className="material-symbols-outlined text-lg">{isDark ? "light_mode" : "dark_mode"}</span>
+      </button>
+
+      {/* Card — same surface as the rest of the app */}
+      <div className="relative w-full max-w-[420px] mx-4 rounded-3xl overflow-hidden"
+        style={{
+          background: "var(--c-surface-container-low)",
+          border: "1px solid var(--c-outline-variant)",
+          boxShadow: "var(--glass-shadow)",
+        }}>
+
+        {/* Top accent bar — shifts color with selected role */}
+        <div className="h-[3px] w-full transition-all duration-500"
+          style={{ background: `linear-gradient(90deg, ${accent}, ${accent}88)` }} />
+
+        <div className="px-8 pt-8 pb-6">
+          {/* Logo */}
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: `linear-gradient(135deg, ${accent}, ${accent}bb)` }}>
+              <span className="material-symbols-outlined text-sm text-white" style={{ fontVariationSettings: "FILL 1" }}>auto_awesome</span>
+            </div>
+            <div>
+              <h1 className="font-headline text-xl leading-tight" style={{ color: "var(--c-on-surface)" }}>GooGenie</h1>
+              <p className="text-[11px]" style={{ color: "var(--c-on-surface-variant)" }}>AI workspace for every team</p>
+            </div>
           </div>
-          <span className="font-headline text-2xl" style={{ color: "var(--c-primary)" }}>GooGenie</span>
-        </div>
 
-        <div className="relative px-10 space-y-4">
-          <h1 className="font-headline text-4xl leading-tight" style={{ color: "var(--c-on-surface)" }}>
-            AI workspace<br />for every team
-          </h1>
-          <p className="text-sm" style={{ color: "var(--c-on-surface-variant)" }}>
-            Role-based Gmail + Calendar — Big Boss, Teachers & Students.
-          </p>
-
-          {/* Role hierarchy legend */}
-          <div className="space-y-2 pt-2">
-            {[
-              { role: "super_admin",   desc: "Full platform control" },
-              { role: "manager_admin", desc: "Manage students & features" },
-              { role: "user",          desc: "Personal inbox & calendar" },
-            ].map(({ role, desc }) => {
-              const c = ROLE_COLOR[role];
-              return (
-                <div key={role} className="flex items-center gap-3 px-3 py-2 rounded-xl" style={{ background: c.bg, border: `1px solid ${c.border}` }}>
-                  <span className="material-symbols-outlined text-base" style={{ color: c.text }}>{ROLE_ICON[role]}</span>
-                  <div>
-                    <p className="text-xs font-bold" style={{ color: c.text }}>{ROLE_LABEL[role]}</p>
-                    <p className="text-[11px]" style={{ color: "var(--c-on-surface-variant)" }}>{desc}</p>
-                  </div>
-                </div>
-              );
-            })}
+          {/* Role selector */}
+          <div className="mb-5">
+            <p className="section-label mb-2">Sign in as</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {([
+                { key: "user"          as const, label: "Student",  icon: "person" },
+                { key: "manager_admin" as const, label: "Teacher",  icon: "school" },
+                { key: "super_admin"   as const, label: "Big Boss", icon: "admin_panel_settings" },
+              ]).map((t) => {
+                const active = tab === t.key;
+                const a = ROLE_ACCENT[t.key];
+                return (
+                  <button key={t.key} onClick={() => setTab(t.key)}
+                    className="flex flex-col items-center gap-1 py-2.5 px-2 rounded-xl text-center transition-all duration-200"
+                    style={active
+                      ? { background: `color-mix(in srgb, ${a} 12%, transparent)`, border: `1.5px solid color-mix(in srgb, ${a} 30%, transparent)`, transform: "scale(1.02)" }
+                      : { background: "var(--c-surface-container)", border: "1.5px solid var(--c-outline-variant)" }}>
+                    <span className="material-symbols-outlined text-base transition-colors"
+                      style={{ color: active ? a : "var(--c-on-surface-variant)", fontVariationSettings: active ? "FILL 1" : "FILL 0" }}>{t.icon}</span>
+                    <span className="text-[11px] font-semibold"
+                      style={{ color: active ? a : "var(--c-on-surface-variant)" }}>{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 mb-5">
+            <div className="flex-1 h-px" style={{ background: "var(--c-outline-variant)" }} />
+            <span className="text-[11px]" style={{ color: "var(--c-outline)" }}>continue with Google</span>
+            <div className="flex-1 h-px" style={{ background: "var(--c-outline-variant)" }} />
+          </div>
+
+          {/* Clerk */}
+          <SignIn routing="hash" appearance={clerkAppearance} />
         </div>
 
-        {/* Demo quick-login cards */}
+        {/* Demo quick access */}
         {demoAccounts.length > 0 && (
-          <div className="relative px-10 mt-6 flex-1">
-            <p className="section-label mb-3">Quick demo access</p>
-            <div className="space-y-2 overflow-y-auto max-h-56">
-              {demoAccounts.map((acc) => {
-                const c = ROLE_COLOR[acc.role] ?? ROLE_COLOR.user;
-                const icon = ROLE_ICON[acc.role] ?? "person";
-                const loading = enteringAs === acc.label;
+          <div className="px-8 pb-6">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="flex-1 h-px" style={{ background: "var(--c-outline-variant)" }} />
+              <span className="text-[11px]" style={{ color: "var(--c-outline)" }}>or demo access</span>
+              <div className="flex-1 h-px" style={{ background: "var(--c-outline-variant)" }} />
+            </div>
+            <div className="flex gap-2">
+              {demoAccounts.slice(0, 3).map((acc) => {
+                const a = ROLE_ACCENT[acc.role] ?? ROLE_ACCENT.user;
+                const isLoading = enteringAs === acc.label;
                 return (
                   <button key={acc.label} onClick={() => enterAs(acc)} disabled={!!enteringAs}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left transition-all disabled:opacity-60"
-                    style={{ background: c.bg, border: `1px solid ${c.border}` }}>
-                    <span className="material-symbols-outlined text-base shrink-0" style={{ color: c.text }}>
-                      {loading ? "progress_activity" : icon}
+                    className="flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl text-center transition-all disabled:opacity-50 nimbus-card-hover"
+                    style={{ background: `color-mix(in srgb, ${a} 10%, var(--c-surface-container))`, border: `1px solid color-mix(in srgb, ${a} 20%, var(--c-outline-variant))` }}>
+                    <span className="material-symbols-outlined text-sm" style={{ color: a, fontVariationSettings: "FILL 1" }}>
+                      {isLoading ? "progress_activity" : ROLE_ICON[acc.role] ?? "person"}
                     </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold" style={{ color: c.text }}>{acc.label}</p>
-                      <p className="text-[11px] truncate" style={{ color: "var(--c-on-surface-variant)" }}>{acc.description.split("—")[0]}</p>
-                    </div>
-                    <span className="material-symbols-outlined text-sm shrink-0" style={{ color: c.text }}>arrow_forward</span>
+                    <span className="text-[10px] font-bold truncate max-w-full px-1" style={{ color: a }}>{acc.label.split(" ")[0]}</span>
                   </button>
                 );
               })}
             </div>
           </div>
         )}
-
-        <div className="relative flex gap-4 text-xs px-10 pb-8" style={{ color: "var(--c-on-surface-variant)" }}>
-          {["big-boss", "teacher", "student"].map((r) => (
-            <div key={r} className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--c-primary)", opacity: 0.5 }} />
-              {r}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Right panel ── */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 relative">
-        <button onClick={toggle} className="absolute top-5 right-5 btn-ghost p-2">
-          <span className="material-symbols-outlined text-xl">{theme === "dark" ? "light_mode" : "dark_mode"}</span>
-        </button>
-
-        <div className="w-full max-w-md">
-          <div className="lg:hidden mb-6 text-center">
-            <span className="font-headline text-3xl" style={{ color: "var(--c-primary)" }}>GooGenie</span>
-          </div>
-
-          {/* Tabs */}
-          <div className="flex rounded-xl p-1 mb-6 gap-1" style={{ background: "var(--c-surface-container-high)" }}>
-            {[
-              { key: "clerk",   label: "Student / Google" },
-              { key: "bigboss", label: "Big Boss" },
-              { key: "teacher", label: "Teacher" },
-            ].map((t) => (
-              <button key={t.key} onClick={() => { setTab(t.key as any); setLocalError(null); setEmail(""); setPassword(""); }}
-                className="flex-1 text-xs font-semibold py-2 px-1 rounded-lg transition-all"
-                style={tab === t.key
-                  ? { background: "var(--c-primary)", color: "var(--c-on-primary)" }
-                  : { color: "var(--c-on-surface-variant)" }}>
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Clerk sign-in (Students) */}
-          {tab === "clerk" && (
-            <SignIn routing="hash" appearance={{ elements: {
-              rootBox: "w-full", card: "rounded-2xl shadow-lg w-full",
-              headerTitle: "font-headline text-2xl",
-              formButtonPrimary: "btn-primary w-full justify-center",
-              formFieldInput: "input-field",
-            }}} />
-          )}
-
-          {/* Local login (Big Boss / Teacher) */}
-          {(tab === "bigboss" || tab === "teacher") && (
-            <form onSubmit={handleLocalLogin} className="space-y-4">
-              <div className="nimbus-card p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: tab === "bigboss" ? "color-mix(in srgb, var(--c-error) 12%, transparent)" : "color-mix(in srgb, var(--c-primary) 12%, transparent)" }}>
-                    <span className="material-symbols-outlined" style={{ color: tab === "bigboss" ? "var(--c-error)" : "var(--c-primary)" }}>
-                      {tab === "bigboss" ? "admin_panel_settings" : "school"}
-                    </span>
-                  </div>
-                  <div>
-                    <h2 className="font-headline text-xl" style={{ color: "var(--c-on-surface)" }}>
-                      {tab === "bigboss" ? "Big Boss Login" : "Teacher Login"}
-                    </h2>
-                    <p className="text-xs" style={{ color: "var(--c-on-surface-variant)" }}>
-                      {tab === "bigboss" ? "Full platform control · All teachers & students" : "Manage your students · Feature flags · Activity"}
-                    </p>
-                  </div>
-                </div>
-                {localError && <div className="rounded-xl px-4 py-2 mb-3 text-sm" style={{ background: "var(--c-error-container)", color: "var(--c-error)" }}>{localError}</div>}
-                <div className="space-y-3">
-                  <div>
-                    <label className="section-label mb-1 block">Email</label>
-                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                      placeholder={DEFAULT_CREDS[tab].email} className="input-field" required autoComplete="username" />
-                  </div>
-                  <div>
-                    <label className="section-label mb-1 block">Password</label>
-                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter password" className="input-field" required autoComplete="current-password" />
-                  </div>
-                </div>
-                <button type="submit" disabled={loggingIn} className="btn-primary w-full mt-4 justify-center disabled:opacity-50 flex items-center gap-2">
-                  {loggingIn ? <span className="material-symbols-outlined animate-spin text-base">progress_activity</span> : <span className="material-symbols-outlined text-base">login</span>}
-                  {loggingIn ? "Signing in…" : "Sign in"}
-                </button>
-              </div>
-              <button type="button"
-                onClick={() => { setEmail(DEFAULT_CREDS[tab].email); setPassword(DEFAULT_CREDS[tab].password); }}
-                className="w-full text-xs py-2 rounded-xl transition-all"
-                style={{ color: "var(--c-primary)", background: "color-mix(in srgb, var(--c-primary) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--c-primary) 15%, transparent)" }}>
-                Auto-fill demo credentials
-              </button>
-
-              {/* Teacher quick-select if on teacher tab */}
-              {tab === "teacher" && (
-                <div className="space-y-2">
-                  <p className="section-label text-center">Or log in directly as</p>
-                  {[
-                    { name: "Hitesh Choudhary", email: "hitesh@googenie.ai", password: "Hitesh@2024" },
-                    { name: "Piyush Garg",      email: "piyush@googenie.ai", password: "Piyush@2024" },
-                  ].map((t) => (
-                    <button key={t.email} type="button"
-                      onClick={() => { setEmail(t.email); setPassword(t.password); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left transition-all"
-                      style={{ background: "color-mix(in srgb, var(--c-primary) 8%, transparent)", border: "1px solid color-mix(in srgb, var(--c-primary) 15%, transparent)" }}>
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style={{ background: "var(--c-primary-container)", color: "var(--c-on-primary-container)" }}>
-                        {t.name.charAt(0)}
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold" style={{ color: "var(--c-primary)" }}>{t.name}</p>
-                        <p className="text-[11px]" style={{ color: "var(--c-on-surface-variant)" }}>{t.email}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </form>
-          )}
-        </div>
       </div>
     </div>
   );
 }
+

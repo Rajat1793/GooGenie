@@ -35,14 +35,24 @@ function ClerkTokenWirer() {
     }
   }, [getToken, isSignedIn]);
 
-  // Sync Clerk user to DB after sign-in
+  // Sync Clerk user to DB after sign-in, applying the role chosen on the login page
   useEffect(() => {
     if (!isSignedIn || !user) return;
     const email = user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? "";
     const displayName = user.fullName ?? user.firstName ?? email.split("@")[0];
-    authApi2.clerkSync(email, displayName)
-      .then((r) => { if (r.needsManager) setNeedsManager(true); })
-      .catch(() => { /* non-critical */ });
+    // Read role chosen by the login tab (stored before Clerk redirected)
+    const pendingRole = localStorage.getItem("googenie-pending-role") as "super_admin" | "manager_admin" | "user" | null;
+    authApi2.clerkSync(email, displayName, pendingRole ?? undefined)
+      .then((r) => {
+        // Persist DB role so AuthContext can read it without re-fetching
+        if (user?.id) sessionStorage.setItem(`googenie-role-${user.id}`, r.user.role);
+        // Clear the pending role after it's been applied
+        localStorage.removeItem("googenie-pending-role");
+        if (r.needsManager) setNeedsManager(true);
+      })
+      .catch(() => {
+        localStorage.removeItem("googenie-pending-role");
+      });
   }, [isSignedIn, user?.id]);
 
   if (needsManager) return <ManagerSelectModal onComplete={() => setNeedsManager(false)} />;
