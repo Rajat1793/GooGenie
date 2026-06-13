@@ -133,7 +133,14 @@ export function listTenantUsers(tenantId: string): PolicyUser[] {
 
 export function isFeatureEnabled(tenantId: string, userId: string, key: string): boolean {
   const toggle = featureToggles.get(featureKey(tenantId, userId, key));
-  return Boolean(toggle?.isEnabled);
+  if (toggle) return toggle.isEnabled;
+  // No record for this specific feature key.
+  // If the user has NO feature toggles at all (e.g. a Clerk user not in the demo
+  // seed), grant access by default so real users can use the product.
+  const userHasAnyToggle = [...featureToggles.values()].some(
+    (t) => t.tenantId === tenantId && t.userId === userId
+  );
+  return !userHasAnyToggle;
 }
 
 export function listFeatureTogglesForUser(tenantId: string, userId: string): FeatureToggle[] {
