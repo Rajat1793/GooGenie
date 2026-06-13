@@ -1,5 +1,8 @@
-/** Base URL for backend API. Vite proxies /v1 to localhost:4000 in dev. */
-const BASE = "";
+/** Base URL for backend API.
+ * In dev: Vite proxies /v1 → localhost:4000 so BASE stays empty.
+ * In production: VITE_API_URL points to the Render backend service URL.
+ */
+const BASE = import.meta.env.VITE_API_URL ?? "";
 
 // Clerk token getter — set by ClerkTokenProvider below
 let _getToken: (() => Promise<string | null>) | null = null;

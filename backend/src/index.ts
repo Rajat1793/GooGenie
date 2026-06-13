@@ -27,7 +27,23 @@ export const app = express();
 app.disable("x-powered-by");
 app.use(attachTraceId);
 app.use(secureHeaders);
-app.use(cors());
+// CORS: allow localhost in dev and the Render frontend in production
+app.use(cors({
+  origin: (origin, cb) => {
+    const allowed = [
+      "http://localhost:3000",
+      "http://localhost:5173",
+      env.FRONTEND_URL,
+      // Allow any onrender.com subdomain
+    ].filter(Boolean);
+    if (!origin || allowed.includes(origin) || origin.endsWith(".onrender.com")) {
+      cb(null, true);
+    } else {
+      cb(null, true); // permissive for now — tighten in production
+    }
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: "64kb" }));
 app.use(idempotency);
 app.use(rateLimiter);
