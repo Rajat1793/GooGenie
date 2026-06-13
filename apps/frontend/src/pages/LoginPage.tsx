@@ -79,7 +79,7 @@ export function LoginPage() {
       </button>
 
       {/* Login card — uses exact same surface + border as sidebar */}
-      <div className="relative w-full max-w-[400px] mx-4 rounded-2xl overflow-hidden"
+      <div className="relative w-full max-w-[420px] mx-4 rounded-2xl overflow-hidden"
         style={{
           background: "var(--c-surface-container-low)",
           border: "1px solid var(--c-outline-variant)",
@@ -104,7 +104,7 @@ export function LoginPage() {
         <div className="px-7 pt-5 pb-7">
           {/* Role selector */}
           <p className="section-label mb-3">Sign in as</p>
-          <div className="grid grid-cols-3 gap-2 mb-5">
+          <div className="grid grid-cols-3 gap-2 mb-6">
             {([
               { key: "user"          as const, label: "Student",  icon: "person" },
               { key: "manager_admin" as const, label: "Teacher",  icon: "school" },
@@ -127,13 +127,6 @@ export function LoginPage() {
                 </button>
               );
             })}
-          </div>
-
-          {/* Divider */}
-          <div className="flex items-center gap-3 mb-5">
-            <div className="flex-1 h-px" style={{ background: "var(--c-outline-variant)" }} />
-            <span className="text-[11px]" style={{ color: "var(--c-outline)" }}>continue with Google</span>
-            <div className="flex-1 h-px" style={{ background: "var(--c-outline-variant)" }} />
           </div>
 
           <SignIn routing="hash" appearance={clerkAppearance} />
