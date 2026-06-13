@@ -4,7 +4,10 @@ export interface EmailThread {
   ownerUserId: string;
   subject: string;
   snippet: string;
+  from: string;
   updatedAt: string;
+  isUnread: boolean;
+  labelIds: string[];
 }
 
 const threads: EmailThread[] = [
@@ -13,8 +16,11 @@ const threads: EmailThread[] = [
     tenantId: "demo-tenant",
     ownerUserId: "user-1",
     subject: "Design sync follow-up",
-    snippet: "Please share the latest mockups.",
-    updatedAt: new Date().toISOString()
+    snippet: "Please share the latest mockups before Friday.",
+    from: "design@team.com",
+    updatedAt: new Date().toISOString(),
+    isUnread: true,
+    labelIds: ["INBOX", "UNREAD"]
   },
   {
     id: "thr-2",
@@ -22,7 +28,10 @@ const threads: EmailThread[] = [
     ownerUserId: "user-2",
     subject: "Customer escalation",
     snippet: "We need an ETA by EOD.",
-    updatedAt: new Date().toISOString()
+    from: "support@team.com",
+    updatedAt: new Date().toISOString(),
+    isUnread: false,
+    labelIds: ["INBOX"]
   },
   {
     id: "thr-3",
@@ -30,7 +39,10 @@ const threads: EmailThread[] = [
     ownerUserId: "user-3",
     subject: "Roadmap review",
     snippet: "Can we lock V2 scope this week?",
-    updatedAt: new Date().toISOString()
+    from: "product@team.com",
+    updatedAt: new Date().toISOString(),
+    isUnread: false,
+    labelIds: ["INBOX"]
   }
 ];
 

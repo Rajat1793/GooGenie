@@ -152,7 +152,10 @@ export interface EmailThread {
   ownerUserId: string;
   subject: string;
   snippet: string;
+  from: string;
   updatedAt: string;
+  isUnread: boolean;
+  labelIds: string[];
 }
 
 export const emailApi = {
