@@ -62,13 +62,18 @@ function ThreadPane({ thread, onClose, onMarkRead }: { thread: EmailThread; onCl
     } finally { setSending(false); }
   }
 
-  async function handleAction(action: "archive" | "read" | "unread") {
+  async function handleAction(action: "archive" | "read" | "unread" | "trash") {
     const map: Record<string, { add: string[]; remove: string[] }> = {
       archive: { add: [],         remove: ["INBOX"] },
       read:    { add: [],         remove: ["UNREAD"] },
       unread:  { add: ["UNREAD"], remove: [] },
+      trash:   { add: [],         remove: [] }, // uses trash endpoint
     };
-    await emailApi.modifyLabels(thread.id, { add_label_ids: map[action].add, remove_label_ids: map[action].remove }).catch(() => null);
+    if (action === "trash") {
+      await emailApi.trash(thread.id).catch(() => null);
+    } else {
+      await emailApi.modifyLabels(thread.id, { add_label_ids: map[action].add, remove_label_ids: map[action].remove }).catch(() => null);
+    }
     if (action === "read") onMarkRead(thread.id);
     onClose();
   }
@@ -85,6 +90,7 @@ function ThreadPane({ thread, onClose, onMarkRead }: { thread: EmailThread; onCl
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button onClick={() => handleAction("archive")} className="btn-ghost p-2" title="Archive"><span className="material-symbols-outlined text-xl">archive</span></button>
+          <button onClick={() => handleAction("trash")} className="btn-ghost p-2" title="Move to trash" style={{ color: "var(--c-error)" }}><span className="material-symbols-outlined text-xl">delete</span></button>
           {thread.isUnread
             ? <button onClick={() => handleAction("read")} className="btn-ghost p-2" title="Mark read"><span className="material-symbols-outlined text-xl">mark_email_read</span></button>
             : <button onClick={() => handleAction("unread")} className="btn-ghost p-2" title="Mark unread"><span className="material-symbols-outlined text-xl">mark_email_unread</span></button>
@@ -129,17 +135,24 @@ export function InboxPage() {
   const [composing, setComposing] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "unread" | "flagged">("all");
+  const [serverSearch, setServerSearch] = useState(""); // debounced server search
 
   const loadThreads = useCallback(() => {
     if (!ready) return;
     setLoading(true);
-    emailApi.listThreads()
+    emailApi.listThreads({ q: serverSearch || undefined })
       .then((r) => setThreads(r.threads))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [ready]);
+  }, [ready, serverSearch]);
 
   useEffect(() => { loadThreads(); }, [loadThreads]);
+
+  // Trigger server search when user presses Enter
+  function handleSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") { setServerSearch(search); }
+    if (e.key === "Escape") { setSearch(""); setServerSearch(""); }
+  }
 
   // Mark a thread as read in local state
   function markLocalRead(threadId: string) {
@@ -210,9 +223,9 @@ export function InboxPage() {
           {/* Search */}
           <div className="relative">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-base" style={{ color: "var(--c-outline)" }}>search</span>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by subject, sender…" className="pl-9 pr-4 py-2 rounded-xl text-sm w-full outline-none" style={{ background: "var(--c-surface-container)", border: "1px solid var(--c-outline-variant)", color: "var(--c-on-surface)" }} />
-            {search && (
-              <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2" style={{ color: "var(--c-outline)" }}>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={handleSearchKey} placeholder="Search… (Enter to search server)" className="pl-9 pr-4 py-2 rounded-xl text-sm w-full outline-none" style={{ background: "var(--c-surface-container)", border: `1px solid ${serverSearch ? "var(--c-primary)" : "var(--c-outline-variant)"}`, color: "var(--c-on-surface)" }} />
+            {(search || serverSearch) && (
+              <button onClick={() => { setSearch(""); setServerSearch(""); }} className="absolute right-2 top-1/2 -translate-y-1/2" style={{ color: "var(--c-outline)" }}>
                 <span className="material-symbols-outlined text-base">close</span>
               </button>
             )}

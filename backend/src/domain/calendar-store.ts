@@ -6,6 +6,11 @@ export interface CalendarEvent {
   startsAt: string;
   endsAt: string;
   attendees: string[];
+  description?: string;
+  location?: string;
+  htmlLink?: string;
+  status?: string;
+  colorId?: string;
 }
 
 const events: CalendarEvent[] = [

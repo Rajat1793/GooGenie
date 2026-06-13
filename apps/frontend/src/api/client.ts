@@ -159,11 +159,12 @@ export interface EmailThread {
 }
 
 export const emailApi = {
-  listThreads: (params?: { userId?: string; cursor?: string; limit?: number }) => {
+  listThreads: (params?: { userId?: string; cursor?: string; limit?: number; q?: string }) => {
     const qs = new URLSearchParams();
     if (params?.userId) qs.set("userId", params.userId);
     if (params?.cursor) qs.set("cursor", params.cursor);
     if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.q) qs.set("q", params.q);
     const q = qs.toString();
     return apiFetch<{ threads: EmailThread[]; total: number; next_cursor?: string }>(
       `/v1/email/threads${q ? `?${q}` : ""}`
@@ -189,7 +190,34 @@ export const emailApi = {
     apiFetch<{ thread_id: string }>(`/v1/email/threads/${threadId}/labels`, {
       method: "PATCH",
       body: JSON.stringify(body)
-    })
+    }),
+
+  trash: (threadId: string) =>
+    apiFetch<{ success: boolean }>(`/v1/email/threads/${threadId}/trash`, { method: "POST" }),
+
+  untrash: (threadId: string) =>
+    apiFetch<{ success: boolean }>(`/v1/email/threads/${threadId}/untrash`, { method: "POST" }),
+
+  batchModify: (ids: string[], add_label_ids: string[], remove_label_ids: string[]) =>
+    apiFetch<{ success: boolean }>("/v1/email/messages/batch-modify", {
+      method: "POST",
+      body: JSON.stringify({ ids, add_label_ids, remove_label_ids })
+    }),
+
+  listLabels: () =>
+    apiFetch<{ labels: Array<{ id: string; name: string; type: string; threadsUnread?: number }> }>("/v1/email/labels"),
+
+  listDrafts: () =>
+    apiFetch<{ drafts: Array<{ id: string; snippet?: string }> }>("/v1/email/drafts"),
+
+  createDraft: (body: { to: string; subject: string; body: string }) =>
+    apiFetch<{ draft_id?: string }>("/v1/email/drafts", { method: "POST", body: JSON.stringify(body) }),
+
+  sendDraft: (draftId: string) =>
+    apiFetch<{ message_id?: string; thread_id?: string }>(`/v1/email/drafts/${draftId}/send`, { method: "POST" }),
+
+  deleteDraft: (draftId: string) =>
+    apiFetch<void>(`/v1/email/drafts/${draftId}`, { method: "DELETE" }),
 };
 
 // Calendar / Google Calendar
@@ -201,32 +229,43 @@ export interface CalendarEvent {
   startsAt: string;
   endsAt: string;
   attendees: string[];
+  description?: string;
+  location?: string;
+  htmlLink?: string;
+  status?: string;
 }
 
 export const calendarApi = {
-  listEvents: (params?: { userId?: string; timeMin?: string; timeMax?: string; cursor?: string }) => {
+  listEvents: (params?: { userId?: string; timeMin?: string; timeMax?: string; cursor?: string; q?: string }) => {
     const qs = new URLSearchParams();
     if (params?.userId) qs.set("userId", params.userId);
     if (params?.timeMin) qs.set("timeMin", params.timeMin);
     if (params?.timeMax) qs.set("timeMax", params.timeMax);
     if (params?.cursor) qs.set("cursor", params.cursor);
+    if (params?.q) qs.set("q", params.q);
     const q = qs.toString();
     return apiFetch<{ events: CalendarEvent[]; total: number; next_cursor?: string }>(
       `/v1/calendar/events${q ? `?${q}` : ""}`
     );
   },
 
-  createEvent: (body: { title: string; starts_at: string; ends_at: string; attendees: string[] }) =>
+  getEvent: (eventId: string) =>
+    apiFetch<{ event: CalendarEvent }>(`/v1/calendar/events/${eventId}`),
+
+  createEvent: (body: { title: string; starts_at: string; ends_at: string; attendees: string[]; description?: string; location?: string }) =>
     apiFetch<{ event: CalendarEvent }>("/v1/calendar/events", {
       method: "POST",
       body: JSON.stringify(body)
     }),
 
-  updateEvent: (eventId: string, body: { title?: string; starts_at?: string; ends_at?: string; attendees?: string[] }) =>
+  updateEvent: (eventId: string, body: { title?: string; starts_at?: string; ends_at?: string; attendees?: string[]; description?: string; location?: string }) =>
     apiFetch<{ event: CalendarEvent }>(`/v1/calendar/events/${eventId}`, {
       method: "PATCH",
       body: JSON.stringify(body)
     }),
+
+  deleteEvent: (eventId: string) =>
+    apiFetch<void>(`/v1/calendar/events/${eventId}`, { method: "DELETE" }),
 
   checkAvailability: (body: { time_min: string; time_max: string; calendar_ids?: string[] }) =>
     apiFetch<{ availability: Array<{ calendarId: string; busy: Array<{ start: string; end: string }> }> }>(

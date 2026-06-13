@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { calendarApi, type CalendarEvent } from "../api/client.ts";
 import { useClerkReady } from "../hooks/useClerkReady.ts";
 import { ConnectBanner, useConnectionStatus } from "../components/ConnectBanner.tsx";
@@ -64,7 +64,124 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
   );
 }
 
-function EventCard({ event, onEdit }: { event: CalendarEvent; onEdit: (e: CalendarEvent) => void }) {
+// ── Edit Event Modal ──────────────────────────────────────────────────────────
+function EditEventModal({ event, onClose, onUpdated }: { event: CalendarEvent; onClose: () => void; onUpdated: (e: CalendarEvent) => void }) {
+  const [title, setTitle] = useState(event.title);
+  const [date, setDate] = useState(new Date(event.startsAt).toISOString().slice(0, 10));
+  const [startTime, setStartTime] = useState(new Date(event.startsAt).toTimeString().slice(0, 5));
+  const [endTime, setEndTime] = useState(new Date(event.endsAt).toTimeString().slice(0, 5));
+  const [attendees, setAttendees] = useState(event.attendees.join(", "));
+  const [description, setDescription] = useState(event.description ?? "");
+  const [location, setLocation] = useState(event.location ?? "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleSave() {
+    if (!title.trim()) { setErr("Title is required"); return; }
+    setErr(null); setSaving(true);
+    try {
+      const starts_at = new Date(`${date}T${startTime}`).toISOString();
+      const ends_at   = new Date(`${date}T${endTime}`).toISOString();
+      const res = await calendarApi.updateEvent(event.id, { title, starts_at, ends_at, attendees: attendees.split(",").map(s => s.trim()).filter(Boolean), description: description || undefined, location: location || undefined });
+      onUpdated(res.event); onClose();
+    } catch (e) { setErr(e instanceof Error ? e.message : "Failed to update"); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+      <div className="w-full max-w-md rounded-2xl p-6" style={{ background: "var(--c-surface-container-low)", border: "1px solid var(--glass-border)", boxShadow: "var(--glass-shadow)" }}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="font-headline text-xl" style={{ color: "var(--c-on-surface)" }}>Edit Event</h2>
+          <button onClick={onClose} className="btn-ghost p-1.5"><span className="material-symbols-outlined text-xl">close</span></button>
+        </div>
+        {err && <div className="rounded-xl px-4 py-2 mb-4 text-sm" style={{ background: "var(--c-error-container)", color: "var(--c-error)" }}>{err}</div>}
+        <div className="space-y-3">
+          <div><label className="section-label mb-1 block">Title</label><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="input-field" /></div>
+          <div><label className="section-label mb-1 block">Date</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input-field" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="section-label mb-1 block">Start</label><input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="input-field" /></div>
+            <div><label className="section-label mb-1 block">End</label><input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="input-field" /></div>
+          </div>
+          <div><label className="section-label mb-1 block">Attendees</label><input type="text" value={attendees} onChange={(e) => setAttendees(e.target.value)} placeholder="alice@example.com, bob@example.com" className="input-field" /></div>
+          <div><label className="section-label mb-1 block">Location</label><input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Optional location" className="input-field" /></div>
+          <div><label className="section-label mb-1 block">Description</label><textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Optional description" className="input-field resize-none" /></div>
+        </div>
+        <div className="flex gap-3 mt-5">
+          <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
+          <button onClick={handleSave} disabled={saving || !title.trim()} className="btn-primary flex-1 disabled:opacity-50 flex items-center justify-center gap-2">
+            {saving ? <span className="material-symbols-outlined animate-spin text-base">progress_activity</span> : <span className="material-symbols-outlined text-base">save</span>}
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Availability Check Modal ───────────────────────────────────────────────────
+function AvailabilityModal({ onClose }: { onClose: () => void }) {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("17:00");
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<Array<{ calendarId: string; busy: Array<{ start: string; end: string }> }> | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleCheck() {
+    setChecking(true); setErr(null); setResult(null);
+    try {
+      const time_min = new Date(`${date}T${startTime}`).toISOString();
+      const time_max = new Date(`${date}T${endTime}`).toISOString();
+      const res = await calendarApi.checkAvailability({ time_min, time_max });
+      setResult(res.availability);
+    } catch (e) { setErr(e instanceof Error ? e.message : "Failed to check"); }
+    finally { setChecking(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+      <div className="w-full max-w-md rounded-2xl p-6" style={{ background: "var(--c-surface-container-low)", border: "1px solid var(--glass-border)", boxShadow: "var(--glass-shadow)" }}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="font-headline text-xl" style={{ color: "var(--c-on-surface)" }}>Check Availability</h2>
+          <button onClick={onClose} className="btn-ghost p-1.5"><span className="material-symbols-outlined text-xl">close</span></button>
+        </div>
+        {err && <div className="rounded-xl px-4 py-2 mb-4 text-sm" style={{ background: "var(--c-error-container)", color: "var(--c-error)" }}>{err}</div>}
+        <div className="space-y-3">
+          <div><label className="section-label mb-1 block">Date</label><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input-field" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="section-label mb-1 block">From</label><input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="input-field" /></div>
+            <div><label className="section-label mb-1 block">To</label><input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="input-field" /></div>
+          </div>
+          {result !== null && (
+            <div className="nimbus-card p-4 space-y-2 mt-2">
+              {result.length === 0
+                ? <p className="text-sm font-semibold" style={{ color: "var(--c-primary)" }}>✓ You're free during this window</p>
+                : result.map((cal) => (
+                  <div key={cal.calendarId}>
+                    <p className="text-xs font-semibold mb-1" style={{ color: "var(--c-on-surface-variant)" }}>{cal.calendarId}</p>
+                    {cal.busy.length === 0 ? <p className="text-xs" style={{ color: "var(--c-primary)" }}>Free</p>
+                      : cal.busy.map((b, i) => <p key={i} className="text-xs" style={{ color: "var(--c-error)" }}>Busy: {new Date(b.start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} – {new Date(b.end).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>)
+                    }
+                  </div>
+                ))
+              }
+            </div>
+          )}
+        </div>
+        <div className="flex gap-3 mt-5">
+          <button onClick={onClose} className="btn-secondary flex-1">Close</button>
+          <button onClick={handleCheck} disabled={checking} className="btn-primary flex-1 disabled:opacity-50 flex items-center justify-center gap-2">
+            {checking ? <span className="material-symbols-outlined animate-spin text-base">progress_activity</span> : <span className="material-symbols-outlined text-base">event_available</span>}
+            {checking ? "Checking…" : "Check"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EventCard({ event, onEdit, onDelete }: { event: CalendarEvent; onEdit: (e: CalendarEvent) => void; onDelete: (id: string) => void }) {
   const start = new Date(event.startsAt);
   const end   = new Date(event.endsAt);
   const isToday = start.toDateString() === new Date().toDateString();
@@ -95,6 +212,7 @@ function EventCard({ event, onEdit }: { event: CalendarEvent; onEdit: (e: Calend
       <div className="shrink-0 self-center flex flex-col items-center gap-2">
         {isToday && <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--c-primary)" }} />}
         <button onClick={() => onEdit(event)} className="btn-ghost p-1.5" title="Edit"><span className="material-symbols-outlined text-base">edit</span></button>
+        <button onClick={() => onDelete(event.id)} className="btn-ghost p-1.5" title="Delete" style={{ color: "var(--c-error)" }}><span className="material-symbols-outlined text-base">delete</span></button>
       </div>
     </div>
   );
@@ -108,14 +226,22 @@ export function CalendarPage() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [filter, setFilter] = useState<"upcoming" | "today" | "all">("upcoming");
+  const [search, setSearch] = useState("");
+  const [serverSearch, setServerSearch] = useState("");
 
-  function loadEvents() {
+  const loadEvents = useCallback(() => {
     if (!ready) return;
     setLoading(true);
-    calendarApi.listEvents().then((r) => setEvents(r.events)).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    calendarApi.listEvents({ q: serverSearch || undefined }).then((r) => setEvents(r.events)).catch((e) => setError(e.message)).finally(() => setLoading(false));
+  }, [ready, serverSearch]);
+  useEffect(() => { loadEvents(); }, [loadEvents]);
+
+  async function handleDelete(eventId: string) {
+    await calendarApi.deleteEvent(eventId).catch(() => null);
+    setEvents((prev) => prev.filter((e) => e.id !== eventId));
   }
-  useEffect(() => { loadEvents(); }, [ready]);
 
   if (!connLoading && connStatus && !connStatus.googlecalendar) {
     return (
@@ -153,6 +279,10 @@ export function CalendarPage() {
           <span className="material-symbols-outlined text-sm">add</span>
           New Event
         </button>
+        <button onClick={() => setCheckingAvailability(true)} className="btn-secondary py-2 px-4 text-xs shrink-0">
+          <span className="material-symbols-outlined text-sm">event_available</span>
+          Availability
+        </button>
       </div>
 
       {/* Header */}
@@ -173,6 +303,19 @@ export function CalendarPage() {
             </button>
           ))}
         </div>
+        {/* Calendar search */}
+        <div className="relative mt-3 mb-4">
+          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-base" style={{ color: "var(--c-outline)" }}>search</span>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") setServerSearch(search); if (e.key === "Escape") { setSearch(""); setServerSearch(""); } }}
+            placeholder="Search events… (Enter)"
+            className="pl-9 pr-4 py-2 rounded-xl text-sm w-full outline-none"
+            style={{ background: "var(--c-surface-container)", border: `1px solid ${serverSearch ? "var(--c-primary)" : "var(--c-outline-variant)"}`, color: "var(--c-on-surface)" }}
+          />
+          {(search || serverSearch) && <button onClick={() => { setSearch(""); setServerSearch(""); }} className="absolute right-2 top-1/2 -translate-y-1/2" style={{ color: "var(--c-outline)" }}><span className="material-symbols-outlined text-base">close</span></button>}
+        </div>
       </div>
 
       {/* Event list */}
@@ -186,10 +329,12 @@ export function CalendarPage() {
         </div>
       )}
       <div className="space-y-3">
-        {filtered.map((event) => <EventCard key={event.id} event={event} onEdit={setEditing} />)}
+        {filtered.map((event) => <EventCard key={event.id} event={event} onEdit={setEditing} onDelete={handleDelete} />)}
       </div>
 
       {creating && <CreateEventModal onClose={() => setCreating(false)} onCreated={(e) => { setEvents((prev) => [...prev, e]); }} />}
+      {editing && <EditEventModal event={editing} onClose={() => setEditing(null)} onUpdated={(updated) => { setEvents((prev) => prev.map((e) => e.id === updated.id ? updated : e)); setEditing(null); }} />}
+      {checkingAvailability && <AvailabilityModal onClose={() => setCheckingAvailability(false)} />}
     </div>
   );
 }

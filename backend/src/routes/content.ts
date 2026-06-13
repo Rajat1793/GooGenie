@@ -11,8 +11,8 @@ import {
   modifyLabelsSchema,
   availabilityCheckSchema
 } from "../contracts/schemas.js";
-import { fetchGmailThreads, fetchGmailThread, sendEmail, replyToThread, modifyThreadLabels } from "../integrations/gmail.js";
-import { fetchCalendarEvents, createGCalEvent, updateGCalEvent, checkAvailability } from "../integrations/googlecalendar.js";
+import { fetchGmailThreads, fetchGmailThread, sendEmail, replyToThread, modifyThreadLabels, trashThread, untrashThread, batchModifyMessages, listGmailLabels, listDrafts, createDraft, sendDraft, deleteDraft } from "../integrations/gmail.js";
+import { fetchCalendarEvents, createGCalEvent, updateGCalEvent, deleteGCalEvent, getCalendarEvent, checkAvailability } from "../integrations/googlecalendar.js";
 import { emitAuditEvent } from "../security/audit.js";
 import { createApiError } from "../security/errors.js";
 import { paginate } from "../security/pagination.js";
@@ -27,7 +27,7 @@ contentRouter.get("/email/threads", requireAuth, requireFeature("email_read"), a
     const requestedUserId = typeof req.query.userId === "string" ? req.query.userId : auth.userId;
     if (!getScopedUserIds(req).has(requestedUserId)) throw createApiError("FORBIDDEN", "Requested user is out of scope", false, req.traceId);
 
-    const threads = await fetchGmailThreads(auth.tenantId, requestedUserId);
+    const threads = await fetchGmailThreads(auth.tenantId, requestedUserId, 10, typeof req.query.q === "string" ? req.query.q : undefined);
     const page = paginate(threads, typeof req.query.cursor === "string" ? req.query.cursor : undefined, typeof req.query.limit === "string" ? req.query.limit : undefined);
     emitAuditEvent(req, "email_threads_read", { requested_user_id: requestedUserId, count: threads.length });
     res.status(200).json({ threads: page.items, total: page.total, next_cursor: page.next_cursor });
@@ -162,4 +162,101 @@ contentRouter.post("/calendar/availability/check", requireAuth, requireFeature("
   } catch (err) { next(err); }
 });
 
+// ── Calendar event delete ──────────────────────────────────────────────────────
+contentRouter.delete("/calendar/events/:eventId", requireAuth, requireFeature("calendar_write"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const auth = req.auth!;
+    await deleteGCalEvent(auth.tenantId, req.params.eventId);
+    emitAuditEvent(req, "calendar_event_delete", { event_id: req.params.eventId });
+    res.status(204).send();
+  } catch (err) { next(err); }
+});
+
+// ── Calendar event get single ─────────────────────────────────────────────────
+contentRouter.get("/calendar/events/:eventId", requireAuth, requireFeature("calendar_read"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const auth = req.auth!;
+    const event = await getCalendarEvent(auth.tenantId, auth.userId, req.params.eventId);
+    if (!event) throw createApiError("NOT_FOUND", "Event not found", false, req.traceId);
+    res.status(200).json({ event });
+  } catch (err) { next(err); }
+});
+
+// ── Gmail labels ──────────────────────────────────────────────────────────────
+contentRouter.get("/email/labels", requireAuth, requireFeature("email_read"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const auth = req.auth!;
+    const labels = await listGmailLabels(auth.tenantId);
+    res.status(200).json({ labels });
+  } catch (err) { next(err); }
+});
+
+// ── Thread trash / untrash ────────────────────────────────────────────────────
+contentRouter.post("/email/threads/:threadId/trash", requireAuth, requireFeature("email_read"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const auth = req.auth!;
+    await trashThread(auth.tenantId, req.params.threadId);
+    emitAuditEvent(req, "email_thread_trashed", { thread_id: req.params.threadId });
+    res.status(200).json({ success: true });
+  } catch (err) { next(err); }
+});
+
+contentRouter.post("/email/threads/:threadId/untrash", requireAuth, requireFeature("email_read"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const auth = req.auth!;
+    await untrashThread(auth.tenantId, req.params.threadId);
+    emitAuditEvent(req, "email_thread_untrashed", { thread_id: req.params.threadId });
+    res.status(200).json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ── Batch modify messages ──────────────────────────────────────────────────────
+contentRouter.post("/email/messages/batch-modify", requireAuth, requireFeature("email_read"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const auth = req.auth!;
+    const { ids, add_label_ids = [], remove_label_ids = [] } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) throw createApiError("VALIDATION_ERROR", "ids array required", false, req.traceId);
+    await batchModifyMessages(auth.tenantId, ids, add_label_ids, remove_label_ids);
+    emitAuditEvent(req, "email_batch_modify", { count: ids.length });
+    res.status(200).json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ── Drafts ────────────────────────────────────────────────────────────────────
+contentRouter.get("/email/drafts", requireAuth, requireFeature("email_read"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const auth = req.auth!;
+    const drafts = await listDrafts(auth.tenantId);
+    res.status(200).json({ drafts });
+  } catch (err) { next(err); }
+});
+
+contentRouter.post("/email/drafts", requireAuth, requireFeature("email_read"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const auth = req.auth!;
+    const parsed = sendEmailSchema.safeParse(req.body);
+    if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid draft payload", false, req.traceId);
+    const draft = await createDraft(auth.tenantId, parsed.data);
+    emitAuditEvent(req, "email_draft_created", { draft_id: draft.id });
+    res.status(201).json({ draft_id: draft.id });
+  } catch (err) { next(err); }
+});
+
+contentRouter.post("/email/drafts/:draftId/send", requireAuth, requireFeature("email_read"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const auth = req.auth!;
+    const result = await sendDraft(auth.tenantId, req.params.draftId);
+    emitAuditEvent(req, "email_draft_sent", { draft_id: req.params.draftId, message_id: result.id });
+    res.status(200).json({ message_id: result.id, thread_id: result.threadId });
+  } catch (err) { next(err); }
+});
+
+contentRouter.delete("/email/drafts/:draftId", requireAuth, requireFeature("email_read"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const auth = req.auth!;
+    await deleteDraft(auth.tenantId, req.params.draftId);
+    emitAuditEvent(req, "email_draft_deleted", { draft_id: req.params.draftId });
+    res.status(204).send();
+  } catch (err) { next(err); }
+});
 

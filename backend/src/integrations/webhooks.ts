@@ -7,6 +7,7 @@
 import { processWebhook } from "corsair";
 import { corsair } from "./corsair.js";
 import { emitAuditEvent } from "../security/audit.js";
+import { cache } from "../security/cache.js";
 import type { Request } from "express";
 
 // ── Deduplication store ───────────────────────────────────────────────────────
@@ -98,6 +99,14 @@ export async function handleWebhookRequest(
       event_id: eventId,
       tenant_id: resolvedTenant
     });
+
+    // Invalidate caches so next load reflects new data from Corsair DB sync
+    if (result.plugin === "gmail") {
+      cache.invalidatePrefix(`threads:${resolvedTenant}`);
+      cache.delete(`labels:${resolvedTenant}`);
+    } else if (result.plugin === "googlecalendar") {
+      cache.invalidatePrefix(`events:${resolvedTenant}`);
+    }
 
     return { handled: true, plugin: result.plugin, action: result.action ?? undefined, duplicate: false };
   } catch {

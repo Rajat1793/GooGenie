@@ -1,6 +1,7 @@
 /**
- * Gmail integration wrapper — normalizes Corsair Gmail API responses.
- * Fetches real subjects/from/unread status. Uses TTL cache to minimize API calls.
+ * Gmail integration — full Corsair Gmail API surface.
+ * Uses DB search (gmail.db.messages.search) for near-zero latency search.
+ * Falls back to API calls only when needed. TTL cache prevents redundant fetches.
  */
 import { corsair, isCorsairConfigured } from "./corsair.js";
 import { listEmailThreads, getEmailThreadById } from "../domain/email-store.js";
@@ -13,12 +14,9 @@ function getHeader(headers: Array<{ name?: string; value?: string }>, name: stri
   return headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
 }
 
-function buildRawMessage(opts: {
-  to: string;
-  subject: string;
-  body: string;
-  inReplyTo?: string;
-  references?: string;
+export function buildRawMessage(opts: {
+  to: string; subject: string; body: string;
+  from?: string; inReplyTo?: string; references?: string;
 }): string {
   const lines = [
     `To: ${opts.to}`,
@@ -33,18 +31,54 @@ function buildRawMessage(opts: {
   return Buffer.from(lines.join("\r\n")).toString("base64url");
 }
 
-// ── fetchGmailThreads ─────────────────────────────────────────────────────────
+function decodeBody(data?: string): string {
+  if (!data) return "";
+  try { return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8"); } catch { return ""; }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractBodyFromMsg(msg: any): string {
+  if (!msg?.payload) return msg?.snippet ?? "";
+  if (msg.payload.body?.data) return decodeBody(msg.payload.body.data);
+  const textPart = msg.payload.parts?.find((p: any) => p.mimeType === "text/plain");
+  if (textPart?.body?.data) return decodeBody(textPart.body.data);
+  const htmlPart = msg.payload.parts?.find((p: any) => p.mimeType === "text/html");
+  if (htmlPart?.body?.data) return decodeBody(htmlPart.body.data).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return msg.snippet ?? "";
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeThread(raw: any, tenantId: string, userId: string): EmailThread {
+  const messages = raw?.messages ?? [];
+  const firstMsg = messages[0];
+  const headers = firstMsg?.payload?.headers ?? [];
+  const allLabelIds: string[] = messages.flatMap((m: any) => m.labelIds ?? []);
+  return {
+    id: raw.id,
+    tenantId,
+    ownerUserId: userId,
+    subject: getHeader(headers, "subject") || "(no subject)",
+    snippet: extractBodyFromMsg(firstMsg),
+    from: getHeader(headers, "from") || "unknown",
+    updatedAt: firstMsg?.internalDate
+      ? new Date(Number(firstMsg.internalDate)).toISOString()
+      : new Date().toISOString(),
+    isUnread: allLabelIds.includes("UNREAD"),
+    labelIds: [...new Set(allLabelIds)],
+  };
+}
+
+// ── fetchGmailThreads — uses DB search for speed ──────────────────────────────
 
 export async function fetchGmailThreads(
   tenantId: string,
   userId: string,
-  maxResults = 10
+  maxResults = 10,
+  searchQuery?: string
 ): Promise<EmailThread[]> {
-  if (!isCorsairConfigured()) {
-    return listEmailThreads(tenantId, new Set([userId]));
-  }
+  if (!isCorsairConfigured()) return listEmailThreads(tenantId, new Set([userId]));
 
-  const cacheKey = `threads:${tenantId}:${userId}:${maxResults}`;
+  const cacheKey = `threads:${tenantId}:${userId}:${maxResults}:${searchQuery ?? ""}`;
   const cached = cache.get<EmailThread[]>(cacheKey);
   if (cached) return cached;
 
@@ -53,63 +87,64 @@ export async function fetchGmailThreads(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const t = tenant as any;
 
-    // Step 1: list thread IDs (fast)
-    const listResult = await t.gmail.api.threads.list({ maxResults, labelIds: ["INBOX"] });
+    // Use DB search if query or if listing (faster than API)
+    if (searchQuery) {
+      // DB search: near-zero latency, uses Corsair's local sync
+      try {
+        const dbResults = await t.gmail.db.messages.search({
+          data: {
+            OR: [
+              { subject: { contains: searchQuery } },
+              { from: { contains: searchQuery } },
+              { body: { contains: searchQuery } },
+            ],
+          },
+          limit: maxResults,
+        });
+
+        if (dbResults?.length > 0) {
+          // Get unique thread IDs from message results
+          const threadIds = [...new Set<string>(dbResults.map((m: any) => m.threadId).filter(Boolean))];
+          const threads = await Promise.all(
+            threadIds.slice(0, maxResults).map(async (id: string) => {
+              const tk = `thread:${tenantId}:${id}`;
+              const ct = cache.get<EmailThread>(tk);
+              if (ct) return ct;
+              const full = await t.gmail.api.threads.get({ id }).catch(() => null);
+              if (!full) return null;
+              const thread = normalizeThread(full, tenantId, userId);
+              cache.set(tk, thread, TTL.THREAD);
+              return thread;
+            })
+          );
+          const result = threads.filter(Boolean) as EmailThread[];
+          cache.set(cacheKey, result, TTL.THREADS);
+          return result;
+        }
+      } catch { /* fall through to API */ }
+    }
+
+    // Standard list: fetch thread IDs then get each in parallel
+    const listResult = await t.gmail.api.threads.list({
+      maxResults,
+      labelIds: ["INBOX"],
+      ...(searchQuery ? { q: searchQuery } : {}),
+    });
     const rawThreads: Array<{ id?: string }> = listResult?.threads ?? [];
 
-    // Step 2: fetch each thread in parallel to get real headers
     const threads = await Promise.all(
       rawThreads.map(async (raw) => {
         const id = raw.id ?? crypto.randomUUID();
-
-        // Check per-thread cache first
-        const threadKey = `thread:${tenantId}:${id}`;
-        const cachedThread = cache.get<EmailThread>(threadKey);
-        if (cachedThread) return cachedThread;
-
+        const tk = `thread:${tenantId}:${id}`;
+        const ct = cache.get<EmailThread>(tk);
+        if (ct) return ct;
         try {
           const full = await t.gmail.api.threads.get({ id });
-          const messages: Array<{
-            payload?: { headers?: Array<{ name?: string; value?: string }> };
-            labelIds?: string[];
-            snippet?: string;
-            internalDate?: string;
-          }> = full?.messages ?? [];
-
-          const firstMsg = messages[0];
-          const headers = firstMsg?.payload?.headers ?? [];
-          const allLabelIds: string[] = messages.flatMap((m) => m.labelIds ?? []);
-          const isUnread = allLabelIds.includes("UNREAD");
-
-          const thread: EmailThread = {
-            id,
-            tenantId,
-            ownerUserId: userId,
-            subject: getHeader(headers, "subject") || `(no subject)`,
-            snippet: full?.snippet ?? firstMsg?.snippet ?? "",
-            from: getHeader(headers, "from") || "unknown",
-            updatedAt: firstMsg?.internalDate
-              ? new Date(Number(firstMsg.internalDate)).toISOString()
-              : new Date().toISOString(),
-            isUnread,
-            labelIds: [...new Set(allLabelIds)],
-          };
-
-          cache.set(threadKey, thread, TTL.THREAD);
+          const thread = normalizeThread(full, tenantId, userId);
+          cache.set(tk, thread, TTL.THREAD);
           return thread;
         } catch {
-          // Fallback for this specific thread
-          return {
-            id,
-            tenantId,
-            ownerUserId: userId,
-            subject: "(no subject)",
-            snippet: "",
-            from: "unknown",
-            updatedAt: new Date().toISOString(),
-            isUnread: false,
-            labelIds: ["INBOX"],
-          } satisfies EmailThread;
+          return { id, tenantId, ownerUserId: userId, subject: "(no subject)", snippet: "", from: "unknown", updatedAt: new Date().toISOString(), isUnread: false, labelIds: ["INBOX"] } satisfies EmailThread;
         }
       })
     );
@@ -123,15 +158,8 @@ export async function fetchGmailThreads(
 
 // ── fetchGmailThread ──────────────────────────────────────────────────────────
 
-export async function fetchGmailThread(
-  tenantId: string,
-  threadId: string,
-  userId: string,
-  scopedIds?: Set<string>
-): Promise<EmailThread | undefined> {
-  if (!isCorsairConfigured()) {
-    return getEmailThreadById(tenantId, threadId, scopedIds ?? new Set([userId]));
-  }
+export async function fetchGmailThread(tenantId: string, threadId: string, userId: string, scopedIds?: Set<string>): Promise<EmailThread | undefined> {
+  if (!isCorsairConfigured()) return getEmailThreadById(tenantId, threadId, scopedIds ?? new Set([userId]));
 
   const cacheKey = `thread:${tenantId}:${threadId}`;
   const cached = cache.get<EmailThread>(cacheKey);
@@ -142,44 +170,7 @@ export async function fetchGmailThread(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = await (tenant as any).gmail.api.threads.get({ id: threadId });
     if (!result) return undefined;
-
-    const messages: Array<{
-      payload?: { headers?: Array<{ name?: string; value?: string }>; body?: { data?: string }; parts?: Array<{ mimeType?: string; body?: { data?: string } }> };
-      labelIds?: string[];
-      snippet?: string;
-      internalDate?: string;
-    }> = result.messages ?? [];
-
-    const firstMsg = messages[0];
-    const headers = firstMsg?.payload?.headers ?? [];
-    const allLabelIds: string[] = messages.flatMap((m) => m.labelIds ?? []);
-
-    // Extract plaintext body
-    function decodeBody(data?: string): string {
-      if (!data) return "";
-      try { return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8"); } catch { return ""; }
-    }
-    function extractBody(msg: typeof firstMsg): string {
-      if (!msg?.payload) return "";
-      if (msg.payload.body?.data) return decodeBody(msg.payload.body.data);
-      const textPart = msg.payload.parts?.find((p) => p.mimeType === "text/plain");
-      return textPart?.body?.data ? decodeBody(textPart.body.data) : (msg.snippet ?? "");
-    }
-
-    const thread: EmailThread = {
-      id: result.id ?? threadId,
-      tenantId,
-      ownerUserId: userId,
-      subject: getHeader(headers, "subject") || "(no subject)",
-      snippet: extractBody(firstMsg),
-      from: getHeader(headers, "from") || "unknown",
-      updatedAt: firstMsg?.internalDate
-        ? new Date(Number(firstMsg.internalDate)).toISOString()
-        : new Date().toISOString(),
-      isUnread: allLabelIds.includes("UNREAD"),
-      labelIds: [...new Set(allLabelIds)],
-    };
-
+    const thread = normalizeThread(result, tenantId, userId);
     cache.set(cacheKey, thread, TTL.THREAD);
     return thread;
   } catch {
@@ -187,38 +178,40 @@ export async function fetchGmailThread(
   }
 }
 
+// ── listLabels ────────────────────────────────────────────────────────────────
+
+export async function listGmailLabels(tenantId: string): Promise<Array<{ id: string; name: string; type: string; threadsUnread?: number }>> {
+  const cacheKey = `labels:${tenantId}`;
+  const cached = cache.get<Array<{ id: string; name: string; type: string; threadsUnread?: number }>>(cacheKey);
+  if (cached) return cached;
+  try {
+    const tenant = corsair.withTenant(tenantId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (tenant as any).gmail.api.labels.list({});
+    const labels = (result?.labels ?? []).map((l: any) => ({ id: l.id, name: l.name, type: l.type, threadsUnread: l.threadsUnread }));
+    cache.set(cacheKey, labels, 120_000); // 2 min cache
+    return labels;
+  } catch { return []; }
+}
+
 // ── sendEmail ─────────────────────────────────────────────────────────────────
 
-export async function sendEmail(
-  tenantId: string,
-  opts: { to: string; subject: string; body: string }
-): Promise<{ id?: string; threadId?: string }> {
+export async function sendEmail(tenantId: string, opts: { to: string; subject: string; body: string }): Promise<{ id?: string; threadId?: string }> {
   const raw = buildRawMessage(opts);
   const tenant = corsair.withTenant(tenantId);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = await (tenant as any).gmail.api.messages.send({ raw });
-  // Invalidate thread list cache after send
   cache.invalidatePrefix(`threads:${tenantId}`);
   return result;
 }
 
 // ── replyToThread ─────────────────────────────────────────────────────────────
 
-export async function replyToThread(
-  tenantId: string,
-  opts: { threadId: string; to: string; subject: string; body: string; messageId?: string }
-): Promise<{ id?: string; threadId?: string }> {
-  const raw = buildRawMessage({
-    to: opts.to,
-    subject: opts.subject.startsWith("Re:") ? opts.subject : `Re: ${opts.subject}`,
-    body: opts.body,
-    inReplyTo: opts.messageId,
-    references: opts.messageId
-  });
+export async function replyToThread(tenantId: string, opts: { threadId: string; to: string; subject: string; body: string; messageId?: string }): Promise<{ id?: string; threadId?: string }> {
+  const raw = buildRawMessage({ to: opts.to, subject: opts.subject.startsWith("Re:") ? opts.subject : `Re: ${opts.subject}`, body: opts.body, inReplyTo: opts.messageId, references: opts.messageId });
   const tenant = corsair.withTenant(tenantId);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = await (tenant as any).gmail.api.messages.send({ raw, threadId: opts.threadId });
-  // Invalidate caches for this thread + list
   cache.invalidatePrefix(`threads:${tenantId}`);
   cache.delete(`thread:${tenantId}:${opts.threadId}`);
   return result;
@@ -226,17 +219,79 @@ export async function replyToThread(
 
 // ── modifyThreadLabels ────────────────────────────────────────────────────────
 
-export async function modifyThreadLabels(
-  tenantId: string,
-  threadId: string,
-  addLabelIds: string[],
-  removeLabelIds: string[]
-): Promise<{ id?: string }> {
+export async function modifyThreadLabels(tenantId: string, threadId: string, addLabelIds: string[], removeLabelIds: string[]): Promise<{ id?: string }> {
   const tenant = corsair.withTenant(tenantId);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = await (tenant as any).gmail.api.threads.modify({ id: threadId, addLabelIds, removeLabelIds });
-  // Invalidate caches so next load reflects new labels
   cache.invalidatePrefix(`threads:${tenantId}`);
   cache.delete(`thread:${tenantId}:${threadId}`);
   return result;
+}
+
+// ── trashThread / untrashThread ───────────────────────────────────────────────
+
+export async function trashThread(tenantId: string, threadId: string): Promise<void> {
+  const tenant = corsair.withTenant(tenantId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (tenant as any).gmail.api.threads.trash({ id: threadId });
+  cache.invalidatePrefix(`threads:${tenantId}`);
+  cache.delete(`thread:${tenantId}:${threadId}`);
+}
+
+export async function untrashThread(tenantId: string, threadId: string): Promise<void> {
+  const tenant = corsair.withTenant(tenantId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (tenant as any).gmail.api.threads.untrash({ id: threadId });
+  cache.invalidatePrefix(`threads:${tenantId}`);
+  cache.delete(`thread:${tenantId}:${threadId}`);
+}
+
+// ── batchModifyMessages ───────────────────────────────────────────────────────
+
+export async function batchModifyMessages(tenantId: string, ids: string[], addLabelIds: string[], removeLabelIds: string[]): Promise<void> {
+  const tenant = corsair.withTenant(tenantId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (tenant as any).gmail.api.messages.batchModify({ ids, addLabelIds, removeLabelIds });
+  cache.invalidatePrefix(`threads:${tenantId}`);
+}
+
+// ── Draft operations ──────────────────────────────────────────────────────────
+
+export async function listDrafts(tenantId: string, maxResults = 10): Promise<Array<{ id: string; snippet?: string }>> {
+  const cacheKey = `drafts:${tenantId}`;
+  const cached = cache.get<Array<{ id: string; snippet?: string }>>(cacheKey);
+  if (cached) return cached;
+  try {
+    const tenant = corsair.withTenant(tenantId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (tenant as any).gmail.api.drafts.list({ maxResults });
+    const drafts = (result?.drafts ?? []).map((d: any) => ({ id: d.id, snippet: d.message?.snippet }));
+    cache.set(cacheKey, drafts, 30_000);
+    return drafts;
+  } catch { return []; }
+}
+
+export async function createDraft(tenantId: string, opts: { to: string; subject: string; body: string }): Promise<{ id?: string }> {
+  const raw = buildRawMessage(opts);
+  const tenant = corsair.withTenant(tenantId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = await (tenant as any).gmail.api.drafts.create({ draft: { message: { raw } } });
+  cache.delete(`drafts:${tenantId}`);
+  return result;
+}
+
+export async function sendDraft(tenantId: string, draftId: string): Promise<{ id?: string; threadId?: string }> {
+  const tenant = corsair.withTenant(tenantId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = await (tenant as any).gmail.api.drafts.send({ id: draftId });
+  cache.delete(`drafts:${tenantId}`);
+  cache.invalidatePrefix(`threads:${tenantId}`);
+  return result;
+}
+
+export async function deleteDraft(tenantId: string, draftId: string): Promise<void> {
+  const tenant = corsair.withTenant(tenantId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (tenant as any).gmail.api.drafts.delete({ id: draftId });
+  cache.delete(`drafts:${tenantId}`);
 }
