@@ -135,3 +135,60 @@ export const meApi = {
   getActivity: () =>
     apiFetch<{ activity: AuditEvent[] }>("/v1/me/activity")
 };
+
+// Email / Gmail
+export interface EmailThread {
+  id: string;
+  tenantId: string;
+  ownerUserId: string;
+  subject: string;
+  snippet: string;
+  updatedAt: string;
+}
+
+export const emailApi = {
+  listThreads: (params?: { userId?: string; cursor?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.userId) qs.set("userId", params.userId);
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const q = qs.toString();
+    return apiFetch<{ threads: EmailThread[]; total: number; next_cursor?: string }>(
+      `/v1/email/threads${q ? `?${q}` : ""}`
+    );
+  },
+
+  getThread: (threadId: string) =>
+    apiFetch<{ thread: EmailThread }>(`/v1/email/threads/${threadId}`)
+};
+
+// Calendar / Google Calendar
+export interface CalendarEvent {
+  id: string;
+  tenantId: string;
+  ownerUserId: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  attendees: string[];
+}
+
+export const calendarApi = {
+  listEvents: (params?: { userId?: string; timeMin?: string; timeMax?: string; cursor?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.userId) qs.set("userId", params.userId);
+    if (params?.timeMin) qs.set("timeMin", params.timeMin);
+    if (params?.timeMax) qs.set("timeMax", params.timeMax);
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    const q = qs.toString();
+    return apiFetch<{ events: CalendarEvent[]; total: number; next_cursor?: string }>(
+      `/v1/calendar/events${q ? `?${q}` : ""}`
+    );
+  },
+
+  createEvent: (body: { title: string; starts_at: string; ends_at: string; attendees: string[] }) =>
+    apiFetch<{ event: CalendarEvent }>("/v1/calendar/events", {
+      method: "POST",
+      body: JSON.stringify(body)
+    })
+};

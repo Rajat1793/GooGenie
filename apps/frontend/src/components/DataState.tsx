@@ -17,13 +17,18 @@ export function DataState({ loading, error, empty, show = true, children }: Prop
   }
 
   if (error) {
+    const isFeatureDisabled = error.toLowerCase().includes("disabled") || error.toLowerCase().includes("feature");
     return (
       <div className="glass-panel rounded-2xl flex flex-col items-center justify-center py-16 gap-3">
         <div className="w-12 h-12 rounded-full bg-error-container flex items-center justify-center">
-          <span className="material-symbols-outlined text-error text-xl">error</span>
+          <span className="material-symbols-outlined text-error text-xl">{isFeatureDisabled ? "lock" : "error"}</span>
         </div>
         <p className="text-sm font-medium text-error">{error}</p>
-        <p className="text-xs text-on-surface-variant">Check that the backend is running on port 4000</p>
+        {isFeatureDisabled && (
+          <p className="text-xs text-on-surface-variant text-center max-w-xs">
+            Ask your admin to enable this feature for your account, or connect your account via Settings.
+          </p>
+        )}
       </div>
     );
   }

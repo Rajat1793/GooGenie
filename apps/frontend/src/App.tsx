@@ -12,6 +12,8 @@ import { AdminActivityPage } from "./pages/admin/AdminActivityPage.tsx";
 import { ManagerLayout } from "./pages/manager/ManagerLayout.tsx";
 import { ManagerTeamPage } from "./pages/manager/ManagerTeamPage.tsx";
 import { UserProfilePage } from "./pages/user/UserProfilePage.tsx";
+import { InboxPage } from "./pages/InboxPage.tsx";
+import { CalendarPage } from "./pages/CalendarPage.tsx";
 import type { ReactNode } from "react";
 
 /** Wires Clerk's getToken into the API client so all fetch calls carry the JWT */
@@ -72,8 +74,8 @@ function AppRoutes() {
                   <Route index element={<Navigate to="team" replace />} />
                   <Route path="team" element={<ManagerTeamPage />} />
                 </Route>
-                <Route path="inbox" element={<PlaceholderPage title="Inbox" icon="inbox" />} />
-                <Route path="calendar" element={<PlaceholderPage title="Calendar" icon="calendar_month" />} />
+                <Route path="inbox" element={<InboxPage />} />
+                <Route path="calendar" element={<CalendarPage />} />
                 <Route path="profile" element={<UserProfilePage />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
