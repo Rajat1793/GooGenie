@@ -2,6 +2,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { requireAuth } from "../auth/middleware.js";
 import { corsair } from "../integrations/corsair.js";
+import { getCorsairTenant } from "../integrations/corsair-tenant.js";
 import { createApiError } from "../security/errors.js";
 import { env } from "../security/env.js";
 import { generateOAuthUrl, processOAuthCallback } from "corsair/oauth";
@@ -16,8 +17,9 @@ type Plugin = (typeof PLUGINS)[number];
 // Returns { gmail: boolean, googlecalendar: boolean } for the signed-in user.
 connectRouter.get("/me/connect/status", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { tenantId } = req.auth!;
-    const tenant = corsair.withTenant(tenantId);
+    const { userId } = req.auth!;
+    const corsairTenantId = getCorsairTenant(userId);
+    const tenant = corsair.withTenant(corsairTenantId);
     const connected: Record<string, boolean> = {};
 
     for (const plugin of PLUGINS) {
@@ -47,8 +49,9 @@ connectRouter.post("/me/connect/:plugin/init", requireAuth, async (req: Request,
     if (!PLUGINS.includes(plugin as Plugin)) {
       throw createApiError("VALIDATION_ERROR", `Unknown plugin: ${plugin}`, false, req.traceId);
     }
-    const { tenantId } = req.auth!;
-    const { url, state } = await generateOAuthUrl(corsair, plugin, { tenantId, redirectUri: REDIRECT_URI });
+    const { userId } = req.auth!;
+    const corsairTenantId = getCorsairTenant(userId);
+    const { url, state } = await generateOAuthUrl(corsair, plugin, { tenantId: corsairTenantId, redirectUri: REDIRECT_URI });
     res.json({ url, state });
   } catch (err) {
     next(err);

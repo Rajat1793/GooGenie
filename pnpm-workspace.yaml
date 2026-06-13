@@ -4,6 +4,7 @@ packages:
   - packages/*
 
 allowBuilds:
+  '@clerk/shared': false
   '@scarf/scarf': false
   '@tree-sitter-grammars/tree-sitter-yaml': false
   better-sqlite3: true

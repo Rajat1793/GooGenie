@@ -1,5 +1,6 @@
 import { SignIn } from "@clerk/react";
 import { useAuth as useClerkAuth } from "@clerk/react";
+import { dark } from "@clerk/themes";
 import { Navigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext.tsx";
 import { useEffect, useState } from "react";
@@ -17,25 +18,25 @@ export function LoginPage() {
 
   const isDark = theme === "dark";
 
+  // Use Clerk's polished baseTheme for dark mode, then layer minimal brand overrides.
   const clerkAppearance = {
+    baseTheme: isDark ? dark : undefined,
     variables: {
-      colorBackground:      isDark ? "#191b22" : "#f3f3f7",
-      colorInputBackground: isDark ? "#1d1f26" : "#edeef1",
-      colorText:            isDark ? "#e2e2ea" : "#191c1e",
-      colorTextSecondary:   isDark ? "#c1c7cf" : "#41474e",
-      colorPrimary:         isDark ? "#b2dbff" : "#2b6389",
-      colorInputText:       isDark ? "#e2e2ea" : "#191c1e",
-      borderRadius:         "12px",
-      fontFamily:           "inherit",
-      fontSize:             "14px",
+      colorPrimary: isDark ? "#b2dbff" : "#2b6389",
+      borderRadius: "12px",
+      fontFamily: "inherit",
+      fontSize: "14px",
     },
     elements: {
-      rootBox:                  "w-full",
-      socialButtonsBlockButton: "w-full rounded-xl font-semibold text-sm h-11 transition-all",
-      formFieldInput:           "rounded-xl text-sm h-11",
-      formFieldLabel:           "text-xs font-medium",
-      formButtonPrimary:        "w-full h-11 rounded-xl font-semibold text-sm transition-all hover:opacity-90",
-      footerActionLink:         "font-semibold",
+      rootBox: "w-full",
+      card: "shadow-none",
+      socialButtonsBlockButton:
+        "w-full rounded-xl font-semibold text-sm h-11 transition-all",
+      formFieldInput: "rounded-xl text-sm h-11",
+      formFieldLabel: "text-xs font-medium",
+      formButtonPrimary:
+        "w-full h-11 rounded-xl font-semibold text-sm transition-all hover:opacity-90",
+      footerActionLink: "font-semibold",
     },
   };
 

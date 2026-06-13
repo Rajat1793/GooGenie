@@ -22,7 +22,6 @@ import { agentRouter } from "./routes/agent.js";
 import { connectRouter } from "./routes/connect.js";
 import { demoRouter } from "./routes/demo.js";
 import { authRouter } from "./routes/auth.js";
-import { seedOnStartup } from "./db/seed.js";
 
 export const app = express();
 app.disable("x-powered-by");
@@ -87,8 +86,8 @@ app.use((err: ApiError, _req: Request, res: Response, _next: NextFunction) => {
 const port = env.PORT;
 if (process.env.NODE_ENV !== "test") {
   setupCorsair(corsair)
-    .then(() => seedOnStartup())
     .then(() => {
+      // seedOnStartup() removed — start with a clean DB; users provisioned via Clerk sync
       app.listen(port, () => console.log(`Googenie backend listening on port ${port}`));
     })
     .catch((err) => {
