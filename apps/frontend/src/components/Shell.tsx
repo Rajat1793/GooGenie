@@ -11,6 +11,7 @@ const NAV = [
   { to: "/org",      icon: "account_tree",    label: "Org Tree", roles: ["super_admin","manager_admin","user"] },
   { to: "/manager",  icon: "group",           label: "My Students", roles: ["super_admin","manager_admin"] },
   { to: "/admin",    icon: "shield_person",   label: "Admin",    roles: ["super_admin"] },
+  { to: "/api-docs", icon: "api",             label: "API Docs", roles: ["super_admin"] },
   { to: "/profile",  icon: "account_circle",  label: "Profile",  roles: ["super_admin","manager_admin","user"] },
 ] as const;
 

@@ -18,6 +18,7 @@ import { UserProfilePage } from "./pages/user/UserProfilePage.tsx";
 import { InboxPage } from "./pages/InboxPage.tsx";
 import { CalendarPage } from "./pages/CalendarPage.tsx";
 import { OrgTreePage } from "./pages/OrgTreePage.tsx";
+import { ApiDocsPage } from "./pages/ApiDocsPage.tsx";
 import type { ReactNode } from "react";
 
 /** Wires Clerk's getToken into the API client so all fetch calls carry the JWT */
@@ -110,6 +111,7 @@ function AppRoutes() {
                 <Route path="inbox" element={<InboxPage />} />
                 <Route path="calendar" element={<CalendarPage />} />
                 <Route path="org" element={<OrgTreePage />} />
+                <Route path="api-docs" element={<ApiDocsPage />} />
                 <Route path="profile" element={<UserProfilePage />} />
                 <Route path="*" element={<Navigate to="inbox" replace />} />
               </Routes>
