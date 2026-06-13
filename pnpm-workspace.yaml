@@ -4,6 +4,7 @@ packages:
   - packages/*
 
 allowBuilds:
+  '@scarf/scarf': false
   better-sqlite3: true
   esbuild: true
   unrs-resolver: true
