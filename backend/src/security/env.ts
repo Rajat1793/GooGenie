@@ -13,7 +13,21 @@ const envSchema = z.object({
   CORSAIR_DB_PATH: z.string().default("./corsair.db"),
   // Google OAuth credentials (used by Corsair plugins)
   GOOGLE_CLIENT_ID: z.string().optional(),
-  GOOGLE_CLIENT_SECRET: z.string().optional()
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  // PostgreSQL
+  DATABASE_URL: z.string().optional(),
+  // Default tenant ID used when resolving Clerk JWTs (no tenant claim in token)
+  DEFAULT_TENANT_ID: z.string().default("dev"),
+  // Public backend URL for OAuth redirect URI (defaults to localhost for dev)
+  BACKEND_URL: z.string().optional(),
+  // Demo tokens (pre-generated HMAC tokens for demo accounts)
+  DEMO_TOKEN_SUPER_ADMIN: z.string().optional(),
+  DEMO_TOKEN_MANAGER: z.string().optional(),
+  DEMO_TOKEN_USER: z.string().optional(),
+  DEMO_TOKEN_HITESH: z.string().optional(),
+  DEMO_TOKEN_PIYUSH: z.string().optional(),
+  // Frontend origin for post-OAuth redirects
+  FRONTEND_URL: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);

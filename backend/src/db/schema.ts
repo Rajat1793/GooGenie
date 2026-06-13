@@ -30,6 +30,10 @@ export const users = pgTable(
     role: varchar("role", { length: 32 }).notNull(),
     managerUserId: varchar("manager_user_id", { length: 64 }),
     isActive: boolean("is_active").notNull().default(true),
+    /** Clerk user ID — set when a Clerk user first signs in */
+    clerkUserId: varchar("clerk_user_id", { length: 128 }),
+    /** bcrypt hash — only set for admin/manager local-login accounts */
+    passwordHash: text("password_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },

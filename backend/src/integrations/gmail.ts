@@ -8,6 +8,28 @@ import { corsair, isCorsairConfigured } from "./corsair.js";
 import { listEmailThreads, getEmailThreadById } from "../domain/email-store.js";
 import type { EmailThread } from "../domain/email-store.js";
 
+/** Build a minimal RFC 2822 raw message (base64url encoded) */
+function buildRawMessage(opts: {
+  to: string;
+  subject: string;
+  body: string;
+  from?: string;
+  inReplyTo?: string;
+  references?: string;
+}): string {
+  const lines = [
+    `To: ${opts.to}`,
+    `Subject: ${opts.subject}`,
+    "Content-Type: text/plain; charset=utf-8",
+    "MIME-Version: 1.0",
+    ...(opts.inReplyTo ? [`In-Reply-To: ${opts.inReplyTo}`] : []),
+    ...(opts.references ? [`References: ${opts.references}`] : []),
+    "",
+    opts.body
+  ];
+  return Buffer.from(lines.join("\r\n")).toString("base64url");
+}
+
 /**
  * List email threads for a tenant/user via Gmail API.
  * Returns normalized EmailThread[] compatible with the existing API contract.
@@ -15,7 +37,7 @@ import type { EmailThread } from "../domain/email-store.js";
 export async function fetchGmailThreads(
   tenantId: string,
   userId: string,
-  maxResults = 20
+  maxResults = 10
 ): Promise<EmailThread[]> {
   if (!isCorsairConfigured()) {
     return listEmailThreads(tenantId, new Set([userId]));
@@ -88,13 +110,48 @@ export async function fetchGmailThread(
 }
 
 /**
- * Send an email via Gmail API on behalf of a tenant/user.
+ * Send a new email via Gmail API.
  */
-export async function sendGmailMessage(
+export async function sendEmail(
   tenantId: string,
-  raw: string
-): Promise<{ id?: string }> {
+  opts: { to: string; subject: string; body: string }
+): Promise<{ id?: string; threadId?: string }> {
+  const raw = buildRawMessage(opts);
   const tenant = corsair.withTenant(tenantId);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (tenant as any).gmail.api.messages.send({ raw });
 }
+
+/**
+ * Reply to an existing Gmail thread.
+ */
+export async function replyToThread(
+  tenantId: string,
+  opts: { threadId: string; to: string; subject: string; body: string; messageId?: string }
+): Promise<{ id?: string; threadId?: string }> {
+  const raw = buildRawMessage({
+    to: opts.to,
+    subject: opts.subject.startsWith("Re:") ? opts.subject : `Re: ${opts.subject}`,
+    body: opts.body,
+    inReplyTo: opts.messageId,
+    references: opts.messageId
+  });
+  const tenant = corsair.withTenant(tenantId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (tenant as any).gmail.api.messages.send({ raw, threadId: opts.threadId });
+}
+
+/**
+ * Modify labels on a Gmail thread (add/remove).
+ */
+export async function modifyThreadLabels(
+  tenantId: string,
+  threadId: string,
+  addLabelIds: string[],
+  removeLabelIds: string[]
+): Promise<{ id?: string }> {
+  const tenant = corsair.withTenant(tenantId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (tenant as any).gmail.api.threads.modify({ id: threadId, addLabelIds, removeLabelIds });
+}
+

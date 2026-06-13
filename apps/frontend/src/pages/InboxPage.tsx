@@ -1,72 +1,46 @@
 import { useEffect, useState } from "react";
-import { emailApi, type EmailThread } from "../api/client.ts";
+import { emailApi, connectApi, type EmailThread } from "../api/client.ts";
 import { useClerkReady } from "../hooks/useClerkReady.ts";
-import { PageHeader } from "../components/PageHeader.tsx";
-import { DataState } from "../components/DataState.tsx";
+import { ConnectBanner, useConnectionStatus } from "../components/ConnectBanner.tsx";
 
 // ── Compose modal ─────────────────────────────────────────────────────────────
 function ComposeModal({ onClose }: { onClose: () => void }) {
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleSend() {
+    if (!to.trim() || !subject.trim() || !body.trim()) { setErr("To, subject, and body are required"); return; }
+    setSending(true); setErr(null);
+    try { await emailApi.send({ to, subject, body }); onClose(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Failed to send"); }
+    finally { setSending(false); }
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4 bg-inverse-surface/20 backdrop-blur-sm">
-      <div className="glass-panel rounded-t-2xl md:rounded-2xl w-full md:max-w-2xl shadow-2xl flex flex-col" style={{ maxHeight: "90vh" }}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant/20">
-          <h2 className="font-headline text-lg text-ink-text">New Message</h2>
-          <button onClick={onClose} className="btn-ghost p-1.5">
-            <span className="material-symbols-outlined text-xl">close</span>
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
+      <div className="w-full max-w-2xl rounded-2xl flex flex-col" style={{ background: "var(--c-surface-container-low)", border: "1px solid var(--glass-border)", boxShadow: "var(--glass-shadow)", maxHeight: "90vh" }}>
+        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid var(--c-outline-variant)" }}>
+          <h2 className="font-headline text-lg" style={{ color: "var(--c-on-surface)" }}>New Message</h2>
+          <button onClick={onClose} className="btn-ghost p-1.5"><span className="material-symbols-outlined text-xl">close</span></button>
         </div>
-
-        {/* Fields */}
-        <div className="flex flex-col gap-0 divide-y divide-outline-variant/20 px-5">
-          <div className="flex items-center gap-3 py-3">
-            <span className="text-xs text-on-surface-variant w-12 shrink-0">To</span>
-            <input
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              placeholder="recipients@example.com"
-              className="flex-1 bg-transparent text-sm text-ink-text outline-none placeholder:text-outline"
-            />
-          </div>
-          <div className="flex items-center gap-3 py-3">
-            <span className="text-xs text-on-surface-variant w-12 shrink-0">Subject</span>
-            <input
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="Subject"
-              className="flex-1 bg-transparent text-sm text-ink-text outline-none placeholder:text-outline"
-            />
-          </div>
+        {err && <div className="mx-6 mt-3 rounded-xl px-4 py-2 text-sm" style={{ background: "var(--c-error-container)", color: "var(--c-error)" }}>{err}</div>}
+        <div className="flex flex-col px-6" style={{ borderTop: "1px solid var(--c-outline-variant)" }}>
+          {[{ label: "To", value: to, set: setTo, placeholder: "recipients@example.com" }, { label: "Subject", value: subject, set: setSubject, placeholder: "Subject" }].map((f, i) => (
+            <div key={f.label} className="flex items-center gap-3 py-3" style={i > 0 ? { borderTop: "1px solid var(--c-outline-variant)" } : {}}>
+              <span className="text-xs font-semibold w-14 shrink-0" style={{ color: "var(--c-on-surface-variant)" }}>{f.label}</span>
+              <input value={f.value} onChange={(e) => f.set(e.target.value)} placeholder={f.placeholder} className="flex-1 bg-transparent text-sm outline-none" style={{ color: "var(--c-on-surface)" }} />
+            </div>
+          ))}
         </div>
-
-        {/* Body */}
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          placeholder="Compose email…"
-          className="flex-1 px-5 py-4 bg-transparent text-sm text-ink-text outline-none placeholder:text-outline resize-none min-h-[200px]"
-        />
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-outline-variant/20">
-          <div className="flex items-center gap-2">
-            <button className="btn-ghost p-2" title="Attach file">
-              <span className="material-symbols-outlined text-xl">attach_file</span>
-            </button>
-            <button className="btn-ghost p-2" title="Formatting">
-              <span className="material-symbols-outlined text-xl">format_color_text</span>
-            </button>
-          </div>
-          <button
-            className="btn-primary px-6 py-2 text-sm flex items-center gap-2"
-            onClick={onClose}
-          >
-            <span className="material-symbols-outlined text-base">send</span>
-            Send
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Compose…" className="flex-1 px-6 py-4 bg-transparent text-sm outline-none resize-none min-h-[180px]" style={{ color: "var(--c-on-surface)" }} />
+        <div className="flex justify-end gap-3 px-6 py-4" style={{ borderTop: "1px solid var(--c-outline-variant)" }}>
+          <button onClick={onClose} className="btn-secondary">Cancel</button>
+          <button onClick={handleSend} disabled={sending} className="btn-primary disabled:opacity-50 flex items-center gap-2">
+            {sending ? <span className="material-symbols-outlined animate-spin text-base">progress_activity</span> : <span className="material-symbols-outlined text-base">send</span>}
+            {sending ? "Sending…" : "Send"}
           </button>
         </div>
       </div>
@@ -74,52 +48,63 @@ function ComposeModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ── Thread detail drawer ───────────────────────────────────────────────────────
-function ThreadDrawer({ thread, onClose }: { thread: EmailThread; onClose: () => void }) {
+// ── Thread detail pane ────────────────────────────────────────────────────────
+function ThreadPane({ thread, onClose }: { thread: EmailThread; onClose: () => void }) {
+  const [replyBody, setReplyBody] = useState("");
+  const [sending, setSending] = useState(false);
+
+  async function handleReply() {
+    if (!replyBody.trim()) return;
+    setSending(true);
+    try {
+      await emailApi.reply(thread.id, { to: thread.ownerUserId.includes("@") ? thread.ownerUserId : `${thread.ownerUserId}@example.com`, subject: thread.subject, body: replyBody });
+      setReplyBody("");
+    } finally { setSending(false); }
+  }
+
+  async function handleLabel(action: "archive" | "read") {
+    const map = { archive: { add: [], remove: ["INBOX"] }, read: { add: [], remove: ["UNREAD"] } } as Record<string, { add: string[]; remove: string[] }>;
+    await emailApi.modifyLabels(thread.id, { add_label_ids: map[action].add, remove_label_ids: map[action].remove }).catch(() => null);
+    onClose();
+  }
+
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="flex-1 bg-inverse-surface/10 backdrop-blur-sm" onClick={onClose} />
-      <div className="glass-panel w-full max-w-xl h-full shadow-2xl flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-start justify-between px-6 py-5 border-b border-outline-variant/20">
-          <div className="flex-1 min-w-0 pr-4">
-            <h2 className="font-headline text-lg text-ink-text leading-snug truncate">{thread.subject}</h2>
-            <p className="text-xs text-on-surface-variant mt-0.5">
-              {new Date(thread.updatedAt).toLocaleString()}
-            </p>
-          </div>
-          <button onClick={onClose} className="btn-ghost p-1.5 shrink-0">
-            <span className="material-symbols-outlined">close</span>
-          </button>
+    <div className="flex flex-col h-full" style={{ background: "var(--c-background)" }}>
+      {/* Header */}
+      <div className="flex items-start justify-between px-8 py-6" style={{ borderBottom: "1px solid var(--c-outline-variant)" }}>
+        <div>
+          <span className="section-label mb-2 block">Thread</span>
+          <h2 className="font-headline text-3xl" style={{ color: "var(--c-on-surface)" }}>{thread.subject}</h2>
+          <p className="text-sm mt-1" style={{ color: "var(--c-on-surface-variant)" }}>{new Date(thread.updatedAt).toLocaleString()}</p>
         </div>
-
-        {/* Thread body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-          <div className="glass-panel rounded-2xl p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-9 h-9 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-semibold text-sm shrink-0">
-                {thread.ownerUserId.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-ink-text">{thread.ownerUserId}</p>
-                <p className="text-xs text-on-surface-variant">{new Date(thread.updatedAt).toLocaleString()}</p>
-              </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => handleLabel("archive")} className="btn-ghost p-2" title="Archive"><span className="material-symbols-outlined text-xl">archive</span></button>
+          <button onClick={() => handleLabel("read")} className="btn-ghost p-2" title="Mark read"><span className="material-symbols-outlined text-xl">mark_email_read</span></button>
+          <button onClick={onClose} className="btn-ghost p-2"><span className="material-symbols-outlined text-xl">close</span></button>
+        </div>
+      </div>
+      {/* Message body */}
+      <div className="flex-1 overflow-y-auto px-8 py-6">
+        <div className="nimbus-card p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style={{ background: "var(--c-primary-container)", color: "var(--c-on-primary-container)" }}>
+              {thread.ownerUserId.charAt(0).toUpperCase()}
             </div>
-            <p className="text-sm text-on-surface leading-relaxed">{thread.snippet}</p>
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "var(--c-on-surface)" }}>{thread.ownerUserId}</p>
+              <p className="text-xs" style={{ color: "var(--c-on-surface-variant)" }}>{new Date(thread.updatedAt).toLocaleString()}</p>
+            </div>
           </div>
+          <p className="text-sm leading-relaxed" style={{ color: "var(--c-on-surface-variant)" }}>{thread.snippet}</p>
         </div>
-
-        {/* Quick reply */}
-        <div className="px-6 py-4 border-t border-outline-variant/20">
-          <div className="glass-panel rounded-xl flex items-center gap-3 px-4 py-3">
-            <input
-              placeholder="Reply…"
-              className="flex-1 bg-transparent text-sm text-ink-text outline-none placeholder:text-outline"
-            />
-            <button className="text-primary hover:text-primary/70 transition-colors">
-              <span className="material-symbols-outlined">send</span>
-            </button>
-          </div>
+      </div>
+      {/* Reply */}
+      <div className="px-8 py-5" style={{ borderTop: "1px solid var(--c-outline-variant)" }}>
+        <div className="flex items-center gap-3 rounded-2xl px-5 py-3" style={{ background: "var(--c-surface-container)", border: "1px solid var(--c-outline-variant)" }}>
+          <input value={replyBody} onChange={(e) => setReplyBody(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(); }}} placeholder="Reply… (Enter to send)" className="flex-1 bg-transparent text-sm outline-none" style={{ color: "var(--c-on-surface)" }} />
+          <button onClick={handleReply} disabled={sending || !replyBody.trim()} className="transition-all disabled:opacity-40" style={{ color: "var(--c-primary)" }}>
+            {sending ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : <span className="material-symbols-outlined">send</span>}
+          </button>
         </div>
       </div>
     </div>
@@ -129,83 +114,113 @@ function ThreadDrawer({ thread, onClose }: { thread: EmailThread; onClose: () =>
 // ── Main InboxPage ─────────────────────────────────────────────────────────────
 export function InboxPage() {
   const ready = useClerkReady();
+  const { status: connStatus, loading: connLoading, refresh: refreshConn } = useConnectionStatus();
   const [threads, setThreads] = useState<EmailThread[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<EmailThread | null>(null);
   const [composing, setComposing] = useState(false);
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"all" | "unread" | "flagged">("all");
 
-  useEffect(() => {
+  function loadThreads() {
     if (!ready) return;
     setLoading(true);
-    emailApi.listThreads()
-      .then((r) => setThreads(r.threads))
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [ready]);
+    emailApi.listThreads().then((r) => setThreads(r.threads)).catch((e) => setError(e.message)).finally(() => setLoading(false));
+  }
 
-  const filtered = threads.filter(
-    (t) =>
-      t.subject.toLowerCase().includes(search.toLowerCase()) ||
-      t.snippet.toLowerCase().includes(search.toLowerCase())
+  useEffect(() => { loadThreads(); }, [ready]);
+
+  if (!connLoading && connStatus && !connStatus.gmail) {
+    return (
+      <div className="pt-4">
+        <h1 className="font-headline text-3xl mb-6" style={{ color: "var(--c-on-surface)" }}>Inbox</h1>
+        <ConnectBanner plugin="gmail" onConnected={() => { refreshConn(); loadThreads(); }} />
+      </div>
+    );
+  }
+
+  const filtered = threads.filter((t) =>
+    t.subject.toLowerCase().includes(search.toLowerCase()) ||
+    t.snippet.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
-    <div className="pt-8">
-      <PageHeader
-        title="Inbox"
-        subtitle={threads.length > 0 ? `${threads.length} conversation${threads.length !== 1 ? "s" : ""}` : ""}
-        action={
-          <button onClick={() => setComposing(true)} className="btn-primary flex items-center gap-2">
-            <span className="material-symbols-outlined text-base">edit</span>
-            Compose
-          </button>
-        }
-      />
+    <div className="flex h-[calc(100vh-112px)] -mx-8 -my-8 overflow-hidden">
+      {/* ── Thread list ── */}
+      <div className="w-[380px] flex flex-col shrink-0" style={{ background: "var(--c-surface-container-low)", borderRight: "1px solid var(--c-outline-variant)" }}>
+        {/* Header */}
+        <div className="px-6 pt-6 pb-3">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-headline text-2xl" style={{ color: "var(--c-on-surface)" }}>Conversations</h2>
+            <button onClick={() => setComposing(true)} className="btn-primary py-2 px-4 text-xs">
+              <span className="material-symbols-outlined text-sm">edit</span>
+              Compose
+            </button>
+          </div>
+          {/* Filters */}
+          <div className="flex gap-2">
+            {(["all", "unread", "flagged"] as const).map((f) => (
+              <button key={f} onClick={() => setFilter(f)} className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all" style={filter === f ? { background: "color-mix(in srgb, var(--c-primary) 15%, transparent)", color: "var(--c-primary)", border: "1px solid color-mix(in srgb, var(--c-primary) 25%, transparent)" } : { background: "transparent", color: "var(--c-on-surface-variant)", border: "1px solid var(--c-outline-variant)" }}>
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
+          {/* Search */}
+          <div className="relative mt-3">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-base" style={{ color: "var(--c-outline)" }}>search</span>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search threads…" className="pl-9 pr-4 py-2 rounded-xl text-sm w-full outline-none" style={{ background: "var(--c-surface-container)", border: "1px solid var(--c-outline-variant)", color: "var(--c-on-surface)" }} />
+          </div>
+        </div>
 
-      {/* Search bar */}
-      <div className="relative mb-5">
-        <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-outline text-xl">search</span>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search threads…"
-          className="input-field rounded-xl pl-10 py-3 text-sm"
-        />
+        {/* Thread items */}
+        <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5">
+          {loading && (
+            <div className="flex items-center justify-center py-16">
+              <span className="material-symbols-outlined animate-spin text-3xl" style={{ color: "var(--c-primary)" }}>progress_activity</span>
+            </div>
+          )}
+          {error && <p className="text-sm px-4 py-8 text-center" style={{ color: "var(--c-error)" }}>{error}</p>}
+          {!loading && filtered.length === 0 && !error && (
+            <p className="text-sm px-4 py-8 text-center" style={{ color: "var(--c-on-surface-variant)" }}>No threads found</p>
+          )}
+          {filtered.map((thread, i) => {
+            const isActive = selected?.id === thread.id;
+            return (
+              <button key={thread.id} onClick={() => setSelected(thread)} className="w-full text-left p-4 rounded-xl transition-all duration-150 relative overflow-hidden"
+                style={isActive ? { background: "var(--c-surface-container-high)", borderLeft: "3px solid var(--c-primary)", paddingLeft: "13px" } : { borderLeft: "3px solid transparent" }}>
+                {i < 2 && !isActive && <div className="absolute left-0 top-0 bottom-0 w-0.5" style={{ background: "var(--c-primary)" }} />}
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <span className="text-sm font-semibold truncate" style={{ color: isActive ? "var(--c-primary)" : "var(--c-on-surface)" }}>{thread.subject}</span>
+                  <span className="text-[11px] shrink-0" style={{ color: "var(--c-on-surface-variant)" }}>{new Date(thread.updatedAt).toLocaleDateString()}</span>
+                </div>
+                <p className="text-xs truncate" style={{ color: "var(--c-on-surface-variant)" }}>{thread.snippet}</p>
+                {i < 2 && (
+                  <div className="flex gap-1.5 mt-2">
+                    <span className="badge" style={i === 0 ? { background: "color-mix(in srgb, var(--c-error) 15%, transparent)", color: "var(--c-error)" } : { background: "color-mix(in srgb, var(--c-primary) 12%, transparent)", color: "var(--c-primary)" }}>
+                      {i === 0 ? "High Impact" : "Daily Digest"}
+                    </span>
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <DataState loading={loading} error={error} empty="No threads found" show={filtered.length > 0}>
-        <div className="space-y-1.5">
-          {filtered.map((thread) => (
-            <button
-              key={thread.id}
-              onClick={() => setSelected(thread)}
-              className="w-full text-left glass-panel rounded-2xl px-5 py-4 flex items-start gap-4 hover:shadow-md hover:border-primary/20 transition-all group"
-            >
-              {/* Avatar */}
-              <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-semibold text-sm shrink-0 mt-0.5">
-                {thread.ownerUserId.charAt(0).toUpperCase()}
-              </div>
+      {/* ── Thread detail ── */}
+      <div className="flex-1 overflow-hidden">
+        {selected ? (
+          <ThreadPane thread={selected} onClose={() => setSelected(null)} />
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full gap-4" style={{ color: "var(--c-on-surface-variant)" }}>
+            <span className="material-symbols-outlined text-6xl" style={{ opacity: 0.3 }}>inbox</span>
+            <p className="font-headline text-2xl" style={{ color: "var(--c-on-surface-variant)" }}>Select a conversation</p>
+            <p className="text-sm">Choose a thread from the list to read it here</p>
+          </div>
+        )}
+      </div>
 
-              {/* Content */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2 mb-0.5">
-                  <p className="text-sm font-semibold text-ink-text truncate">{thread.subject}</p>
-                  <p className="text-[11px] text-on-surface-variant shrink-0">
-                    {new Date(thread.updatedAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <p className="text-sm text-on-surface-variant truncate">{thread.snippet}</p>
-              </div>
-
-              <span className="material-symbols-outlined text-outline/50 group-hover:text-primary/40 transition-colors shrink-0 mt-1.5 text-base">chevron_right</span>
-            </button>
-          ))}
-        </div>
-      </DataState>
-
-      {selected && <ThreadDrawer thread={selected} onClose={() => setSelected(null)} />}
       {composing && <ComposeModal onClose={() => setComposing(false)} />}
     </div>
   );

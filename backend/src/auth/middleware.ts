@@ -6,6 +6,7 @@ import type { Role } from "./roles.js";
 import { verifyAccessToken } from "./token.js";
 import { verifyClerkJWT, looksLikeClerkJWT } from "./clerk-jwt.js";
 import { createApiError } from "../security/errors.js";
+import { env } from "../security/env.js";
 
 export function attachTraceId(req: Request, _res: Response, next: NextFunction): void {
   req.traceId = req.traceId ?? randomUUID();
@@ -36,9 +37,12 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
       // Map Clerk userId to our auth context
       // Role: check publicMetadata via Clerk dashboard, default to "user"
       const role: Role = ((payload as unknown as Record<string, unknown>)["role"] as Role) ?? "user";
+      // Use DEFAULT_TENANT_ID for all Clerk users so they share the same tenant
+      // as the seeded teachers (Hitesh, Piyush) and Big Boss (Anirudh).
+      const tenantId = env.DEFAULT_TENANT_ID;
       req.auth = {
         userId: payload.sub,
-        tenantId: "demo-tenant",
+        tenantId,
         role
       };
       next();

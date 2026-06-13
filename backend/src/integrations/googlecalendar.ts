@@ -27,7 +27,7 @@ export async function fetchCalendarEvents(
     const result = await (tenant as any).googlecalendar.api.events.getMany({
       calendarId: "primary",
       timeMin: options.timeMin ?? new Date().toISOString(),
-      maxResults: options.maxResults ?? 20,
+      maxResults: options.maxResults ?? 10,
       singleEvents: true,
       orderBy: "startTime",
       ...(options.timeMax ? { timeMax: options.timeMax } : {})
@@ -39,7 +39,10 @@ export async function fetchCalendarEvents(
       start?: { dateTime?: string; date?: string };
       end?: { dateTime?: string; date?: string };
       attendees?: Array<{ email?: string }>;
-    }> = result?.items ?? [];
+    }> = (result?.items ?? []).filter((e: { eventType?: string }) =>
+      // Filter out event types Corsair's schema doesn't support (e.g. "birthday")
+      !e.eventType || ["default", "outOfOffice", "focusTime", "workingLocation"].includes(e.eventType)
+    );
 
     return rawEvents.map((e) => ({
       id: e.id ?? crypto.randomUUID(),
@@ -99,3 +102,101 @@ export async function createGCalEvent(input: {
     return createCalendarEvent(input);
   }
 }
+
+/**
+ * Update an existing calendar event.
+ * Falls back to a no-op returning the input as-is if Corsair is not configured.
+ */
+export async function updateGCalEvent(input: {
+  tenantId: string;
+  ownerUserId: string;
+  eventId: string;
+  title?: string;
+  startsAt?: string;
+  endsAt?: string;
+  attendees?: string[];
+}): Promise<CalendarEvent> {
+  if (!isCorsairConfigured()) {
+    // No persistent store for updates in demo mode — return synthetic updated event
+    return {
+      id: input.eventId,
+      tenantId: input.tenantId,
+      ownerUserId: input.ownerUserId,
+      title: input.title ?? "Updated event",
+      startsAt: input.startsAt ?? new Date().toISOString(),
+      endsAt: input.endsAt ?? new Date().toISOString(),
+      attendees: input.attendees ?? []
+    };
+  }
+
+  try {
+    const tenant = corsair.withTenant(input.tenantId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updated = await (tenant as any).googlecalendar.api.events.update({
+      calendarId: "primary",
+      id: input.eventId,
+      event: {
+        ...(input.title ? { summary: input.title } : {}),
+        ...(input.startsAt ? { start: { dateTime: input.startsAt } } : {}),
+        ...(input.endsAt ? { end: { dateTime: input.endsAt } } : {}),
+        ...(input.attendees ? { attendees: input.attendees.map((email) => ({ email })) } : {})
+      }
+    });
+
+    return {
+      id: updated?.id ?? input.eventId,
+      tenantId: input.tenantId,
+      ownerUserId: input.ownerUserId,
+      title: updated?.summary ?? input.title ?? "Updated event",
+      startsAt: updated?.start?.dateTime ?? updated?.start?.date ?? input.startsAt ?? new Date().toISOString(),
+      endsAt: updated?.end?.dateTime ?? updated?.end?.date ?? input.endsAt ?? new Date().toISOString(),
+      attendees: (updated?.attendees ?? []).map((a: { email?: string }) => a.email ?? "").filter(Boolean)
+    };
+  } catch {
+    return {
+      id: input.eventId,
+      tenantId: input.tenantId,
+      ownerUserId: input.ownerUserId,
+      title: input.title ?? "Updated event",
+      startsAt: input.startsAt ?? new Date().toISOString(),
+      endsAt: input.endsAt ?? new Date().toISOString(),
+      attendees: input.attendees ?? []
+    };
+  }
+}
+
+/**
+ * Check calendar availability (free/busy) for a list of calendar IDs.
+ */
+export async function checkAvailability(
+  tenantId: string,
+  opts: { timeMin: string; timeMax: string; calendarIds?: string[] }
+): Promise<Array<{ calendarId: string; busy: Array<{ start: string; end: string }> }>> {
+  if (!isCorsairConfigured()) {
+    return [];
+  }
+
+  try {
+    const tenant = corsair.withTenant(tenantId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = await (tenant as any).googlecalendar.api.calendar.getAvailability({
+      timeMin: opts.timeMin,
+      timeMax: opts.timeMax,
+      items: (opts.calendarIds ?? ["primary"]).map((id) => ({ id }))
+    });
+
+    const calendars: Record<string, { busy?: Array<{ start?: string; end?: string }> }> =
+      result?.calendars ?? {};
+
+    return Object.entries(calendars).map(([calendarId, cal]) => ({
+      calendarId,
+      busy: (cal.busy ?? []).map((b) => ({
+        start: b.start ?? opts.timeMin,
+        end: b.end ?? opts.timeMax
+      }))
+    }));
+  } catch {
+    return [];
+  }
+}
+

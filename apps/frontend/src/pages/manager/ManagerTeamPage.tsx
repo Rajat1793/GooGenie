@@ -202,8 +202,8 @@ export function ManagerTeamPage() {
   return (
     <div>
       <PageHeader
-        title="My Team"
-        subtitle="Manage feature access and activity for your direct reports."
+        title="My Students"
+        subtitle="Manage feature access and activity for your enrolled students."
         action={
           <button onClick={load} className="btn-secondary flex items-center gap-1.5">
             <span className="material-symbols-outlined text-[16px]">refresh</span>

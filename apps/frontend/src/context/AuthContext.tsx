@@ -4,6 +4,7 @@
  */
 import { useUser } from "@clerk/react";
 import { createContext, useContext, type ReactNode } from "react";
+import { getDemoToken } from "../api/client.ts";
 
 interface AuthState {
   userId: string | null;
@@ -25,14 +26,25 @@ const AuthCtx = createContext<AuthState>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { user, isLoaded } = useUser();
 
-  const role = (user?.publicMetadata?.role as AuthState["role"]) ?? (user ? "user" : null);
+  // If a demo token is active, decode the role from it
+  const demoToken = getDemoToken();
+  let demoRole: AuthState["role"] = null;
+  if (demoToken) {
+    try {
+      const [p] = demoToken.split(".");
+      const payload = JSON.parse(atob(p.replace(/-/g, "+").replace(/_/g, "/")));
+      demoRole = payload.role as AuthState["role"];
+    } catch { /* ignore */ }
+  }
+
+  const role = demoRole ?? ((user?.publicMetadata?.role as AuthState["role"]) ?? (user ? "user" : null));
 
   return (
     <AuthCtx.Provider value={{
-      userId: user?.id ?? null,
-      tenantId: (user?.publicMetadata?.tenantId as string) ?? "demo-tenant",
+      userId: user?.id ?? "demo-user",
+      tenantId: (user?.publicMetadata?.tenantId as string) ?? "dev",
       role,
-      loading: !isLoaded,
+      loading: !isLoaded && !demoToken,
       token: null,
       fullName: user?.fullName ?? user?.firstName ?? null,
       email: user?.primaryEmailAddress?.emailAddress ?? null,

@@ -1,9 +1,9 @@
 type Role = "super_admin" | "manager_admin" | "user";
 
 const LABELS: Record<Role, string> = {
-  super_admin: "Super Admin",
-  manager_admin: "Manager",
-  user: "User"
+  super_admin: "Big Boss",
+  manager_admin: "Teacher",
+  user: "Student"
 };
 
 const STYLES: Record<Role, string> = {

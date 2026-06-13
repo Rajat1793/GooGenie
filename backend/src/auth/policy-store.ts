@@ -33,72 +33,41 @@ const roleChanges: RoleChangeRecord[] = [];
 
 const defaultSeed: { users: PolicyUser[]; featureToggles: FeatureToggle[] } = {
   users: [
-    {
-      id: "super-1",
-      tenantId: "demo-tenant",
-      role: "super_admin",
-      email: "super@nimbus.dev",
-      displayName: "Super Admin",
-      isActive: true
-    },
-    {
-      id: "manager-1",
-      tenantId: "demo-tenant",
-      role: "manager_admin",
-      email: "manager1@nimbus.dev",
-      displayName: "Manager One",
-      isActive: true
-    },
-    {
-      id: "manager-2",
-      tenantId: "demo-tenant",
-      role: "manager_admin",
-      email: "manager2@nimbus.dev",
-      displayName: "Manager Two",
-      managerUserId: "super-1",
-      isActive: true
-    },
-    {
-      id: "user-1",
-      tenantId: "demo-tenant",
-      role: "user",
-      email: "user1@nimbus.dev",
-      displayName: "User One",
-      managerUserId: "manager-1",
-      isActive: true
-    },
-    {
-      id: "user-2",
-      tenantId: "demo-tenant",
-      role: "user",
-      email: "user2@nimbus.dev",
-      displayName: "User Two",
-      managerUserId: "manager-1",
-      isActive: true
-    },
-    {
-      id: "user-3",
-      tenantId: "demo-tenant",
-      role: "user",
-      email: "user3@nimbus.dev",
-      displayName: "User Three",
-      managerUserId: "manager-2",
-      isActive: true
-    }
+    // ── demo-tenant (legacy) ───────────────────────────────────────────────
+    { id: "super-1",   tenantId: "demo-tenant", role: "super_admin",   email: "super@nimbus.dev",    displayName: "Super Admin",  isActive: true },
+    { id: "manager-1", tenantId: "demo-tenant", role: "manager_admin", email: "manager1@nimbus.dev", displayName: "Manager One",  isActive: true },
+    { id: "manager-2", tenantId: "demo-tenant", role: "manager_admin", email: "manager2@nimbus.dev", displayName: "Manager Two",  managerUserId: "super-1",   isActive: true },
+    { id: "user-1",    tenantId: "demo-tenant", role: "user",          email: "user1@nimbus.dev",    displayName: "User One",     managerUserId: "manager-1", isActive: true },
+    { id: "user-2",    tenantId: "demo-tenant", role: "user",          email: "user2@nimbus.dev",    displayName: "User Two",     managerUserId: "manager-1", isActive: true },
+    { id: "user-3",    tenantId: "demo-tenant", role: "user",          email: "user3@nimbus.dev",    displayName: "User Three",   managerUserId: "manager-2", isActive: true },
+    // ── dev tenant (demo login accounts) ─────────────────────────────────
+    { id: "demo-super",   tenantId: "dev", role: "super_admin",   email: "super@demo.nimbus",    displayName: "Demo Super Admin",  isActive: true },
+    { id: "demo-manager", tenantId: "dev", role: "manager_admin", email: "manager@demo.nimbus",  displayName: "Demo Manager",      managerUserId: "demo-super", isActive: true },
+    { id: "demo-user",    tenantId: "dev", role: "user",          email: "user@demo.nimbus",     displayName: "Demo User",         managerUserId: "demo-manager", isActive: true },
   ],
   featureToggles: [
-    { tenantId: "demo-tenant", userId: "user-1", featureKey: "email_read", isEnabled: true },
-    { tenantId: "demo-tenant", userId: "user-1", featureKey: "calendar_read", isEnabled: true },
-    { tenantId: "demo-tenant", userId: "user-1", featureKey: "calendar_write", isEnabled: true },
-    { tenantId: "demo-tenant", userId: "user-2", featureKey: "email_read", isEnabled: false },
-    { tenantId: "demo-tenant", userId: "user-2", featureKey: "calendar_read", isEnabled: true },
-    { tenantId: "demo-tenant", userId: "user-2", featureKey: "calendar_write", isEnabled: false },
-    { tenantId: "demo-tenant", userId: "manager-1", featureKey: "email_read", isEnabled: true },
-    { tenantId: "demo-tenant", userId: "manager-1", featureKey: "calendar_read", isEnabled: true },
-    { tenantId: "demo-tenant", userId: "manager-1", featureKey: "calendar_write", isEnabled: true },
-    { tenantId: "demo-tenant", userId: "super-1", featureKey: "email_read", isEnabled: true },
-    { tenantId: "demo-tenant", userId: "super-1", featureKey: "calendar_read", isEnabled: true },
-    { tenantId: "demo-tenant", userId: "super-1", featureKey: "calendar_write", isEnabled: true }
+    { tenantId: "demo-tenant", userId: "user-1",    featureKey: "email_read",      isEnabled: true },
+    { tenantId: "demo-tenant", userId: "user-1",    featureKey: "calendar_read",   isEnabled: true },
+    { tenantId: "demo-tenant", userId: "user-1",    featureKey: "calendar_write",  isEnabled: true },
+    { tenantId: "demo-tenant", userId: "user-2",    featureKey: "email_read",      isEnabled: false },
+    { tenantId: "demo-tenant", userId: "user-2",    featureKey: "calendar_read",   isEnabled: true },
+    { tenantId: "demo-tenant", userId: "user-2",    featureKey: "calendar_write",  isEnabled: false },
+    { tenantId: "demo-tenant", userId: "manager-1", featureKey: "email_read",      isEnabled: true },
+    { tenantId: "demo-tenant", userId: "manager-1", featureKey: "calendar_read",   isEnabled: true },
+    { tenantId: "demo-tenant", userId: "manager-1", featureKey: "calendar_write",  isEnabled: true },
+    { tenantId: "demo-tenant", userId: "super-1",   featureKey: "email_read",      isEnabled: true },
+    { tenantId: "demo-tenant", userId: "super-1",   featureKey: "calendar_read",   isEnabled: true },
+    { tenantId: "demo-tenant", userId: "super-1",   featureKey: "calendar_write",  isEnabled: true },
+    // dev tenant demo accounts get full access
+    { tenantId: "dev", userId: "demo-super",   featureKey: "email_read",      isEnabled: true },
+    { tenantId: "dev", userId: "demo-super",   featureKey: "calendar_read",   isEnabled: true },
+    { tenantId: "dev", userId: "demo-super",   featureKey: "calendar_write",  isEnabled: true },
+    { tenantId: "dev", userId: "demo-manager", featureKey: "email_read",      isEnabled: true },
+    { tenantId: "dev", userId: "demo-manager", featureKey: "calendar_read",   isEnabled: true },
+    { tenantId: "dev", userId: "demo-manager", featureKey: "calendar_write",  isEnabled: true },
+    { tenantId: "dev", userId: "demo-user",    featureKey: "email_read",      isEnabled: true },
+    { tenantId: "dev", userId: "demo-user",    featureKey: "calendar_read",   isEnabled: true },
+    { tenantId: "dev", userId: "demo-user",    featureKey: "calendar_write",  isEnabled: true },
   ]
 };
 

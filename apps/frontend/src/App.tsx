@@ -1,11 +1,14 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext.tsx";
-import { useAuth as useClerkAuthDirect } from "@clerk/react";
-import { useEffect } from "react";
+import { useAuth as useClerkAuthDirect, useUser as useClerkUser } from "@clerk/react";
+import { useEffect, useState } from "react";
 import { setClerkTokenGetter } from "./api/client.ts";
+import { getDemoToken } from "./api/client.ts";
+import { authApi2 } from "./api/client.ts";
+import { ManagerSelectModal } from "./components/ManagerSelectModal.tsx";
 import { Shell } from "./components/Shell.tsx";
 import { LoginPage } from "./pages/LoginPage.tsx";
-import { HomePage } from "./pages/HomePage.tsx";
+import { LandingPage } from "./pages/LandingPage.tsx";
 import { AdminLayout } from "./pages/admin/AdminLayout.tsx";
 import { AdminUsersPage } from "./pages/admin/AdminUsersPage.tsx";
 import { AdminActivityPage } from "./pages/admin/AdminActivityPage.tsx";
@@ -14,11 +17,15 @@ import { ManagerTeamPage } from "./pages/manager/ManagerTeamPage.tsx";
 import { UserProfilePage } from "./pages/user/UserProfilePage.tsx";
 import { InboxPage } from "./pages/InboxPage.tsx";
 import { CalendarPage } from "./pages/CalendarPage.tsx";
+import { OrgTreePage } from "./pages/OrgTreePage.tsx";
 import type { ReactNode } from "react";
 
 /** Wires Clerk's getToken into the API client so all fetch calls carry the JWT */
 function ClerkTokenWirer() {
   const { getToken, isSignedIn } = useClerkAuthDirect();
+  const { user } = useClerkUser();
+  const [needsManager, setNeedsManager] = useState(false);
+
   useEffect(() => {
     if (isSignedIn) {
       setClerkTokenGetter(async () => {
@@ -27,12 +34,26 @@ function ClerkTokenWirer() {
       });
     }
   }, [getToken, isSignedIn]);
+
+  // Sync Clerk user to DB after sign-in
+  useEffect(() => {
+    if (!isSignedIn || !user) return;
+    const email = user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? "";
+    const displayName = user.fullName ?? user.firstName ?? email.split("@")[0];
+    authApi2.clerkSync(email, displayName)
+      .then((r) => { if (r.needsManager) setNeedsManager(true); })
+      .catch(() => { /* non-critical */ });
+  }, [isSignedIn, user?.id]);
+
+  if (needsManager) return <ManagerSelectModal onComplete={() => setNeedsManager(false)} />;
   return null;
 }
 
-/** Auth guard — Clerk owns sign-in state */
+/** Auth guard — Clerk owns sign-in state, OR demo token bypasses it */
 function RequireAuth({ children }: { children: ReactNode }) {
   const { isSignedIn, isLoaded } = useClerkAuthDirect();
+  // If a demo token is set, skip Clerk entirely
+  if (getDemoToken()) return <>{children}</>;
   if (!isLoaded) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -57,6 +78,8 @@ function PlaceholderPage({ title, icon }: { title: string; icon: string }) {
 function AppRoutes() {
   return (
     <Routes>
+      {/* Public landing page — no auth required */}
+      <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/*"
@@ -64,7 +87,7 @@ function AppRoutes() {
           <RequireAuth>
             <Shell>
               <Routes>
-                <Route index element={<HomePage />} />
+                <Route index element={<Navigate to="inbox" replace />} />
                 <Route path="admin" element={<AdminLayout />}>
                   <Route index element={<Navigate to="users" replace />} />
                   <Route path="users" element={<AdminUsersPage />} />
@@ -76,8 +99,9 @@ function AppRoutes() {
                 </Route>
                 <Route path="inbox" element={<InboxPage />} />
                 <Route path="calendar" element={<CalendarPage />} />
+                <Route path="org" element={<OrgTreePage />} />
                 <Route path="profile" element={<UserProfilePage />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
+                <Route path="*" element={<Navigate to="inbox" replace />} />
               </Routes>
             </Shell>
           </RequireAuth>

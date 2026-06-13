@@ -1,7 +1,7 @@
 import { NavLink, Outlet } from "react-router-dom";
 
 const tabs = [
-  { to: "/manager/team", icon: "group", label: "My Team" }
+  { to: "/manager/team", icon: "group", label: "My Students" }
 ];
 
 export function ManagerLayout() {

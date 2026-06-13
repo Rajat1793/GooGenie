@@ -6,11 +6,13 @@
  * All credentials encrypted with CORSAIR_KEK.
  * API calls scoped via corsair.withTenant(userId).
  */
-import { createCorsair } from "corsair";
+import { createCorsair, setupCorsair } from "corsair";
 import { gmail } from "@corsair-dev/gmail";
 import { googlecalendar } from "@corsair-dev/googlecalendar";
 import { createRequire } from "node:module";
 import { env } from "../security/env.js";
+
+export { setupCorsair };
 
 const _require = createRequire(import.meta.url);
 // eslint-disable-next-line
@@ -37,7 +39,11 @@ export const corsair = createCorsair({
     })
   ],
   database: db as never,
-  kek: env.CORSAIR_KEK ?? "dev-fallback-kek-32chars-minimum-length"
+  kek: env.CORSAIR_KEK ?? "dev-fallback-kek-32chars-minimum-length",
+  connect: {
+    baseUrl: `${env.BACKEND_URL ?? "http://localhost:4000"}/v1/me/connect`,
+    redirectUri: `${env.BACKEND_URL ?? "http://localhost:4000"}/v1/me/connect/callback`
+  }
 });
 
 export function isCorsairConfigured(): boolean {

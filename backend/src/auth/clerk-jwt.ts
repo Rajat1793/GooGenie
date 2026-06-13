@@ -30,7 +30,7 @@ function getJwksUri(): string | null {
   const match = pk.match(/^pk_(test|live)_(.+)$/);
   if (!match) return null;
   try {
-    const host = Buffer.from(match[2], "base64url").toString("utf8").replace(/\$$/, "");
+    const host = Buffer.from(match[2], "base64url").toString("utf8").replace(/\$+$/, "");
     return `https://${host}/.well-known/jwks.json`;
   } catch {
     return null;

@@ -5,8 +5,14 @@ const BASE = "";
 let _getToken: (() => Promise<string | null>) | null = null;
 export function setClerkTokenGetter(fn: () => Promise<string | null>) { _getToken = fn; }
 
+// Demo token override — bypasses Clerk, set when user clicks a demo account button
+let _demoToken: string | null = null;
+export function setDemoToken(token: string | null) { _demoToken = token; }
+export function getDemoToken() { return _demoToken; }
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = _getToken ? await _getToken() : null;
+  // Demo token takes priority over Clerk JWT
+  const token = _demoToken ?? (_getToken ? await _getToken() : null);
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
@@ -159,7 +165,25 @@ export const emailApi = {
   },
 
   getThread: (threadId: string) =>
-    apiFetch<{ thread: EmailThread }>(`/v1/email/threads/${threadId}`)
+    apiFetch<{ thread: EmailThread }>(`/v1/email/threads/${threadId}`),
+
+  send: (body: { to: string; subject: string; body: string }) =>
+    apiFetch<{ message_id?: string; thread_id?: string }>("/v1/email/messages/send", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+
+  reply: (threadId: string, body: { to: string; subject: string; body: string; message_id?: string }) =>
+    apiFetch<{ message_id?: string; thread_id?: string }>(`/v1/email/threads/${threadId}/reply`, {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+
+  modifyLabels: (threadId: string, body: { add_label_ids: string[]; remove_label_ids: string[] }) =>
+    apiFetch<{ thread_id: string }>(`/v1/email/threads/${threadId}/labels`, {
+      method: "PATCH",
+      body: JSON.stringify(body)
+    })
 };
 
 // Calendar / Google Calendar
@@ -190,5 +214,111 @@ export const calendarApi = {
     apiFetch<{ event: CalendarEvent }>("/v1/calendar/events", {
       method: "POST",
       body: JSON.stringify(body)
+    }),
+
+  updateEvent: (eventId: string, body: { title?: string; starts_at?: string; ends_at?: string; attendees?: string[] }) =>
+    apiFetch<{ event: CalendarEvent }>(`/v1/calendar/events/${eventId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body)
+    }),
+
+  checkAvailability: (body: { time_min: string; time_max: string; calendar_ids?: string[] }) =>
+    apiFetch<{ availability: Array<{ calendarId: string; busy: Array<{ start: string; end: string }> }> }>(
+      "/v1/calendar/availability/check",
+      { method: "POST", body: JSON.stringify(body) }
+    )
+};
+
+// Agent
+export const agentApi = {
+  execute: (prompt: string, context?: Record<string, unknown>) =>
+    apiFetch<{ action: string; message: string; suggestions: string[] }>("/v1/agent/execute", {
+      method: "POST",
+      body: JSON.stringify({ prompt, context })
     })
+};
+
+// Demo accounts
+export interface DemoAccount {
+  role: string;
+  label: string;
+  description: string;
+  email: string;
+  token: string;
+}
+export const demoApi = {
+  getAccounts: () =>
+    apiFetch<{ accounts: DemoAccount[] }>("/v1/demo/tokens")
+};
+
+// Auth (local login + user management via PostgreSQL)
+export interface DbUser {
+  id: string;
+  tenantId: string;
+  email: string;
+  displayName: string;
+  role: string;
+  managerUserId: string | null;
+  isActive: boolean;
+}
+export const authApi2 = {
+  localLogin: (email: string, password: string) =>
+    apiFetch<{ token: string; user: DbUser }>("/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password })
+    }),
+  clerkSync: (email: string, displayName: string) =>
+    apiFetch<{ user: DbUser; needsManager: boolean }>("/v1/auth/clerk-sync", {
+      method: "POST",
+      body: JSON.stringify({ email, displayName })
+    }),
+  me: () => apiFetch<{ user: DbUser }>("/v1/auth/me"),
+  managers: () => apiFetch<{ managers: Array<{ id: string; displayName: string; email: string }> }>("/v1/auth/managers"),
+  selectManager: (managerId: string) =>
+    apiFetch<{ success: boolean }>("/v1/auth/select-manager", {
+      method: "POST",
+      body: JSON.stringify({ managerId })
+    }),
+  team: () => apiFetch<{ team: DbUser[] }>("/v1/auth/team"),
+  allUsers: () => apiFetch<{ users: DbUser[] }>("/v1/auth/all-users"),
+  orgTree: () => apiFetch<{
+    tree: Array<DbUser & { children: Array<DbUser & { children: DbUser[] }> }>;
+    unassigned: DbUser[];
+    stats: { bigBoss: number; teachers: number; students: number };
+  }>("/v1/auth/org-tree"),
+};
+
+// Connect / OAuth
+export const connectApi = {
+  status: () =>
+    apiFetch<{ connected: { gmail: boolean; googlecalendar: boolean } }>("/v1/me/connect/status"),
+
+  /** Opens a popup window for the given plugin OAuth flow. Resolves when connected or rejects on error. */
+  connectPlugin: async (plugin: "gmail" | "googlecalendar"): Promise<void> => {
+    // Step 1: get signed OAuth URL from authenticated backend endpoint
+    const { url } = await apiFetch<{ url: string; state: string }>(`/v1/me/connect/${plugin}/init`, { method: "POST" });
+
+    // Step 2: open Google's OAuth URL directly (no backend redirect needed)
+    return new Promise((resolve, reject) => {
+      const popup = window.open(url, `connect_${plugin}`, "width=500,height=650,left=400,top=100");
+      if (!popup) { reject(new Error("Popup blocked — please allow popups for this site")); return; }
+
+      const handler = (e: MessageEvent) => {
+        if (e.origin !== window.location.origin) return;
+        if (e.data?.type === "CONNECT_SUCCESS" && e.data.plugin === plugin) {
+          window.removeEventListener("message", handler);
+          resolve();
+        } else if (e.data?.type === "CONNECT_ERROR") {
+          window.removeEventListener("message", handler);
+          reject(new Error(decodeURIComponent(e.data.error ?? "Connection failed")));
+        }
+      };
+      window.addEventListener("message", handler);
+
+      // Fallback: poll until popup closes
+      const poll = setInterval(() => {
+        if (popup.closed) { clearInterval(poll); window.removeEventListener("message", handler); resolve(); }
+      }, 500);
+    });
+  }
 };

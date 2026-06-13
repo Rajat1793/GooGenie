@@ -188,7 +188,7 @@ export function AdminUsersPage() {
               <div>
                 <p className="text-2xl font-headline text-ink-text">{count}</p>
                 <p className="text-xs text-on-surface-variant uppercase tracking-widest">
-                  {r.replace("_", " ")}
+                  {r === "super_admin" ? "Big Boss" : r === "manager_admin" ? "Teacher" : "Student"}
                 </p>
               </div>
             </div>
@@ -219,7 +219,7 @@ export function AdminUsersPage() {
                   <th>User</th>
                   <th>Role</th>
                   <th>Status</th>
-                  <th>Manager</th>
+                  <th>Teacher</th>
                   <th></th>
                 </tr>
               </thead>
