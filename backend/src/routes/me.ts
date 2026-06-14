@@ -14,6 +14,7 @@ import {
   getFeatureRequest,
   listFeatureAccessForUser,
   listIncomingRequests,
+  listAllRequests,
   listOutgoingRequests,
 } from "../db/featureRequests.js";
 
@@ -165,10 +166,11 @@ meRouter.get("/feature-requests/incoming", requireAuth, async (req: Request, res
   }
 
   const status = typeof req.query.status === "string" ? req.query.status : undefined;
-  const rows = await listIncomingRequests(
-    me.id,
-    status === "approved" || status === "denied" || status === "pending" ? status : undefined,
-  );
+  const normalizedStatus = status === "approved" || status === "denied" || status === "pending" ? status : undefined;
+  // super_admin sees ALL requests across every manager, not just their own
+  const rows = me.role === "super_admin"
+    ? await listAllRequests(normalizedStatus)
+    : await listIncomingRequests(me.id, normalizedStatus);
 
   // Hydrate requester display info so the UI can show who is asking.
   const requesterIds = [...new Set(rows.map((r) => r.requesterUserId))];
@@ -203,8 +205,9 @@ meRouter.post("/feature-requests/:id/decide", requireAuth, async (req: Request, 
 
   const existing = await getFeatureRequest(id);
   if (!existing) throw createApiError("NOT_FOUND", "Request not found", false, req.traceId);
-  if (existing.targetManagerUserId !== me.id) {
-    throw createApiError("FORBIDDEN", "Only the addressed manager can decide this request", false, req.traceId);
+  // super_admin can decide any request; managers can only decide their own
+  if (me.role !== "super_admin" && existing.targetManagerUserId !== me.id) {
+    throw createApiError("FORBIDDEN", "Only the addressed manager (or super_admin) can decide this request", false, req.traceId);
   }
   if (existing.status !== "pending") {
     throw createApiError("VALIDATION_ERROR", "Request already decided", false, req.traceId);

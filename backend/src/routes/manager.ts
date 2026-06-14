@@ -6,7 +6,7 @@ import { managerBulkActionSchema, managerFeatureAccessSchema } from "../contract
 import { emitAuditEvent } from "../security/audit.js";
 import { createApiError } from "../security/errors.js";
 import { createRateLimitMiddleware } from "../security/rate-limit.js";
-import { getUserById, getUserByClerkId, listDirectReports } from "../db/users.js";
+import { getUserById, getUserByClerkId, listDirectReports, listAllRoleTenantUsers } from "../db/users.js";
 import {
   listFeatureAccessForUser,
   upsertFeatureAccess,
@@ -39,7 +39,10 @@ managerRouter.get("/users", ...guard, async (req: Request, res: Response) => {
     return;
   }
 
-  const reports = await listDirectReports(me.id);
+  // super_admin sees every user across all tenants; managers see only direct reports
+  const reports = auth.role === ROLE.SUPER_ADMIN
+    ? (await listAllRoleTenantUsers()).filter((u) => u.id !== me.id)
+    : await listDirectReports(me.id);
   const users = reports.map((u) => ({
     id: u.id,
     tenantId: u.tenantId,

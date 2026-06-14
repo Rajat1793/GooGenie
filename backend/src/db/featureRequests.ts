@@ -62,6 +62,16 @@ export async function listIncomingRequests(targetManagerUserId: string, status?:
   return rows as FeatureRequestRow[];
 }
 
+/** super_admin only — returns every feature request across all managers. */
+export async function listAllRequests(status?: RequestStatus): Promise<FeatureRequestRow[]> {
+  const where = status ? eq(schema.featureRequests.status, status) : undefined;
+  const rows = await db.select()
+    .from(schema.featureRequests)
+    .where(where)
+    .orderBy(desc(schema.featureRequests.createdAt));
+  return rows as FeatureRequestRow[];
+}
+
 export async function getFeatureRequest(id: number): Promise<FeatureRequestRow | null> {
   const rows = await db.select().from(schema.featureRequests).where(eq(schema.featureRequests.id, id)).limit(1);
   return (rows[0] as FeatureRequestRow | undefined) ?? null;
