@@ -152,6 +152,8 @@ export interface EmailThread {
   ownerUserId: string;
   subject: string;
   snippet: string;
+  /** Original HTML body, when available. Render in a sandboxed iframe. */
+  bodyHtml?: string;
   from: string;
   updatedAt: string;
   isUnread: boolean;
@@ -233,6 +235,8 @@ export interface CalendarEvent {
   location?: string;
   htmlLink?: string;
   status?: string;
+  /** Google Meet conference link, when the event was created with `with_meet: true`. */
+  meetLink?: string;
 }
 
 export const calendarApi = {
@@ -252,7 +256,7 @@ export const calendarApi = {
   getEvent: (eventId: string) =>
     apiFetch<{ event: CalendarEvent }>(`/v1/calendar/events/${eventId}`),
 
-  createEvent: (body: { title: string; starts_at: string; ends_at: string; attendees: string[]; description?: string; location?: string }) =>
+  createEvent: (body: { title: string; starts_at: string; ends_at: string; attendees: string[]; description?: string; location?: string; with_meet?: boolean }) =>
     apiFetch<{ event: CalendarEvent }>("/v1/calendar/events", {
       method: "POST",
       body: JSON.stringify(body)
@@ -337,6 +341,15 @@ export const authApi2 = {
 export const connectApi = {
   status: () =>
     apiFetch<{ connected: { gmail: boolean; googlecalendar: boolean } }>("/v1/me/connect/status"),
+
+  /**
+   * Full-page redirect to Google's OAuth consent. The callback returns to /inbox.
+   * Use this for auto-authorization right after Clerk sign-in (no popup, no extra click).
+   */
+  redirectToConnect: async (plugin: "gmail" | "googlecalendar"): Promise<void> => {
+    const { url } = await apiFetch<{ url: string; state: string }>(`/v1/me/connect/${plugin}/init`, { method: "POST" });
+    window.location.href = url;
+  },
 
   /** Opens a popup window for the given plugin OAuth flow. Resolves when connected or rejects on error. */
   connectPlugin: async (plugin: "gmail" | "googlecalendar"): Promise<void> => {

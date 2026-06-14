@@ -28,7 +28,11 @@ export const createCalendarEventSchema = z.object({
   title: z.string().min(3),
   starts_at: z.string().datetime(),
   ends_at: z.string().datetime(),
-  attendees: z.array(z.string().email()).default([])
+  attendees: z.array(z.string().email()).default([]),
+  description: z.string().max(8192).optional(),
+  location: z.string().max(512).optional(),
+  /** When true, attach a Google Meet conference link. */
+  with_meet: z.boolean().optional()
 });
 
 export const updateCalendarEventSchema = z.object({

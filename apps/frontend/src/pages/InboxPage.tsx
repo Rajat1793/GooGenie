@@ -112,7 +112,20 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash }: { thread: EmailThr
               <p className="text-xs" style={{ color: "var(--c-on-surface-variant)" }}>{new Date(thread.updatedAt).toLocaleString()}</p>
             </div>
           </div>
-          <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "var(--c-on-surface)" }}>{thread.snippet || "(no body)"}</p>
+          {/* Render real HTML (when available) inside a strict sandboxed iframe.
+              CSP blocks remote scripts/network; allow-popups lets links open externally with target=_blank. */}
+          {thread.bodyHtml ? (
+            <iframe
+              key={thread.id}
+              title={thread.subject}
+              sandbox="allow-popups allow-popups-to-escape-sandbox"
+              referrerPolicy="no-referrer"
+              srcDoc={`<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: blob:; style-src 'unsafe-inline'; font-src https: data:; media-src https: data:;"><base target="_blank"><style>html,body{margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#1f2328;padding:8px;word-wrap:break-word}img{max-width:100%;height:auto}a{color:#2563eb;word-break:break-word}table{max-width:100%}blockquote{border-left:3px solid #d0d7de;margin:0;padding-left:12px;color:#57606a}</style></head><body>${thread.bodyHtml}</body></html>`}
+              style={{ width: "100%", minHeight: "500px", border: 0, background: "white", borderRadius: 8 }}
+            />
+          ) : (
+            <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "var(--c-on-surface)" }}>{thread.snippet || "(no body)"}</p>
+          )}
         </div>
       </div>
       <div className="px-8 py-4" style={{ borderTop: "1px solid var(--c-outline-variant)" }}>
@@ -134,7 +147,11 @@ export function InboxPage() {
   const [selected, setSelected] = useState<EmailThread | null>(null);
   const [composing, setComposing] = useState(false);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "unread" | "flagged">("all");
+  // Gmail category tabs (Primary / Social / Promotions / Updates / Forums) with
+  // pseudo-categories "all" and "unread" prepended for convenience.
+  const [filter, setFilter] = useState<
+    "all" | "unread" | "primary" | "social" | "promotions" | "updates" | "forums"
+  >("all");
   const [serverSearch, setServerSearch] = useState(""); // debounced server search
 
   // React Query — instant cache hits on revisit + 60s background refetch
@@ -183,14 +200,30 @@ export function InboxPage() {
   }
 
   // Apply filter + search
+  const CATEGORY_LABEL: Record<typeof filter, string | null> = {
+    all: null,
+    unread: null,
+    primary: "CATEGORY_PERSONAL",
+    social: "CATEGORY_SOCIAL",
+    promotions: "CATEGORY_PROMOTIONS",
+    updates: "CATEGORY_UPDATES",
+    forums: "CATEGORY_FORUMS",
+  };
   const filtered = threads.filter((t) => {
     // Text search
     const searchOk = !search || t.subject.toLowerCase().includes(search.toLowerCase()) || t.snippet.toLowerCase().includes(search.toLowerCase()) || (t.from ?? "").toLowerCase().includes(search.toLowerCase());
     // Tab filter
-    const filterOk = filter === "all" ? true
-      : filter === "unread"  ? t.isUnread === true
-      : filter === "flagged" ? (t.labelIds ?? []).includes("STARRED")
-      : true;
+    let filterOk: boolean;
+    if (filter === "all") filterOk = true;
+    else if (filter === "unread") filterOk = t.isUnread === true;
+    else {
+      const wanted = CATEGORY_LABEL[filter];
+      const labels = t.labelIds ?? [];
+      // Primary = personal mail OR threads with no explicit category label.
+      filterOk = filter === "primary"
+        ? labels.includes("CATEGORY_PERSONAL") || !labels.some((l) => l.startsWith("CATEGORY_"))
+        : Boolean(wanted) && labels.includes(wanted!);
+    }
     return searchOk && filterOk;
   });
 
@@ -220,14 +253,30 @@ export function InboxPage() {
               Compose
             </button>
           </div>
-          {/* Filter tabs */}
-          <div className="flex gap-2 mb-3">
-            {(["all", "unread", "flagged"] as const).map((f) => (
-              <button key={f} onClick={() => setFilter(f)} className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
-                style={filter === f
+          {/* Filter tabs — Gmail-style category tabs */}
+          <div className="flex gap-1.5 mb-3 flex-wrap">
+            {(
+              [
+                { key: "all",        label: "All",        icon: "all_inbox" },
+                { key: "unread",     label: "Unread",     icon: "mark_email_unread" },
+                { key: "primary",    label: "Primary",    icon: "inbox" },
+                { key: "social",     label: "Social",     icon: "group" },
+                { key: "promotions", label: "Promotions", icon: "local_offer" },
+                { key: "updates",    label: "Updates",    icon: "info" },
+                { key: "forums",     label: "Forums",     icon: "forum" },
+              ] as const
+            ).map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setFilter(f.key)}
+                title={f.label}
+                className="px-2.5 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5"
+                style={filter === f.key
                   ? { background: "color-mix(in srgb, var(--c-primary) 15%, transparent)", color: "var(--c-primary)", border: "1px solid color-mix(in srgb, var(--c-primary) 25%, transparent)" }
-                  : { background: "transparent", color: "var(--c-on-surface-variant)", border: "1px solid var(--c-outline-variant)" }}>
-                {f === "unread" && unreadCount > 0 ? `Unread (${unreadCount})` : f.charAt(0).toUpperCase() + f.slice(1)}
+                  : { background: "transparent", color: "var(--c-on-surface-variant)", border: "1px solid var(--c-outline-variant)" }}
+              >
+                <span className="material-symbols-outlined text-[14px]">{f.icon}</span>
+                {f.key === "unread" && unreadCount > 0 ? `${f.label} (${unreadCount})` : f.label}
               </button>
             ))}
           </div>

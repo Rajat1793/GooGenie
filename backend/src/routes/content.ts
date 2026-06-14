@@ -123,7 +123,7 @@ contentRouter.post("/calendar/events", requireAuth, requireFeature("calendar_wri
     const parsed = createCalendarEventSchema.safeParse(req.body);
     if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid calendar event payload", false, req.traceId);
 
-    const created = await createGCalEvent({ tenantId: getCorsairTenant(auth.userId), ownerUserId: auth.userId, title: parsed.data.title, startsAt: parsed.data.starts_at, endsAt: parsed.data.ends_at, attendees: parsed.data.attendees });
+    const created = await createGCalEvent({ tenantId: getCorsairTenant(auth.userId), ownerUserId: auth.userId, title: parsed.data.title, startsAt: parsed.data.starts_at, endsAt: parsed.data.ends_at, attendees: parsed.data.attendees, description: parsed.data.description, location: parsed.data.location, withMeet: parsed.data.with_meet });
     publish({ kind: "calendar.changed", userId: auth.userId, eventId: created.id });
     emitAuditEvent(req, "calendar_event_create", { event_id: created.id });
     res.status(201).json({ event: created });

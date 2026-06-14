@@ -4,6 +4,8 @@ export interface EmailThread {
   ownerUserId: string;
   subject: string;
   snippet: string;
+  /** Original HTML body (sanitized for sandboxed iframe rendering). Optional; falls back to snippet. */
+  bodyHtml?: string;
   from: string;
   updatedAt: string;
   isUnread: boolean;

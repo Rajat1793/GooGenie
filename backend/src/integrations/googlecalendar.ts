@@ -9,6 +9,11 @@ import { cache, TTL } from "../security/cache.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeEvent(e: any, tenantId: string, userId: string): CalendarEvent {
+  // Extract Google Meet link from conferenceData entryPoints (preferred) or hangoutLink legacy field.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const entryPoints: any[] = e.conferenceData?.entryPoints ?? [];
+  const meetEntry = entryPoints.find((ep) => ep?.entryPointType === "video" && typeof ep?.uri === "string");
+  const meetLink: string | undefined = meetEntry?.uri ?? e.hangoutLink ?? undefined;
   return {
     id: e.id ?? crypto.randomUUID(),
     tenantId,
@@ -22,6 +27,7 @@ function normalizeEvent(e: any, tenantId: string, userId: string): CalendarEvent
     htmlLink: e.htmlLink,
     status: e.status,
     colorId: e.colorId,
+    meetLink,
   };
 }
 
@@ -105,13 +111,16 @@ export async function getCalendarEvent(tenantId: string, userId: string, eventId
 
 // ── createGCalEvent ───────────────────────────────────────────────────────────
 
-export async function createGCalEvent(input: { tenantId: string; ownerUserId: string; title: string; startsAt: string; endsAt: string; attendees: string[]; description?: string; location?: string }): Promise<CalendarEvent> {
+export async function createGCalEvent(input: { tenantId: string; ownerUserId: string; title: string; startsAt: string; endsAt: string; attendees: string[]; description?: string; location?: string; withMeet?: boolean }): Promise<CalendarEvent> {
   if (!isCorsairConfigured()) return createCalendarEvent(input);
   try {
     const tenant = corsair.withTenant(input.tenantId);
+    const meetRequestId = input.withMeet ? `meet-${Date.now()}-${Math.random().toString(36).slice(2, 10)}` : undefined;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const created = await (tenant as any).googlecalendar.api.events.create({
       calendarId: "primary",
+      // Required for Google to actually create the conference link
+      ...(input.withMeet ? { conferenceDataVersion: 1 } : {}),
       event: {
         summary: input.title,
         start: { dateTime: input.startsAt },
@@ -119,6 +128,16 @@ export async function createGCalEvent(input: { tenantId: string; ownerUserId: st
         attendees: input.attendees.map((email) => ({ email })),
         ...(input.description ? { description: input.description } : {}),
         ...(input.location ? { location: input.location } : {}),
+        ...(input.withMeet && meetRequestId
+          ? {
+              conferenceData: {
+                createRequest: {
+                  requestId: meetRequestId,
+                  conferenceSolutionKey: { type: "hangoutsMeet" },
+                },
+              },
+            }
+          : {}),
       },
     });
     cache.invalidatePrefix(`events:${input.tenantId}`);

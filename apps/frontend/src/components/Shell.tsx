@@ -3,7 +3,7 @@ import { UserButton, useUser } from "@clerk/react";
 import { useAuth } from "../context/AuthContext.tsx";
 import { useTheme } from "../context/ThemeContext.tsx";
 import { getDemoToken, setDemoToken } from "../api/client.ts";
-import type { ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 
 const NAV = [
   { to: "/inbox",    icon: "inbox",          label: "Inbox",    roles: ["super_admin","manager_admin","user"] },
@@ -15,11 +15,22 @@ const NAV = [
   { to: "/profile",  icon: "account_circle",  label: "Profile",  roles: ["super_admin","manager_admin","user"] },
 ] as const;
 
+const COLLAPSED_W = 72;
+const EXPANDED_W = 256;
+
 export function Shell({ children }: { children: ReactNode }) {
   const { role } = useAuth();
   const { user } = useUser();
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
+
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem("googenie-sidebar-collapsed") === "1";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("googenie-sidebar-collapsed", collapsed ? "1" : "0");
+  }, [collapsed]);
 
   // Decode demo token if active
   const demoToken = getDemoToken();
@@ -44,42 +55,64 @@ export function Shell({ children }: { children: ReactNode }) {
     navigate("/login");
   }
 
+  const sidebarWidth = collapsed ? COLLAPSED_W : EXPANDED_W;
+
   return (
     <div className="flex min-h-screen" style={{ background: "var(--c-background)", color: "var(--c-on-surface)" }}>
 
       {/* ── Sidebar ── */}
-      <aside className="sidebar fixed left-0 top-0 h-screen w-64 flex flex-col z-50" style={{ background: "var(--sidebar-bg)", borderRight: "1px solid var(--sidebar-border)" }}>
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-6 py-6 mb-2">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "var(--c-primary)" }}>
-            <span className="material-symbols-outlined text-sm" style={{ color: "var(--c-on-primary)", fontVariationSettings: "FILL 1" }}>cloud</span>
+      <aside
+        className="sidebar fixed left-0 top-0 h-screen flex flex-col z-50 transition-[width] duration-200 ease-out"
+        style={{
+          background: "var(--sidebar-bg)",
+          borderRight: "1px solid var(--sidebar-border)",
+          width: `${sidebarWidth}px`,
+        }}
+      >
+        {/* Logo + collapse toggle */}
+        <div className={`flex items-center ${collapsed ? "justify-center px-2" : "gap-3 px-6"} py-6 mb-2 relative`}>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--c-primary)" }}>
+            <span className="material-symbols-outlined text-base" style={{ color: "var(--c-on-primary)", fontVariationSettings: "FILL 1" }}>cloud</span>
           </div>
-          <div>
-            <h1 className="font-headline text-xl leading-tight" style={{ color: "var(--c-primary)" }}>GooGenie</h1>
-            <p className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "var(--c-on-surface-variant)" }}>AI Workspace</p>
-          </div>
+          {!collapsed && (
+            <div className="min-w-0">
+              <h1 className="font-headline text-xl leading-tight" style={{ color: "var(--c-primary)" }}>GooGenie</h1>
+              <p className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "var(--c-on-surface-variant)" }}>AI Workspace</p>
+            </div>
+          )}
         </div>
 
+        {/* Hamburger toggle button (always visible, anchored to right edge of sidebar) */}
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          className="absolute -right-3 top-7 w-6 h-6 rounded-full flex items-center justify-center shadow-md transition-all hover:scale-110"
+          style={{ background: "var(--c-surface-container-high)", border: "1px solid var(--c-outline-variant)", color: "var(--c-on-surface-variant)" }}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          <span className="material-symbols-outlined text-[14px]">{collapsed ? "chevron_right" : "chevron_left"}</span>
+        </button>
+
         {/* Navigation */}
-        <nav className="flex-1 px-3 space-y-0.5">
+        <nav className={`flex-1 ${collapsed ? "px-2" : "px-3"} space-y-0.5`}>
           {navToShow.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
+              title={collapsed ? item.label : undefined}
               className={({ isActive }) =>
-                "nav-item " + (isActive ? "nav-item-active" : "")
+                "nav-item " + (isActive ? "nav-item-active" : "") + (collapsed ? " justify-center px-0" : "")
               }
             >
-              <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
-              <span className="text-sm">{item.label}</span>
+              <span className="material-symbols-outlined text-[20px] shrink-0">{item.icon}</span>
+              {!collapsed && <span className="text-sm">{item.label}</span>}
             </NavLink>
           ))}
         </nav>
 
         {/* Bottom section */}
-        <div className="px-3 pb-4 pt-3 space-y-1" style={{ borderTop: "1px solid var(--sidebar-border)" }}>
+        <div className={`${collapsed ? "px-2" : "px-3"} pb-4 pt-3 space-y-1`} style={{ borderTop: "1px solid var(--sidebar-border)" }}>
           {/* Demo banner */}
-          {demoToken && (
+          {demoToken && !collapsed && (
             <div className="px-4 py-2 rounded-xl mb-2 flex items-center justify-between" style={{ background: "color-mix(in srgb, var(--c-tertiary) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--c-tertiary) 25%, transparent)" }}>
               <div>
                 <p className="text-xs font-semibold" style={{ color: "var(--c-tertiary)" }}>Demo Mode</p>
@@ -90,18 +123,27 @@ export function Shell({ children }: { children: ReactNode }) {
               </button>
             </div>
           )}
+          {demoToken && collapsed && (
+            <button onClick={exitDemo} className="nav-item w-full justify-center px-0" title="Exit demo">
+              <span className="material-symbols-outlined text-[20px]" style={{ color: "var(--c-tertiary)" }}>logout</span>
+            </button>
+          )}
 
           {/* Theme toggle */}
-          <button onClick={toggle} className="nav-item w-full text-left">
-            <span className="material-symbols-outlined text-[20px]">{theme === "dark" ? "light_mode" : "dark_mode"}</span>
-            <span className="text-sm">{theme === "dark" ? "Light mode" : "Dark mode"}</span>
+          <button
+            onClick={toggle}
+            className={`nav-item w-full text-left ${collapsed ? "justify-center px-0" : ""}`}
+            title={collapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}
+          >
+            <span className="material-symbols-outlined text-[20px] shrink-0">{theme === "dark" ? "light_mode" : "dark_mode"}</span>
+            {!collapsed && <span className="text-sm">{theme === "dark" ? "Light mode" : "Dark mode"}</span>}
           </button>
 
           {/* User (hidden in demo mode) */}
           {!demoToken && (
-            <div className="flex items-center gap-3 px-4 py-3">
+            <div className={`flex items-center ${collapsed ? "justify-center" : "gap-3 px-4"} py-3`}>
               <UserButton />
-              {user && (
+              {!collapsed && user && (
                 <div className="flex flex-col min-w-0">
                   <span className="text-sm font-semibold truncate" style={{ color: "var(--c-on-surface)" }}>
                     {user.fullName ?? user.firstName ?? "User"}
@@ -117,7 +159,10 @@ export function Shell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* ── Main content ── */}
-      <div className="flex-1 flex flex-col" style={{ marginLeft: "256px" }}>
+      <div
+        className="flex-1 flex flex-col transition-[margin-left] duration-200 ease-out"
+        style={{ marginLeft: `${sidebarWidth}px` }}
+      >
         {/* Top header */}
         <header className="app-header sticky top-0 z-40 h-14 flex items-center justify-between px-8">
           {/* Search */}

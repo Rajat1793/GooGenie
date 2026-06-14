@@ -4,7 +4,7 @@ import { useAuth as useClerkAuthDirect, useUser as useClerkUser } from "@clerk/r
 import { useEffect, useState } from "react";
 import { setClerkTokenGetter } from "./api/client.ts";
 import { getDemoToken } from "./api/client.ts";
-import { authApi2 } from "./api/client.ts";
+import { authApi2, connectApi } from "./api/client.ts";
 import { prefetchUserData } from "./api/hooks.ts";
 import { useLiveCacheStream } from "./hooks/useLiveCacheStream.ts";
 import { ManagerSelectModal } from "./components/ManagerSelectModal.tsx";
@@ -60,6 +60,24 @@ function ClerkTokenWirer() {
         // Warm the React Query cache so the first /inbox or /calendar nav
         // is served from cache (0 ms) — silent background refetch keeps it fresh.
         prefetchUserData().catch(() => null);
+
+        // Auto-OAuth: after sign-in, if Gmail/Calendar isn't connected yet,
+        // redirect to Google's consent page automatically (no manual click).
+        // We track per-plugin so Gmail then Calendar can chain across reloads,
+        // and we never retry a plugin within the same session if consent failed.
+        connectApi.status()
+          .then(({ connected }) => {
+            const order: Array<"gmail" | "googlecalendar"> = ["gmail", "googlecalendar"];
+            for (const p of order) {
+              if (connected[p]) continue;
+              const flag = `googenie-auto-connect-tried:${p}`;
+              if (sessionStorage.getItem(flag)) continue;
+              sessionStorage.setItem(flag, "1");
+              connectApi.redirectToConnect(p).catch(() => null);
+              return; // navigation will reload the SPA
+            }
+          })
+          .catch(() => null);
       })
       .catch(() => {
         localStorage.removeItem("googenie-pending-role");

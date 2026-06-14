@@ -37,14 +37,31 @@ function decodeBody(data?: string): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function extractBodyFromMsg(msg: any): string {
-  if (!msg?.payload) return msg?.snippet ?? "";
-  if (msg.payload.body?.data) return decodeBody(msg.payload.body.data);
-  const textPart = msg.payload.parts?.find((p: any) => p.mimeType === "text/plain");
-  if (textPart?.body?.data) return decodeBody(textPart.body.data);
-  const htmlPart = msg.payload.parts?.find((p: any) => p.mimeType === "text/html");
-  if (htmlPart?.body?.data) return decodeBody(htmlPart.body.data).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-  return msg.snippet ?? "";
+function extractBodyFromMsg(msg: any): { text: string; html?: string } {
+  if (!msg?.payload) return { text: msg?.snippet ?? "" };
+  // Single-part body (rare, usually short notifications)
+  if (msg.payload.body?.data) {
+    const decoded = decodeBody(msg.payload.body.data);
+    if (msg.payload.mimeType === "text/html") return { text: stripHtml(decoded), html: decoded };
+    return { text: decoded };
+  }
+  // Recursively walk parts for both text/plain and text/html
+  const parts: any[] = [];
+  function walk(p: any) {
+    if (!p) return;
+    if (p.parts) p.parts.forEach(walk);
+    else parts.push(p);
+  }
+  walk(msg.payload);
+  const textPart = parts.find((p) => p.mimeType === "text/plain" && p.body?.data);
+  const htmlPart = parts.find((p) => p.mimeType === "text/html" && p.body?.data);
+  const text = textPart ? decodeBody(textPart.body.data) : (htmlPart ? stripHtml(decodeBody(htmlPart.body.data)) : (msg.snippet ?? ""));
+  const html = htmlPart ? decodeBody(htmlPart.body.data) : undefined;
+  return { text, html };
+}
+
+function stripHtml(s: string): string {
+  return s.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,12 +70,14 @@ function normalizeThread(raw: any, tenantId: string, userId: string): EmailThrea
   const firstMsg = messages[0];
   const headers = firstMsg?.payload?.headers ?? [];
   const allLabelIds: string[] = messages.flatMap((m: any) => m.labelIds ?? []);
+  const body = extractBodyFromMsg(firstMsg);
   return {
     id: raw.id,
     tenantId,
     ownerUserId: userId,
     subject: getHeader(headers, "subject") || "(no subject)",
-    snippet: extractBodyFromMsg(firstMsg),
+    snippet: body.text,
+    bodyHtml: body.html,
     from: getHeader(headers, "from") || "unknown",
     updatedAt: firstMsg?.internalDate
       ? new Date(Number(firstMsg.internalDate)).toISOString()

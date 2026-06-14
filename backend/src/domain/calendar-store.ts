@@ -11,6 +11,8 @@ export interface CalendarEvent {
   htmlLink?: string;
   status?: string;
   colorId?: string;
+  /** Google Meet conference link, when the event has a Hangouts Meet conference attached. */
+  meetLink?: string;
 }
 
 const events: CalendarEvent[] = [];
