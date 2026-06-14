@@ -45,7 +45,7 @@
   --radius-lg: 0.5rem;
   --radius-xl: 0.75rem;
   --radius-2xl: 1rem;
-  --glass-bg: rgba(255,249,210,0.45);
+  --glass-bg: rgba(255,255,255,0.72);
   --glass-blur: 12px;
   --glass-border: rgba(43,99,137,0.1);
   --glass-shadow: 0 4px 24px -4px rgba(43,99,137,0.08);
@@ -199,6 +199,68 @@
   }
   .section-label { @apply text-xs font-semibold uppercase tracking-widest; color: var(--c-on-surface-variant); }
   .page-title { font-family: var(--font-headline), serif; @apply text-3xl tracking-tight; color: var(--c-on-surface); }
+
+  /* ── Missing component classes used across admin / manager / profile pages ── */
+
+  /* Card hover lift */
+  .card-hover {
+    @apply transition-all duration-200;
+  }
+  .card-hover:hover {
+    box-shadow: 0 6px 24px -4px color-mix(in srgb, var(--c-primary) 14%, transparent);
+    border-color: color-mix(in srgb, var(--c-primary) 20%, transparent);
+  }
+
+  /* Avatar circle */
+  .avatar-md {
+    @apply w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0;
+    background: var(--c-primary-container);
+    color: var(--c-on-primary-container);
+  }
+
+  /* Empty / loading state centred placeholder */
+  .empty-state {
+    @apply flex flex-col items-center justify-center gap-3 py-12 text-center;
+    color: var(--c-on-surface-variant);
+  }
+
+  /* Success badge (green-ish, using primary palette) */
+  .badge-success {
+    background: color-mix(in srgb, var(--c-primary) 14%, transparent);
+    color: var(--c-primary);
+  }
+
+  /* Data table — clean striped/bordered table */
+  .data-table { @apply w-full text-sm border-collapse; }
+  .data-table thead tr {
+    border-bottom: 2px solid var(--c-outline-variant);
+  }
+  .data-table thead th {
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-widest;
+    color: var(--c-on-surface-variant);
+  }
+  .data-table tbody tr {
+    border-bottom: 1px solid var(--c-outline-variant);
+    transition: background 0.15s;
+  }
+  .data-table tbody tr:last-child { border-bottom: none; }
+  .data-table tbody tr:hover {
+    background: color-mix(in srgb, var(--c-primary) 5%, transparent);
+  }
+  .data-table td { @apply px-4 py-3 align-middle; color: var(--c-on-surface); }
+
+  /* Feature-access chip toggles used in ManagerTeamPage expand row */
+  .feature-chip-on {
+    @apply flex items-center justify-between gap-2 p-3 rounded-xl border transition-all;
+    background: color-mix(in srgb, var(--c-primary) 8%, transparent);
+    border-color: color-mix(in srgb, var(--c-primary) 25%, transparent);
+  }
+  .feature-chip-off {
+    @apply flex items-center justify-between gap-2 p-3 rounded-xl border transition-all;
+    background: var(--c-surface-container-low);
+    border-color: var(--c-outline-variant);
+    opacity: 0.75;
+  }
 }
 
 /* ─── Utilities ──────────────────────────────────────────────────────── */

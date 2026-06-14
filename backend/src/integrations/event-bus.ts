@@ -10,6 +10,8 @@ import { EventEmitter } from "node:events";
 export type LiveEvent =
   | { kind: "email.changed"; userId: string; threadId?: string }
   | { kind: "calendar.changed"; userId: string; eventId?: string }
+  | { kind: "feature.request.created"; userId: string; requestId: number; featureKey: string; requesterName: string }
+  | { kind: "feature.request.decided"; userId: string; requestId: number; featureKey: string; decision: "approved" | "denied" }
   | { kind: "ping"; userId: string };
 
 const bus = new EventEmitter();

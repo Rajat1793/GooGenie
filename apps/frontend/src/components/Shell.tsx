@@ -3,7 +3,10 @@ import { UserButton, useUser } from "@clerk/react";
 import { useAuth } from "../context/AuthContext.tsx";
 import { useTheme } from "../context/ThemeContext.tsx";
 import { getDemoToken, setDemoToken } from "../api/client.ts";
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useNotifications } from "../hooks/useNotifications.ts";
+import { RoleBadge } from "./RoleBadge.tsx";
+import { playChime } from "../lib/chime.ts";
 
 const NAV = [
   { to: "/inbox",    icon: "inbox",          label: "Inbox",    roles: ["super_admin","manager_admin","user"] },
@@ -44,6 +47,43 @@ export function Shell({ children }: { children: ReactNode }) {
 
   const effectiveRole = (demoPayload?.role ?? role) as string;
   const ROLE_LABELS: Record<string, string> = { super_admin: "Big Boss", manager_admin: "Teacher", user: "Student" };
+
+  // ── Notifications ──────────────────────────────────────────────────────────
+  const { requests, pendingCount, decide } = useNotifications();
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const [decidingId, setDecidingId] = useState<number | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function onOutside(e: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  async function handleDecide(id: number, decision: "approved" | "denied") {
+    setDecidingId(id);
+    try {
+      await decide(id, decision);
+      playChime("out");
+      setToast(decision === "approved" ? "Request approved — feature granted." : "Request denied.");
+    } catch {
+      setToast("Something went wrong.");
+    } finally {
+      setDecidingId(null);
+    }
+  }
 
   const visible = NAV.filter(
     (item) => effectiveRole && (item.roles as readonly string[]).includes(effectiveRole)
@@ -180,18 +220,123 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
           {/* Right actions */}
           <div className="flex items-center gap-4">
-            <button className="relative" style={{ color: "var(--c-on-surface-variant)" }}>
-              <span className="material-symbols-outlined">notifications</span>
-              <span className="absolute top-0 right-0 w-2 h-2 rounded-full border-2" style={{ background: "var(--c-secondary)", borderColor: "var(--c-background)" }} />
-            </button>
-            <button style={{ color: "var(--c-on-surface-variant)" }}>
-              <span className="material-symbols-outlined">apps</span>
-            </button>
+            {/* Notification bell */}
+            <div ref={notifRef} className="relative">
+              <button
+                onClick={() => setNotifOpen((o) => !o)}
+                className="relative p-1.5 rounded-lg transition-colors hover:bg-surface-container-high"
+                style={{ color: "var(--c-on-surface-variant)" }}
+                title="Notifications"
+              >
+                <span className="material-symbols-outlined" style={{ fontVariationSettings: pendingCount > 0 ? "FILL 1" : "FILL 0" }}>
+                  notifications
+                </span>
+                {pendingCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[10px] font-bold px-1"
+                    style={{ background: "var(--c-error)", color: "var(--c-on-error)" }}>
+                    {pendingCount > 9 ? "9+" : pendingCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Dropdown panel */}
+              {notifOpen && (
+                <div className="absolute right-0 top-10 w-[360px] rounded-2xl shadow-2xl z-[200] overflow-hidden"
+                  style={{ background: "var(--c-surface-container-lowest)", border: "1px solid var(--c-outline-variant)" }}>
+                  <div className="flex items-center justify-between px-4 py-3 border-b"
+                    style={{ borderColor: "var(--c-outline-variant)" }}>
+                    <span className="text-sm font-semibold" style={{ color: "var(--c-on-surface)" }}>
+                      Notifications
+                      {pendingCount > 0 && (
+                        <span className="ml-2 badge badge-error text-[10px]">{pendingCount} pending</span>
+                      )}
+                    </span>
+                    <button onClick={() => setNotifOpen(false)} className="btn-ghost p-1">
+                      <span className="material-symbols-outlined text-[16px]">close</span>
+                    </button>
+                  </div>
+
+                  <div className="max-h-[420px] overflow-y-auto">
+                    {requests.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center gap-2 py-10 text-center"
+                        style={{ color: "var(--c-on-surface-variant)" }}>
+                        <span className="material-symbols-outlined text-3xl opacity-40">notifications_none</span>
+                        <p className="text-xs">No notifications</p>
+                      </div>
+                    ) : (
+                      requests.map((req) => {
+                        const isPending = req.status === "pending";
+                        const requesterName = req.requester?.displayName ?? req.requester?.email ?? "Someone";
+                        const featureLabel = req.feature_key.replace(/_/g, " ");
+                        return (
+                          <div key={req.id}
+                            className="px-4 py-3 border-b last:border-0 transition-colors"
+                            style={{
+                              borderColor: "var(--c-outline-variant)",
+                              background: isPending ? "color-mix(in srgb, var(--c-tertiary) 5%, transparent)" : "transparent",
+                            }}>
+                            <div className="flex items-start gap-3">
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+                                style={{ background: isPending ? "color-mix(in srgb, var(--c-tertiary) 15%, transparent)" : "var(--c-surface-container-high)" }}>
+                                <span className="material-symbols-outlined text-[14px]"
+                                  style={{ color: isPending ? "var(--c-tertiary)" : "var(--c-on-surface-variant)" }}>
+                                  {isPending ? "request_quote" : req.status === "approved" ? "check_circle" : "cancel"}
+                                </span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs" style={{ color: "var(--c-on-surface)" }}>
+                                  <span className="font-semibold">{requesterName}</span>
+                                  {" "}{isPending ? "requested" : req.status === "approved" ? "was granted" : "was denied"}{" "}
+                                  <span className="font-semibold capitalize">{featureLabel}</span>
+                                </p>
+                                {req.requester && (
+                                  <div className="mt-0.5">
+                                    <RoleBadge role={req.requester.role as "super_admin" | "manager_admin" | "user"} />
+                                  </div>
+                                )}
+                                <p className="text-[10px] mt-1" style={{ color: "var(--c-outline)" }}>
+                                  {new Date(req.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                                </p>
+                                {isPending && (
+                                  <div className="flex gap-2 mt-2">
+                                    <button
+                                      onClick={() => handleDecide(req.id, "approved")}
+                                      disabled={decidingId === req.id}
+                                      className="btn-primary text-[11px] px-3 py-1 disabled:opacity-50"
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      onClick={() => handleDecide(req.id, "denied")}
+                                      disabled={decidingId === req.id}
+                                      className="btn-ghost text-[11px] px-3 py-1 disabled:opacity-50"
+                                    >
+                                      Deny
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
         {/* Page content */}
         <main className="flex-1 px-8 py-8">
+          {/* Global toast for notification decisions */}
+          {toast && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[300] px-5 py-3 rounded-xl shadow-xl text-sm font-medium"
+              style={{ background: "var(--c-surface-container-highest)", color: "var(--c-on-surface)", border: "1px solid var(--c-outline-variant)" }}>
+              {toast}
+            </div>
+          )}
           {children}
         </main>
       </div>

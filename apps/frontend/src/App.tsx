@@ -52,8 +52,17 @@ function ClerkTokenWirer() {
     const pendingRole = localStorage.getItem("googenie-pending-role") as "super_admin" | "manager_admin" | "user" | null;
     authApi2.clerkSync(email, displayName, pendingRole ?? undefined)
       .then((r) => {
-        // Persist DB role so AuthContext can read it without re-fetching
-        if (user?.id) sessionStorage.setItem(`googenie-role-${user.id}`, r.user.role);
+        // Persist DB role AND tenantId so AuthContext can read them without re-fetching.
+        // Also dispatch a custom event so AuthContext updates its React state
+        // immediately — without this the race condition leaves the old role visible
+        // until the next page navigation.
+        if (user?.id) {
+          sessionStorage.setItem(`googenie-role-${user.id}`, r.user.role);
+          sessionStorage.setItem(`googenie-tenant-${user.id}`, r.user.tenantId);
+        }
+        window.dispatchEvent(new CustomEvent("googenie:role-synced", {
+          detail: { role: r.user.role, tenantId: r.user.tenantId }
+        }));
         // Clear the pending role after it's been applied
         localStorage.removeItem("googenie-pending-role");
         if (r.needsManager) setNeedsManager(true);

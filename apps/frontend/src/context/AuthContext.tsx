@@ -45,19 +45,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch { /* ignore */ }
   }
 
+  // Listen for the clerkSync result broadcast by ClerkTokenWirer in App.tsx.
+  // This fires AFTER clerkSync completes and gives us the authoritative role/tenant
+  // from the DB — solving the race condition where /auth/me might return a stale
+  // role from the previous session before clerkSync has updated the DB.
+  useEffect(() => {
+    function onRoleSynced(e: Event) {
+      const { role, tenantId } = (e as CustomEvent<{ role: string; tenantId: string }>).detail;
+      setDbRole(role as AuthState["role"]);
+      setDbTenantId(tenantId);
+      setRoleLoading(false);
+    }
+    window.addEventListener("googenie:role-synced", onRoleSynced);
+    return () => window.removeEventListener("googenie:role-synced", onRoleSynced);
+  }, []);
+
   // Fetch the authoritative role from DB after Clerk user is loaded.
   // This runs once per session after sign-in and whenever the user changes.
+  // Note: if clerkSync hasn't run yet (first render), /auth/me may return the
+  // previous session's role — that's OK because the event listener above will
+  // correct it as soon as clerkSync completes.
   useEffect(() => {
     if (!isSignedIn || !isLoaded || demoToken) return;
+
+    // Immediately apply any values already stored from a previous clerkSync in
+    // this browser session so the UI renders correctly without any flicker.
+    const storedRole = user?.id ? sessionStorage.getItem(`googenie-role-${user.id}`) : null;
+    const storedTenant = user?.id ? sessionStorage.getItem(`googenie-tenant-${user.id}`) : null;
+    if (storedRole) setDbRole(storedRole as AuthState["role"]);
+    if (storedTenant) setDbTenantId(storedTenant);
 
     setRoleLoading(true);
     authApi2.me()
       .then((res) => {
         setDbRole(res.user.role as AuthState["role"]);
         setDbTenantId(res.user.tenantId);
-        // Also persist to sessionStorage so Shell/nav renders immediately on hot-reload
+        // Persist so Shell/nav renders correctly on hot-reload
         if (user?.id) {
           sessionStorage.setItem(`googenie-role-${user.id}`, res.user.role);
+          sessionStorage.setItem(`googenie-tenant-${user.id}`, res.user.tenantId);
         }
       })
       .catch(() => {
@@ -65,15 +91,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Fall back to the sessionStorage value or pending role from localStorage.
         const stored = user?.id ? sessionStorage.getItem(`googenie-role-${user.id}`) : null;
         const pending = localStorage.getItem("googenie-pending-role");
-        setDbRole((stored ?? pending ?? "user") as AuthState["role"]);
+        if (!storedRole) setDbRole((stored ?? pending ?? "user") as AuthState["role"]);
       })
       .finally(() => setRoleLoading(false));
   }, [isSignedIn, isLoaded, user?.id, demoToken]);
 
   const role = demoRole ?? dbRole;
+  // Also read tenantId from sessionStorage as a synchronous fallback so the
+  // first render after a page reload shows the correct tenant immediately.
+  const storedTenant = (!demoToken && user?.id)
+    ? sessionStorage.getItem(`googenie-tenant-${user.id}`)
+    : null;
   const tenantId = demoToken
     ? demoTenant
-    : (dbTenantId ?? (user?.publicMetadata?.tenantId as string) ?? "dev");
+    : (dbTenantId ?? storedTenant ?? (user?.publicMetadata?.tenantId as string) ?? "dev");
 
   return (
     <AuthCtx.Provider value={{

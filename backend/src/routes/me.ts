@@ -7,6 +7,7 @@ import { emitAuditEvent } from "../security/audit.js";
 import { createApiError } from "../security/errors.js";
 import { paginate } from "../security/pagination.js";
 import { getUserById, getUserByClerkId } from "../db/users.js";
+import { publish } from "../integrations/event-bus.js";
 import {
   createFeatureRequest,
   decideFeatureRequest,
@@ -134,6 +135,19 @@ meRouter.post("/feature-requests", requireAuth, async (req: Request, res: Respon
     request_id: row.id,
   });
 
+  // Push SSE event to the manager's browser immediately — no polling delay.
+  // SSE subscribes on the Clerk sub (auth.userId from JWT), NOT the DB id,
+  // so we look up the manager's clerkUserId before publishing.
+  const manager = await getUserById(me.managerUserId);
+  const managerSseId = manager?.clerkUserId ?? me.managerUserId;
+  publish({
+    kind: "feature.request.created",
+    userId: managerSseId,
+    requestId: row.id,
+    featureKey: parsed.data.feature_key,
+    requesterName: me.displayName ?? me.email,
+  });
+
   res.status(201).json({ request: serialiseRequest(row) });
 });
 
@@ -208,6 +222,18 @@ meRouter.post("/feature-requests/:id/decide", requireAuth, async (req: Request, 
     decision: parsed.data.decision,
     request_id: updated.id,
     requester_user_id: updated.requesterUserId,
+  });
+
+  // Push SSE event to the requester's browser immediately.
+  // SSE subscribes on the Clerk sub (auth.userId from JWT), NOT the DB id.
+  const requester = await getUserById(updated.requesterUserId);
+  const requesterSseId = requester?.clerkUserId ?? updated.requesterUserId;
+  publish({
+    kind: "feature.request.decided",
+    userId: requesterSseId,
+    requestId: updated.id,
+    featureKey: updated.featureKey,
+    decision: parsed.data.decision,
   });
 
   res.status(200).json({ request: serialiseRequest(updated) });

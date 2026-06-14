@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth as useClerkAuth } from "@clerk/react";
 import { useAuth } from "../../context/AuthContext.tsx";
 import {
@@ -13,6 +13,8 @@ import { Card } from "../../components/Card.tsx";
 import { RoleBadge } from "../../components/RoleBadge.tsx";
 import { DataState } from "../../components/DataState.tsx";
 import { formatActivity, activityIcon } from "../../lib/formatActivity.ts";
+import { broadcastRequestUpdate } from "../../hooks/useNotifications.ts";
+import { playChime } from "../../lib/chime.ts";
 
 const FEATURE_ICONS: Record<string, string> = {
   email_read: "inbox",
@@ -231,6 +233,9 @@ export function UserProfilePage() {
   const [decideBusy, setDecideBusy] = useState<number | null>(null);
   const [toast, setToast] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 
+  // Track previous pending keys so we can detect when a request gets decided
+  const prevPendingKeys = useRef<Set<string>>(new Set());
+
   // Roles that can submit a request (anyone with a manager). Big bosses are
   // top-of-chain so they don't have anyone to request from.
   const canRequest = role === "user" || role === "manager_admin";
@@ -244,10 +249,49 @@ export function UserProfilePage() {
       const r = await meApi.getFeatures();
       setFeatures(r.features);
       setCatalog(r.catalog);
+
       const p: PendingMap = {};
       for (const req of r.pending_requests) {
         p[req.feature_key] = { id: req.id, createdAt: req.created_at };
       }
+
+      // Detect requests that just moved from pending → decided
+      const newPendingKeys = new Set(Object.keys(p));
+      const justDecided = [...prevPendingKeys.current].filter(
+        (k) => !newPendingKeys.has(k)
+      );
+      if (justDecided.length > 0 && prevPendingKeys.current.size > 0) {
+        // Find the decision from history
+        const decidedApproved = r.history
+          .filter((h) => justDecided.includes(h.feature_key) && h.status === "approved")
+          .map((h) => h.feature_key.replace(/_/g, " "));
+        const decidedDenied = r.history
+          .filter((h) => justDecided.includes(h.feature_key) && h.status === "denied")
+          .map((h) => h.feature_key.replace(/_/g, " "));
+
+        if (decidedApproved.length > 0) {
+          playChime("out");
+          setToast({
+            kind: "success",
+            message: `✓ Access granted: ${decidedApproved.join(", ")}`,
+          });
+          // Browser notification
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+            new Notification("GooGenie — Request Approved", {
+              body: `You now have access to: ${decidedApproved.join(", ")}`,
+              icon: "/favicon.svg",
+            });
+          }
+        } else if (decidedDenied.length > 0) {
+          playChime("out");
+          setToast({
+            kind: "error",
+            message: `Request denied: ${decidedDenied.join(", ")}`,
+          });
+        }
+      }
+      prevPendingKeys.current = newPendingKeys;
+
       setPending(p);
       const h: DecidedMap = {};
       for (const req of r.history) {
@@ -304,6 +348,16 @@ export function UserProfilePage() {
     };
   }, [isLoaded, isSignedIn, getToken, isManager, loadFeatures, loadIncoming]);
 
+  // Re-fetch features when a request is decided (e.g. manager approved from bell)
+  useEffect(() => {
+    function onUpdate() {
+      loadFeatures();
+      if (isManager) loadIncoming();
+    }
+    window.addEventListener("googenie:feature-request-updated", onUpdate);
+    return () => window.removeEventListener("googenie:feature-request-updated", onUpdate);
+  }, [loadFeatures, loadIncoming, isManager]);
+
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 3500);
@@ -320,6 +374,8 @@ export function UserProfilePage() {
         kind: "success",
         message: `Request sent to ${target}. You'll be notified when it's reviewed.`,
       });
+      // Broadcast so the manager's notification bell badge updates immediately
+      broadcastRequestUpdate();
       await loadFeatures();
     } catch (e) {
       setToast({ kind: "error", message: (e as Error).message });
@@ -336,6 +392,8 @@ export function UserProfilePage() {
         kind: "success",
         message: decision === "approved" ? "Request approved." : "Request denied.",
       });
+      // Broadcast so both the requester's feature list and the notification bell refresh
+      broadcastRequestUpdate();
       await loadIncoming();
     } catch (e) {
       setToast({ kind: "error", message: (e as Error).message });

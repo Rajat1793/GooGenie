@@ -9,6 +9,8 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth as useClerkAuth } from "@clerk/react";
 import { getDemoToken } from "../api/client.ts";
+import { playChime } from "../lib/chime.ts";
+import { broadcastRequestUpdate } from "./useNotifications.ts";
 
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
@@ -18,6 +20,12 @@ export function useLiveCacheStream() {
 
   useEffect(() => {
     if (!isSignedIn && !getDemoToken()) return;
+
+    // Request browser notification permission for all users so students also
+    // receive OS-level notifications when their requests are decided
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => null);
+    }
 
     let cancelled = false;
     let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
@@ -97,6 +105,40 @@ function handleFrame(frame: string, qc: ReturnType<typeof useQueryClient>) {
       try {
         const parsed = JSON.parse(data) as { eventId?: string };
         if (parsed.eventId) qc.invalidateQueries({ queryKey: ["calendar", "event", parsed.eventId] });
+      } catch { /* ignore */ }
+      break;
+    case "feature.request.created":
+      // Manager receives this — refresh their notification bell immediately
+      try {
+        const parsed = JSON.parse(data) as { requesterName: string; featureKey: string };
+        playChime("in");
+        broadcastRequestUpdate();
+        // Browser notification for manager
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          new Notification("GooGenie — New Request", {
+            body: `${parsed.requesterName} requested access to ${parsed.featureKey.replace(/_/g, " ")}`,
+            icon: "/favicon.svg",
+          });
+        }
+      } catch { /* ignore */ }
+      break;
+    case "feature.request.decided":
+      // Requester (student/teacher) receives this — refresh features + chime
+      try {
+        const parsed = JSON.parse(data) as { featureKey: string; decision: "approved" | "denied" };
+        playChime("out");
+        broadcastRequestUpdate();
+        // Browser notification for requester
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          const feat = parsed.featureKey.replace(/_/g, " ");
+          const approved = parsed.decision === "approved";
+          new Notification(approved ? "GooGenie — Access Granted ✓" : "GooGenie — Request Denied", {
+            body: approved
+              ? `You now have access to: ${feat}`
+              : `Your request for ${feat} was denied`,
+            icon: "/favicon.svg",
+          });
+        }
       } catch { /* ignore */ }
       break;
     default:

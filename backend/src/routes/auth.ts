@@ -55,40 +55,58 @@ authRouter.post("/auth/login", async (req: Request, res: Response, next: NextFun
 
 // ── POST /v1/auth/clerk-sync ───────────────────────────────────────────────────
 // Called after Clerk sign-in to upsert the user in our DB.
-// Returns whether manager selection is required (new user with no manager).
+// IMPORTANT: `role` is only accepted when the user explicitly selects a role on
+// the login page (stored as `googenie-pending-role` in localStorage).
+// If no role is supplied (page reload while already signed-in), the existing DB
+// role/tenant is preserved — the backend never downgrades an existing user.
 authRouter.post("/auth/clerk-sync", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { userId: clerkUserId } = req.auth!;
     const parsed = z.object({
       email: z.string().email(),
       displayName: z.string().min(1),
-      // Role set by the login tab — determines what the user sees after sign-in
       role: z.enum(["super_admin", "manager_admin", "user"]).optional(),
     }).safeParse(req.body);
     if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Email and displayName required", false, req.traceId);
 
-    const chosenRole = parsed.data.role ?? "user";
-
-    // Each role lives in its own tenant namespace so data is logically isolated:
-    //   super_admin  → dev-admin
-    //   manager_admin → dev-teachers
-    //   user          → dev-students
     const ROLE_TENANT: Record<string, string> = {
-      super_admin: "dev-admin",
+      super_admin:   "dev-admin",
       manager_admin: "dev-teachers",
-      user: "dev-students",
+      user:          "dev-students",
     };
-    const tenantId = ROLE_TENANT[chosenRole] ?? TENANT_ID;
+
+    // If no role was sent (page reload / background clerkSync), look up the
+    // existing DB row and keep the current role/tenant rather than defaulting
+    // to "user" which would silently demote a Big Boss to a Student.
+    let chosenRole: import("../auth/roles.js").Role;
+    let tenantId: string;
+
+    if (parsed.data.role) {
+      // Explicit role chosen on the login page — honour it.
+      chosenRole = parsed.data.role;
+      tenantId = ROLE_TENANT[chosenRole] ?? TENANT_ID;
+    } else {
+      // No role sent — check if the user already has a DB row.
+      const existing = await getUserByClerkId(clerkUserId);
+      if (existing) {
+        // Keep existing role and tenant — do NOT overwrite.
+        chosenRole = existing.role as import("../auth/roles.js").Role;
+        tenantId = existing.tenantId;
+      } else {
+        // Brand-new user with no role selection → default to student.
+        chosenRole = "user";
+        tenantId = ROLE_TENANT.user;
+      }
+    }
 
     const user = await upsertClerkUser({
       clerkUserId,
       tenantId,
       email: parsed.data.email,
       displayName: parsed.data.displayName,
-      role: chosenRole as import("../auth/roles.js").Role,
+      role: chosenRole,
     });
 
-    // Teachers without a boss also need to select one for the org chart
     const needsManager = (!user.managerUserId) && (user.role === "user" || user.role === "manager_admin");
     res.json({ user, needsManager });
   } catch (err) { next(err); }
