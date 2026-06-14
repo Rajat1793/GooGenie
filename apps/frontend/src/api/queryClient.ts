@@ -18,9 +18,16 @@ export const queryClient = new QueryClient({
       // Keep last successful data for 5 min even after components unmount,
       // so navigating back is instant.
       gcTime: 5 * 60_000,
-      refetchOnWindowFocus: true,
+      // Disabled: focus-refetch fires on every tab-switch and popup close.
+      // With 100-300 req/min limits, background polls every 60s are sufficient.
+      refetchOnWindowFocus: false,
       refetchOnReconnect: true,
-      retry: 1,
+      retry: (failureCount, error) => {
+        // Never retry 429s — backing off is handled by the 60s background poll.
+        const status = (error as { status?: number })?.status;
+        if (status === 429) return false;
+        return failureCount < 1;
+      },
     },
     mutations: {
       retry: 0,

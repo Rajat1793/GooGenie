@@ -26,8 +26,11 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }));
-    throw new Error(err.message ?? "Request failed");
+    const body = await res.json().catch(() => ({ message: res.statusText }));
+    // Attach the HTTP status so React Query's retry callback can inspect it
+    // and avoid retrying 429s (which would only make rate-limit exhaustion worse).
+    const err = Object.assign(new Error(body.message ?? "Request failed"), { status: res.status });
+    throw err;
   }
 
   return res.json() as Promise<T>;

@@ -65,13 +65,15 @@ export function useMarkThreadRead() {
     },
 
     onError: (_err, _threadId, ctx) => {
-      // Roll back
+      // Roll back only if not a 429 — on 429 the server didn't process the
+      // request so the thread is still unread; roll back is correct.
       ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data));
     },
 
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["email", "threads"] });
-    },
+    // No onSuccess invalidation: the optimistic update is already applied and
+    // a background refetch every 60s will reconcile any drift.
+    // Firing invalidateQueries here would immediately trigger an extra GET and
+    // amplify rate-limit consumption.
   });
 }
 
@@ -94,8 +96,18 @@ export function useTrashThread() {
       return { snapshots };
     },
 
+    // On error (e.g. 429): roll back the optimistic removal so the thread
+    // reappears in the list. Don't fire an extra GET — that would create
+    // another 429 and extend the outage.
     onError: (_err, _id, ctx) => ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data)),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["email", "threads"] }),
+
+    // On success: the item is already gone from the cache optimistically.
+    // Schedule a background reconciliation refetch after a short delay so any
+    // server-side cascade (e.g. thread count update) is picked up without
+    // hammering the API immediately.
+    onSuccess: () => {
+      setTimeout(() => qc.invalidateQueries({ queryKey: ["email", "threads"] }), 1500);
+    },
   });
 }
 
@@ -119,7 +131,9 @@ export function useDeleteCalendarEvent() {
     },
 
     onError: (_err, _id, ctx) => ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data)),
-    onSettled: () => qc.invalidateQueries({ queryKey: ["calendar", "events"] }),
+    onSuccess: () => {
+      setTimeout(() => qc.invalidateQueries({ queryKey: ["calendar", "events"] }), 1500);
+    },
   });
 }
 
