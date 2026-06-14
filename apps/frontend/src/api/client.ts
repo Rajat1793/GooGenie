@@ -380,6 +380,7 @@ export const authApi2 = {
   orgTree: () => apiFetch<{
     tree: Array<DbUser & { children: Array<DbUser & { children: DbUser[] }> }>;
     unassigned: DbUser[];
+    unassigned_teachers: DbUser[];
     stats: { bigBoss: number; teachers: number; students: number };
   }>("/v1/auth/org-tree"),
 };

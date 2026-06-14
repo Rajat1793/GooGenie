@@ -130,15 +130,21 @@ function TeacherBranch({ teacher }: { teacher: TeacherNode }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function OrgTreePage() {
-  const [tree, setTree]           = useState<BossNode[]>([]);
-  const [unassigned, setUnassigned] = useState<DbUser[]>([]);
-  const [stats, setStats]         = useState<{ bigBoss: number; teachers: number; students: number } | null>(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
+  const [tree, setTree]                     = useState<BossNode[]>([]);
+  const [unassigned, setUnassigned]         = useState<DbUser[]>([]);
+  const [unassignedTeachers, setUnassignedTeachers] = useState<DbUser[]>([]);
+  const [stats, setStats]                   = useState<{ bigBoss: number; teachers: number; students: number } | null>(null);
+  const [loading, setLoading]               = useState(true);
+  const [error, setError]                   = useState<string | null>(null);
 
   useEffect(() => {
     authApi2.orgTree()
-      .then((r) => { setTree(r.tree as BossNode[]); setUnassigned(r.unassigned); setStats(r.stats); })
+      .then((r) => {
+        setTree(r.tree as BossNode[]);
+        setUnassigned(r.unassigned);
+        setUnassignedTeachers(r.unassigned_teachers ?? []);
+        setStats(r.stats);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -226,12 +232,25 @@ export function OrgTreePage() {
         </div>
       </div>
 
-      {/* Unassigned students */}
-      {unassigned.length > 0 && (
-        <div className="mt-12 pt-6" style={{ borderTop: "2px dashed var(--c-outline-variant)" }}>
+      {/* Unassigned teachers */}
+      {unassignedTeachers.length > 0 && (
+        <div className="mt-10 pt-6" style={{ borderTop: "2px dashed var(--c-outline-variant)" }}>
           <p className="section-label mb-4 text-center">
             <span className="material-symbols-outlined text-sm mr-1" style={{ color: "var(--c-outline)" }}>person_off</span>
-            Unassigned Students ({unassigned.length})
+            Teachers without a Boss ({unassignedTeachers.length})
+          </p>
+          <div className="flex flex-wrap gap-3 justify-center">
+            {unassignedTeachers.map((t) => <OrgCard key={t.id} user={t} size="md" />)}
+          </div>
+        </div>
+      )}
+
+      {/* Unassigned students */}
+      {unassigned.length > 0 && (
+        <div className="mt-10 pt-6" style={{ borderTop: "2px dashed var(--c-outline-variant)" }}>
+          <p className="section-label mb-4 text-center">
+            <span className="material-symbols-outlined text-sm mr-1" style={{ color: "var(--c-outline)" }}>person_off</span>
+            Students without a Teacher ({unassigned.length})
           </p>
           <div className="flex flex-wrap gap-3 justify-center">
             {unassigned.map((s) => <OrgCard key={s.id} user={s} size="sm" />)}

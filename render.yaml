@@ -1,4 +1,60 @@
+databases:
+  - name: googenie-postgres
+    databaseName: googenie
+    user: googenie
+    plan: free                         # upgrade to starter for prod
+
 services:
+  # ── Backend API ────────────────────────────────────────────────────────────
+  - type: web
+    name: googenie-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm run build
+    startCommand: node dist/src/index.js
+    healthCheckPath: /health
+    plan: free                         # upgrade to starter for prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: googenie-postgres
+          property: connectionString
+      # Generate: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+      - key: NIMBUS_ACCESS_TOKEN_SECRET
+        sync: false
+      - key: NIMBUS_REFRESH_TOKEN_SECRET
+        sync: false
+      # Clerk — from https://dashboard.clerk.com → API Keys
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      # Corsair Google OAuth — from your Google Cloud Console
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false                    # e.g. https://googenie-backend.onrender.com/v1/connect/callback/gmail
+      # Corsair encryption key (32 hex chars)
+      # Generate: node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"
+      - key: CORSAIR_KEK
+        sync: false
+      - key: CORSAIR_DB_PATH
+        value: /var/data/corsair.db    # Render ephemeral disk — see note below
+      # Optional: demo HMAC tokens for hackathon preview (skip in production)
+      - key: DEMO_TOKEN_SUPER_ADMIN
+        sync: false
+      - key: DEMO_TOKEN_MANAGER
+        sync: false
+      - key: DEMO_TOKEN_USER
+        sync: false
+
+  # ── Frontend SPA ───────────────────────────────────────────────────────────
   - type: web
     name: googenie-frontend
     runtime: static
@@ -9,7 +65,9 @@ services:
         source: /*
         destination: /index.html
     envVars:
+      # Clerk publishable key (starts with pk_live_ or pk_test_)
       - key: VITE_CLERK_PUBLISHABLE_KEY
         sync: false
+      # Full URL of the backend service, e.g. https://googenie-backend.onrender.com
       - key: VITE_API_URL
         sync: false

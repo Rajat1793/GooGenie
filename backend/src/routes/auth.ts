@@ -215,16 +215,18 @@ authRouter.get("/auth/org-tree", requireAuth, async (req: Request, res: Response
     const tree = bigBoss.map(boss => ({
       ...boss,
       children: teachers
-        .filter(t => t.managerUserId === boss.id || !t.managerUserId)
+        .filter(t => t.managerUserId === boss.id)   // only teachers explicitly assigned to this boss
         .map(teacher => ({
           ...teacher,
           children: students.filter(s => s.managerUserId === teacher.id)
         }))
     }));
 
-    const unassigned = students.filter(s => !s.managerUserId);
+    // Teachers with no boss assigned yet — show at root level so they're visible
+    const unassignedTeachers = teachers.filter(t => !t.managerUserId || !bigBoss.find(b => b.id === t.managerUserId));
+    const unassigned = students.filter(s => !s.managerUserId || !teachers.find(t => t.id === s.managerUserId));
 
-    res.json({ tree, unassigned, stats: { bigBoss: bigBoss.length, teachers: teachers.length, students: students.length } });
+    res.json({ tree, unassigned, unassigned_teachers: unassignedTeachers, stats: { bigBoss: bigBoss.length, teachers: teachers.length, students: students.length } });
   } catch (err) { next(err); }
 });
 
