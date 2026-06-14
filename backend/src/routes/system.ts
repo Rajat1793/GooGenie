@@ -263,7 +263,32 @@ const openApiSpec = {
       patch: { tags: ["Manager"], summary: "Update feature flags for a student", parameters: [{ name: "userId", in: "path", required: true, schema: { type: "string" } }], requestBody: { required: true, content: { "application/json": { schema: { type: "object", properties: { featureKey: { type: "string" }, isEnabled: { type: "boolean" } } } } } }, responses: { 200: { description: "Updated" } } },
     },
     "/agent/execute": {
-      post: { tags: ["Agent"], summary: "Execute an AI agent task", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["task"], properties: { task: { type: "string", description: "Natural language task" }, context: { type: "object" } } } } } }, responses: { 200: { description: "Agent result" } } },
+      post: { tags: ["Agent"], summary: "Execute an AI agent task (LLM tool-calling)", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["prompt"], properties: { prompt: { type: "string", description: "Natural language task description" }, context: { type: "object" } } } } } }, responses: { 200: { description: "Agent result with action, message, suggestions, and optional data" } } },
+    },
+    "/ai/summarize-thread": {
+      post: { tags: ["AI"], summary: "Summarise an email thread (requires ai_summary feature)", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["thread_id"], properties: { thread_id: { type: "string" } } } } } }, responses: { 200: { description: "Summary with key_points, action_items, sentiment. Returns ai_available:false when OPENAI_API_KEY not set." } } },
+    },
+    "/ai/compose": {
+      post: { tags: ["AI"], summary: "AI-generate an email body/subject (requires ai_compose feature)", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["type", "tone", "context"], properties: { type: { type: "string", enum: ["new", "reply"] }, tone: { type: "string", enum: ["professional", "friendly", "concise"] }, context: { type: "string" }, thread_snippet: { type: "string" }, recipient_name: { type: "string" } } } } } }, responses: { 200: { description: "Generated body, optional subject, and alternative variants." } } },
+    },
+    "/ai/suggest-slots": {
+      post: { tags: ["AI"], summary: "Smart calendar scheduler — suggest available meeting slots (requires calendar_write)", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["description"], properties: { description: { type: "string", description: "Natural language meeting description" }, duration_minutes: { type: "integer", default: 30, minimum: 15, maximum: 480 }, earliest: { type: "string", format: "date-time" }, latest: { type: "string", format: "date-time" }, attendee_emails: { type: "array", items: { type: "string", format: "email" } } } } } } }, responses: { 200: { description: "Up to 5 ranked available slots with AI rationale." } } },
+    },
+    "/ai/search-emails": {
+      post: { tags: ["AI"], summary: "Semantic email search via pgvector cosine similarity (requires email_read)", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["query"], properties: { query: { type: "string", description: "Natural language search query" }, limit: { type: "integer", default: 10, minimum: 1, maximum: 20 } } } } } }, responses: { 200: { description: "Ranked thread results with similarity scores. Returns embeddings_available:false if pgvector not installed." } } },
+    },
+    "/ai/index-emails": {
+      post: { tags: ["AI"], summary: "Backfill email embeddings for semantic search (idempotent, content-hashed)", requestBody: { required: false, content: { "application/json": { schema: { type: "object", properties: { limit: { type: "integer", default: 50, minimum: 1, maximum: 100 } } } } } }, responses: { 200: { description: "indexed and skipped counts." } } },
+    },
+    "/me/feature-requests": {
+      post: { tags: ["Features"], summary: "Submit a feature-access request to your manager", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["feature_key"], properties: { feature_key: { type: "string", enum: ["email_read", "email_write", "calendar_read", "calendar_write", "ai_summary", "ai_compose"] }, reason: { type: "string" } } } } } }, responses: { 200: { description: "Created request" }, 409: { description: "Pending request already exists" } } },
+      get: { tags: ["Features"], summary: "List the caller's own submitted feature requests", responses: { 200: { description: "Array of feature requests with status" } } },
+    },
+    "/me/feature-requests/incoming": {
+      get: { tags: ["Features"], summary: "Incoming feature requests (manager/super_admin view). super_admin sees all requests across every manager.", parameters: [{ name: "status", in: "query", schema: { type: "string", enum: ["pending", "approved", "denied"] } }], responses: { 200: { description: "Requests array + pending_count" } } },
+    },
+    "/me/feature-requests/{id}/decide": {
+      post: { tags: ["Features"], summary: "Approve or deny a feature request. super_admin can decide any request; managers only their own.", parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }], requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["decision"], properties: { decision: { type: "string", enum: ["approved", "denied"] } } } } } }, responses: { 200: { description: "Updated request" }, 403: { description: "Not the addressed manager" } } },
     },
   },
 };
