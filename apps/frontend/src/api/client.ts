@@ -371,7 +371,72 @@ export const aiApi = {
       method: "POST",
       body: JSON.stringify(args),
     }),
+
+  suggestSlots: (args: {
+    description: string;
+    duration_minutes?: number;
+    earliest?: string;
+    latest?: string;
+  }) =>
+    apiFetch<AiSlots>("/v1/ai/suggest-slots", {
+      method: "POST",
+      body: JSON.stringify(args),
+    }),
+
+  searchEmails: (query: string, limit = 10) =>
+    apiFetch<AiSearchResults>("/v1/ai/search-emails", {
+      method: "POST",
+      body: JSON.stringify({ query, limit }),
+    }),
+
+  indexEmails: (limit = 50) =>
+    apiFetch<{ ai_available: boolean; embeddings_available?: boolean; indexed: number; skipped: number; total: number; hint?: string }>(
+      "/v1/ai/index-emails",
+      { method: "POST", body: JSON.stringify({ limit }) },
+    ),
+
+  agent: (prompt: string) =>
+    apiFetch<AgentResponse>("/v1/agent/execute", {
+      method: "POST",
+      body: JSON.stringify({ prompt }),
+    }),
 };
+
+export interface AgentResponse {
+  action: string;
+  message: string;
+  suggestions: string[];
+  data?: Record<string, unknown>;
+  model?: string;
+  ai_available: boolean;
+}
+
+export interface AiSlot {
+  start: string;
+  end: string;
+  score: number;
+  reason: string;
+}
+export interface AiSlots {
+  slots: AiSlot[];
+  rationale: string | null;
+  searched_window: { start: string; end: string };
+  ai_available: boolean;
+  cached?: boolean;
+}
+export interface AiSearchResult {
+  thread_id: string;
+  subject: string | null;
+  snippet: string | null;
+  from_addr: string | null;
+  similarity: number;
+}
+export interface AiSearchResults {
+  ai_available: boolean;
+  embeddings_available?: boolean;
+  results: AiSearchResult[];
+  hint?: string;
+}
 
 // Demo accounts
 export interface DemoAccount {

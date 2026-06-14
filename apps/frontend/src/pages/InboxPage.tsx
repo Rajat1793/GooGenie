@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { emailApi, aiApi, type EmailThread, type AiSummary } from "../api/client.ts";
+import { emailApi, aiApi, type EmailThread, type AiSummary, type AiSearchResult } from "../api/client.ts";
 import { useEmailThreads, useMarkThreadRead, useTrashThread } from "../api/hooks.ts";
 import { useClerkReady } from "../hooks/useClerkReady.ts";
 import { ConnectionBar, useConnectionStatus } from "../components/ConnectBanner.tsx";
@@ -360,6 +360,55 @@ export function InboxPage() {
   >("all");
   const [serverSearch, setServerSearch] = useState(""); // debounced server search
 
+  // ── Semantic AI search ────────────────────────────────────────────────────
+  const canSemantic = hasFeature("ai_summary"); // reuse ai_summary as proxy for AI access
+  const [aiSearchOn, setAiSearchOn] = useState(false);
+  const [aiResults, setAiResults] = useState<AiSearchResult[] | null>(null);
+  const [aiSearchBusy, setAiSearchBusy] = useState(false);
+  const [aiSearchHint, setAiSearchHint] = useState<string | null>(null);
+
+  async function runAiSearch(q: string) {
+    if (!q.trim()) { setAiResults(null); setAiSearchHint(null); return; }
+    setAiSearchBusy(true);
+    setAiSearchHint(null);
+    try {
+      const r = await aiApi.searchEmails(q.trim(), 15);
+      if (!r.ai_available) {
+        setAiSearchHint("AI not configured (server is missing OPENAI_API_KEY).");
+        setAiResults([]);
+      } else if (r.embeddings_available === false) {
+        setAiSearchHint(r.hint ?? "Vector search unavailable on this database.");
+        setAiResults([]);
+      } else if (r.results.length === 0) {
+        setAiSearchHint("No semantically matching emails. Try indexing first.");
+        setAiResults([]);
+      } else {
+        setAiResults(r.results);
+      }
+    } catch (e) {
+      setAiSearchHint((e as Error).message);
+      setAiResults([]);
+    } finally {
+      setAiSearchBusy(false);
+    }
+  }
+
+  async function indexEmails() {
+    setAiSearchBusy(true);
+    setAiSearchHint("Indexing recent emails…");
+    try {
+      const r = await aiApi.indexEmails(50);
+      if (!r.ai_available) setAiSearchHint("AI not configured.");
+      else if (r.embeddings_available === false) setAiSearchHint("Vector DB not available.");
+      else setAiSearchHint(`Indexed ${r.indexed} emails (${r.skipped} already up-to-date).`);
+    } catch (e) {
+      setAiSearchHint((e as Error).message);
+    } finally {
+      setAiSearchBusy(false);
+    }
+  }
+
+
   // React Query — instant cache hits on revisit + 60s background refetch
   const { data, isLoading: loading, error, refetch } = useEmailThreads({
     q: serverSearch,
@@ -373,8 +422,13 @@ export function InboxPage() {
 
   // Trigger server search when user presses Enter
   function handleSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") { setServerSearch(search); }
-    if (e.key === "Escape") { setSearch(""); setServerSearch(""); }
+    if (e.key === "Enter") {
+      if (aiSearchOn) void runAiSearch(search);
+      else setServerSearch(search);
+    }
+    if (e.key === "Escape") {
+      setSearch(""); setServerSearch(""); setAiResults(null); setAiSearchHint(null);
+    }
   }
 
   // Mark a thread as read locally before server confirms (optimistic)
@@ -432,6 +486,32 @@ export function InboxPage() {
     }
     return searchOk && filterOk;
   });
+
+  // When AI search is on with results, override the regular filtered list with
+  // the semantic match order (preserving similarity score for badge rendering).
+  const aiOrdered: Array<EmailThread & { similarity?: number }> = (aiSearchOn && aiResults && aiResults.length > 0)
+    ? aiResults.map((r) => {
+        const existing = threads.find((t) => t.id === r.thread_id);
+        if (existing) return { ...existing, similarity: r.similarity };
+        // Build a stub thread row from the embedding metadata if we don't have it cached locally
+        return {
+          id: r.thread_id,
+          tenantId: "",
+          ownerUserId: "",
+          subject: r.subject ?? "(no subject)",
+          snippet: r.snippet ?? "",
+          from: r.from_addr ?? "unknown",
+          updatedAt: new Date().toISOString(),
+          isUnread: false,
+          labelIds: [],
+          similarity: r.similarity,
+        } satisfies EmailThread & { similarity: number };
+      })
+    : [];
+
+  const displayList: Array<EmailThread & { similarity?: number }> = aiSearchOn && aiResults
+    ? aiOrdered
+    : filtered;
 
   const unreadCount = threads.filter((t) => t.isUnread).length;
 
@@ -493,27 +573,72 @@ export function InboxPage() {
           </div>
           {/* Search */}
           <div className="relative">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-base" style={{ color: "var(--c-outline)" }}>search</span>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={handleSearchKey} placeholder="Search… (Enter to search server)" className="pl-9 pr-4 py-2 rounded-xl text-sm w-full outline-none" style={{ background: "var(--c-surface-container)", border: `1px solid ${serverSearch ? "var(--c-primary)" : "var(--c-outline-variant)"}`, color: "var(--c-on-surface)" }} />
-            {(search || serverSearch) && (
-              <button onClick={() => { setSearch(""); setServerSearch(""); }} className="absolute right-2 top-1/2 -translate-y-1/2" style={{ color: "var(--c-outline)" }}>
-                <span className="material-symbols-outlined text-base">close</span>
-              </button>
-            )}
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-base" style={{ color: aiSearchOn ? "var(--c-tertiary)" : "var(--c-outline)" }}>{aiSearchOn ? "auto_awesome" : "search"}</span>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={handleSearchKey}
+              placeholder={aiSearchOn ? "Ask in plain English… (Enter)" : "Search… (Enter to search server)"}
+              className="pl-9 pr-20 py-2 rounded-xl text-sm w-full outline-none"
+              style={{
+                background: "var(--c-surface-container)",
+                border: `1px solid ${aiSearchOn ? "var(--c-tertiary)" : (serverSearch ? "var(--c-primary)" : "var(--c-outline-variant)")}`,
+                color: "var(--c-on-surface)",
+              }}
+            />
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              {(search || serverSearch || aiResults) && (
+                <button
+                  onClick={() => { setSearch(""); setServerSearch(""); setAiResults(null); setAiSearchHint(null); }}
+                  className="p-0.5"
+                  style={{ color: "var(--c-outline)" }}
+                  title="Clear"
+                >
+                  <span className="material-symbols-outlined text-base">close</span>
+                </button>
+              )}
+              {canSemantic && (
+                <button
+                  onClick={() => { setAiSearchOn((v) => !v); setAiResults(null); setAiSearchHint(null); }}
+                  className="px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide"
+                  style={aiSearchOn
+                    ? { background: "var(--c-tertiary)", color: "var(--c-on-tertiary)" }
+                    : { background: "var(--c-surface-container-high)", color: "var(--c-on-surface-variant)", border: "1px solid var(--c-outline-variant)" }}
+                  title="Toggle AI semantic search"
+                >
+                  AI
+                </button>
+              )}
+            </div>
           </div>
+          {aiSearchOn && (
+            <div className="mt-2 flex items-center justify-between text-[11px]" style={{ color: "var(--c-on-surface-variant)" }}>
+              <span>{aiSearchBusy ? "Searching…" : aiSearchHint ?? "Tip: \"emails about budget last week\""}</span>
+              <button
+                onClick={() => void indexEmails()}
+                disabled={aiSearchBusy}
+                className="px-2 py-0.5 rounded text-[10px] font-semibold disabled:opacity-40"
+                style={{ background: "var(--c-surface-container-high)", color: "var(--c-on-surface)", border: "1px solid var(--c-outline-variant)" }}
+                title="Index recent emails for semantic search"
+              >
+                Re-index
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Thread items */}
         <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5">
           {loading && <div className="flex items-center justify-center py-16"><span className="material-symbols-outlined animate-spin text-3xl" style={{ color: "var(--c-primary)" }}>progress_activity</span></div>}
           {error && <p className="text-sm px-4 py-8 text-center" style={{ color: "var(--c-error)" }}>{(error as Error).message}</p>}
-          {!loading && filtered.length === 0 && !error && (
+          {!loading && displayList.length === 0 && !error && (
             <p className="text-sm px-4 py-8 text-center" style={{ color: "var(--c-on-surface-variant)" }}>
-              {search ? `No results for "${search}"` : filter === "unread" ? "No unread emails" : "No threads found"}
+              {aiSearchOn && search ? `No semantic matches for "${search}"` : search ? `No results for "${search}"` : filter === "unread" ? "No unread emails" : "No threads found"}
             </p>
           )}
-          {filtered.map((thread) => {
+          {displayList.map((thread) => {
             const isActive = selected?.id === thread.id;
+            const sim = thread.similarity;
             return (
               <button key={thread.id} onClick={() => openThread(thread)}
                 className="w-full text-left p-4 rounded-xl transition-all duration-150 relative overflow-hidden"
@@ -526,7 +651,16 @@ export function InboxPage() {
                   <span className={`text-xs truncate ${thread.isUnread ? "font-bold" : "font-medium"}`} style={{ color: "var(--c-on-surface-variant)" }}>
                     {thread.from || "unknown"}
                   </span>
-                  <span className="text-[11px] shrink-0" style={{ color: "var(--c-on-surface-variant)" }}>
+                  <span className="text-[11px] shrink-0 flex items-center gap-1" style={{ color: "var(--c-on-surface-variant)" }}>
+                    {sim !== undefined && (
+                      <span
+                        className="px-1 rounded text-[9px] font-bold"
+                        style={{ background: "var(--c-tertiary-container)", color: "var(--c-on-tertiary-container)" }}
+                        title={`Semantic similarity: ${(sim * 100).toFixed(0)}%`}
+                      >
+                        {Math.round(sim * 100)}%
+                      </span>
+                    )}
                     {new Date(thread.updatedAt).toLocaleDateString()}
                   </span>
                 </div>

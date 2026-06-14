@@ -7,6 +7,7 @@ import { getDemoToken, setDemoToken } from "../api/client.ts";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useNotifications } from "../hooks/useNotifications.ts";
 import { RoleBadge } from "./RoleBadge.tsx";
+import { AgentBar } from "./AgentBar.tsx";
 import { playChime } from "../lib/chime.ts";
 
 const NAV = [
@@ -363,6 +364,7 @@ export function Shell({ children }: { children: ReactNode }) {
           {children}
         </main>
       </div>
+      <AgentBar />
     </div>
   );
 }

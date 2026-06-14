@@ -12,6 +12,8 @@
 import OpenAI from "openai";
 
 export const MODEL = "gpt-4o-mini";
+export const EMBEDDING_MODEL = "text-embedding-3-small";
+export const EMBEDDING_DIM = 1536;
 
 // Lazy singleton so we only create the client when the key is present
 let _client: OpenAI | null = null;
@@ -73,3 +75,27 @@ export async function chatWithTools(
     temperature: 0.3,
   });
 }
+
+/**
+ * Generate an embedding vector for arbitrary text.
+ * Returns null if AI unavailable or on API failure.
+ *
+ * Used by the semantic email search feature — input text is passed to
+ * text-embedding-3-small (1536-dim, ~$0.02 per million tokens).
+ */
+export async function embed(text: string): Promise<number[] | null> {
+  const client = getClient();
+  if (!client) return null;
+  if (!text || text.trim().length === 0) return null;
+  try {
+    const response = await client.embeddings.create({
+      model: EMBEDDING_MODEL,
+      input: text.slice(0, 8000), // ~8K char cap, well under token limit
+    });
+    return response.data[0]?.embedding ?? null;
+  } catch (err) {
+    console.warn("[openai] embed failed:", (err as Error).message);
+    return null;
+  }
+}
+
