@@ -5,7 +5,7 @@
  * POST /v1/ai/summarize-thread  — summarise an email thread (requires ai_summary)
  * POST /v1/ai/compose           — generate email body/subject (requires ai_compose)
  *
- * Both endpoints gracefully degrade when OPENAI_API_KEY is not set, returning
+ * Both endpoints gracefully degrade when MISTRAL_API_KEY is not set, returning
  * a structured "not configured" response rather than a 500.
  */
 import { Router, type Request, type Response, type NextFunction } from "express";
@@ -57,7 +57,7 @@ aiRouter.post(
       if (!isAiAvailable()) {
         res.status(200).json({
           ai_available: false,
-          hint: "Set OPENAI_API_KEY in your environment to enable AI summaries.",
+          hint: "Set MISTRAL_API_KEY in your environment to enable AI summaries.",
         });
         return;
       }
@@ -138,7 +138,7 @@ aiRouter.post(
       if (!isAiAvailable()) {
         res.status(200).json({
           ai_available: false,
-          hint: "Set OPENAI_API_KEY in your environment to enable AI compose.",
+          hint: "Set MISTRAL_API_KEY in your environment to enable AI compose.",
         });
         return;
       }
@@ -317,7 +317,7 @@ aiRouter.post(
       if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid search payload", false, req.traceId);
 
       if (!isAiAvailable()) {
-        res.status(200).json({ ai_available: false, results: [], hint: "Set OPENAI_API_KEY to enable semantic search." });
+        res.status(200).json({ ai_available: false, results: [], hint: "Set MISTRAL_API_KEY to enable semantic search." });
         return;
       }
       if (!(await embeddingsAvailable())) {

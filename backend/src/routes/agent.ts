@@ -197,7 +197,7 @@ function keywordFallback(prompt: string): { action: string; message: string; sug
     return { action: "summarize", message: "Open a thread and click ✨ Summarize to get an AI summary.", suggestions: ["Open Inbox", "Click Summarize"] };
   return {
     action: "unknown",
-    message: "Add OPENAI_API_KEY to enable AI agent mode. Currently limited to keyword matching.",
+    message: "Add MISTRAL_API_KEY to enable AI agent mode. Currently limited to keyword matching.",
     suggestions: ["Send an email", "Schedule a meeting", "Summarize a thread"],
   };
 }

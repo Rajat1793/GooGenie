@@ -1,8 +1,8 @@
 /**
- * OpenAI client wrapper.
+ * Mistral AI client wrapper (OpenAI-compatible endpoint).
  *
- * Uses gpt-4o-mini by default — fast, cheap, great for email tasks.
- * Set OPENAI_API_KEY in your environment. Without the key every function
+ * Uses mistral-small-latest — free tier, no rate limits.
+ * Set MISTRAL_API_KEY in your environment. Without the key every function
  * returns null and endpoints return a graceful "AI not configured" response.
  *
  * Usage:
@@ -11,23 +11,26 @@
  */
 import OpenAI from "openai";
 
-export const MODEL = "gpt-4o-mini";
-export const EMBEDDING_MODEL = "text-embedding-3-small";
-export const EMBEDDING_DIM = 1536;
+export const MODEL = "mistral-small-latest";
+export const EMBEDDING_MODEL = "mistral-embed";
+export const EMBEDDING_DIM = 1024;
 
 // Lazy singleton so we only create the client when the key is present
 let _client: OpenAI | null = null;
 
 function getClient(): OpenAI | null {
-  if (!process.env.OPENAI_API_KEY) return null;
+  if (!process.env.MISTRAL_API_KEY) return null;
   if (!_client) {
-    _client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    _client = new OpenAI({
+      apiKey: process.env.MISTRAL_API_KEY,
+      baseURL: "https://api.mistral.ai/v1",
+    });
   }
   return _client;
 }
 
 export function isAiAvailable(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY);
+  return Boolean(process.env.MISTRAL_API_KEY);
 }
 
 /**
@@ -94,7 +97,7 @@ export async function embed(text: string): Promise<number[] | null> {
     });
     return response.data[0]?.embedding ?? null;
   } catch (err) {
-    console.warn("[openai] embed failed:", (err as Error).message);
+    console.warn("[mistral] embed failed:", (err as Error).message);
     return null;
   }
 }
