@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext.tsx";
+import { FeatureProvider } from "./context/FeatureContext.tsx";
 import { useAuth as useClerkAuthDirect, useUser as useClerkUser } from "@clerk/react";
 import { useEffect, useState } from "react";
 import { setClerkTokenGetter } from "./api/client.ts";
@@ -164,8 +165,10 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <ClerkTokenWirer />
-        <AppRoutes />
+        <FeatureProvider>
+          <ClerkTokenWirer />
+          <AppRoutes />
+        </FeatureProvider>
       </AuthProvider>
     </BrowserRouter>
   );

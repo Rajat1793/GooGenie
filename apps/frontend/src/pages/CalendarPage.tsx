@@ -3,6 +3,8 @@ import { calendarApi, type CalendarEvent } from "../api/client.ts";
 import { useCalendarEvents, useDeleteCalendarEvent } from "../api/hooks.ts";
 import { useClerkReady } from "../hooks/useClerkReady.ts";
 import { ConnectionBar, useConnectionStatus } from "../components/ConnectBanner.tsx";
+import { useFeatures } from "../context/FeatureContext.tsx";
+import { FeatureDisabledCard } from "../components/FeatureDisabledCard.tsx";
 
 function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreated: (e: CalendarEvent) => void }) {
   const [title, setTitle] = useState("");
@@ -381,7 +383,20 @@ function EventCard({ event, onEdit, onDelete }: { event: CalendarEvent; onEdit: 
 
 export function CalendarPage() {
   const ready = useClerkReady();
+  const { hasFeature } = useFeatures();
   const { status: connStatus, loading: connLoading, refresh: refreshConn } = useConnectionStatus();
+
+  // Feature gate
+  if (!hasFeature("calendar_read")) {
+    return (
+      <FeatureDisabledCard
+        featureKey="calendar_read"
+        title="Calendar Locked"
+        description="You don't have access to the calendar yet. Request it from your teacher and they can enable it for you."
+        icon="calendar_month"
+      />
+    );
+  }
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [checkingAvailability, setCheckingAvailability] = useState(false);

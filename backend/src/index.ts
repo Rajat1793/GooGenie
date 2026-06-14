@@ -21,6 +21,7 @@ import { managerRouter } from "./routes/manager.js";
 import { contentRouter } from "./routes/content.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { agentRouter } from "./routes/agent.js";
+import { aiRouter } from "./routes/ai.js";
 import { connectRouter } from "./routes/connect.js";
 import { demoRouter } from "./routes/demo.js";
 import { authRouter } from "./routes/auth.js";
@@ -81,6 +82,7 @@ app.use("/v1/manager", managerRouter); // /v1/manager/users, /v1/manager/bulk-ac
 app.use("/v1", contentRouter);          // /v1/email/*, /v1/calendar/*
 app.use("/v1", webhooksRouter);         // /v1/webhooks/gmail, /v1/webhooks/googlecalendar
 app.use("/v1", agentRouter);            // /v1/agent/execute
+app.use("/v1", aiRouter);               // /v1/ai/summarize-thread, /v1/ai/compose
 app.use("/v1", connectRouter);          // /v1/me/connect/*
 app.use("/v1", demoRouter);             // /v1/demo/tokens
 app.use("/v1", authRouter);             // /v1/auth/*

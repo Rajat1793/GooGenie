@@ -49,7 +49,7 @@ contentRouter.get("/email/threads/:threadId", requireAuth, requireFeature("email
 
 // ── Email send / reply ────────────────────────────────────────────────────────
 
-contentRouter.post("/email/messages/send", requireAuth, requireFeature("email_read"), async (req: Request, res: Response, next: NextFunction) => {
+contentRouter.post("/email/messages/send", requireAuth, requireFeature("email_write"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const auth = req.auth!;
     const parsed = sendEmailSchema.safeParse(req.body);
@@ -62,7 +62,7 @@ contentRouter.post("/email/messages/send", requireAuth, requireFeature("email_re
   } catch (err) { next(err); }
 });
 
-contentRouter.post("/email/threads/:threadId/reply", requireAuth, requireFeature("email_read"), async (req: Request, res: Response, next: NextFunction) => {
+contentRouter.post("/email/threads/:threadId/reply", requireAuth, requireFeature("email_write"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const auth = req.auth!;
     const parsed = replyEmailSchema.safeParse(req.body);

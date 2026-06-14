@@ -1,16 +1,25 @@
 import { useEffect, useState } from "react";
-import { emailApi, type EmailThread } from "../api/client.ts";
+import { emailApi, aiApi, type EmailThread, type AiSummary } from "../api/client.ts";
 import { useEmailThreads, useMarkThreadRead, useTrashThread } from "../api/hooks.ts";
 import { useClerkReady } from "../hooks/useClerkReady.ts";
 import { ConnectionBar, useConnectionStatus } from "../components/ConnectBanner.tsx";
+import { useFeatures } from "../context/FeatureContext.tsx";
+import { FeatureDisabledCard } from "../components/FeatureDisabledCard.tsx";
 
 // ── Compose modal ─────────────────────────────────────────────────────────────
-function ComposeModal({ onClose }: { onClose: () => void }) {
+function ComposeModal({ onClose, canAiCompose }: { onClose: () => void; canAiCompose: boolean }) {
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // AI Compose state
+  const [showAiPanel, setShowAiPanel] = useState(false);
+  const [aiTone, setAiTone] = useState<"professional" | "friendly" | "concise">("professional");
+  const [aiContext, setAiContext] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiAlts, setAiAlts] = useState<string[]>([]);
 
   async function handleSend() {
     if (!to.trim() || !subject.trim() || !body.trim()) { setErr("To, subject, and body are required"); return; }
@@ -20,13 +29,79 @@ function ComposeModal({ onClose }: { onClose: () => void }) {
     finally { setSending(false); }
   }
 
+  async function handleAiGenerate() {
+    if (!aiContext.trim() && !subject.trim()) { setErr("Add a subject or context for AI to use"); return; }
+    setAiLoading(true); setErr(null);
+    try {
+      const r = await aiApi.compose({ type: "new", tone: aiTone, context: aiContext || subject, recipient_name: to });
+      if (!r.ai_available) { setErr(r.hint ?? "AI not configured"); return; }
+      setBody(r.body);
+      if (r.subject && !subject) setSubject(r.subject);
+      setAiAlts(r.alternatives ?? []);
+      setShowAiPanel(false);
+    } catch (e) { setErr(e instanceof Error ? e.message : "AI failed"); }
+    finally { setAiLoading(false); }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
       <div className="w-full max-w-2xl rounded-2xl flex flex-col" style={{ background: "var(--c-surface-container-low)", border: "1px solid var(--glass-border)", boxShadow: "var(--glass-shadow)", maxHeight: "90vh" }}>
         <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid var(--c-outline-variant)" }}>
           <h2 className="font-headline text-lg" style={{ color: "var(--c-on-surface)" }}>New Message</h2>
-          <button onClick={onClose} className="btn-ghost p-1.5"><span className="material-symbols-outlined text-xl">close</span></button>
+          <div className="flex items-center gap-2">
+            {canAiCompose && (
+              <button
+                onClick={() => setShowAiPanel(!showAiPanel)}
+                className="btn-ghost text-xs flex items-center gap-1"
+                style={{ color: showAiPanel ? "var(--c-primary)" : undefined }}
+                title="AI Compose"
+              >
+                <span className="material-symbols-outlined text-base">auto_awesome</span>
+                AI Compose
+              </button>
+            )}
+            <button onClick={onClose} className="btn-ghost p-1.5"><span className="material-symbols-outlined text-xl">close</span></button>
+          </div>
         </div>
+
+        {/* AI Compose panel */}
+        {showAiPanel && (
+          <div className="px-6 py-4" style={{ background: "color-mix(in srgb, var(--c-primary) 5%, transparent)", borderBottom: "1px solid var(--c-outline-variant)" }}>
+            <p className="text-xs font-semibold mb-3" style={{ color: "var(--c-primary)" }}>✨ AI Compose</p>
+            <div className="flex gap-2 mb-3">
+              {(["professional", "friendly", "concise"] as const).map((t) => (
+                <button key={t} onClick={() => setAiTone(t)}
+                  className="px-3 py-1 rounded-full text-xs font-semibold border transition-all capitalize"
+                  style={aiTone === t
+                    ? { background: "var(--c-primary)", color: "var(--c-on-primary)", borderColor: "var(--c-primary)" }
+                    : { background: "transparent", color: "var(--c-on-surface-variant)", borderColor: "var(--c-outline-variant)" }}>
+                  {t}
+                </button>
+              ))}
+            </div>
+            <input value={aiContext} onChange={(e) => setAiContext(e.target.value)}
+              placeholder="What's this email about? (optional — uses subject if empty)"
+              className="input-field rounded-xl text-sm mb-3" />
+            <button onClick={handleAiGenerate} disabled={aiLoading}
+              className="btn-primary text-xs disabled:opacity-50 flex items-center gap-1.5">
+              {aiLoading ? <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span> : <span className="material-symbols-outlined text-sm">auto_awesome</span>}
+              {aiLoading ? "Generating…" : "Generate"}
+            </button>
+            {aiAlts.length > 0 && (
+              <div className="mt-3 space-y-1.5">
+                <p className="text-[10px] font-semibold" style={{ color: "var(--c-on-surface-variant)" }}>ALTERNATIVES (click to use)</p>
+                {aiAlts.map((alt, i) => (
+                  <button key={i} onClick={() => setBody(alt)}
+                    className="w-full text-left text-xs px-3 py-2 rounded-xl border transition-all hover:border-primary"
+                    style={{ background: "var(--c-surface-container)", borderColor: "var(--c-outline-variant)", color: "var(--c-on-surface)" }}>
+                    {alt.slice(0, 120)}{alt.length > 120 ? "…" : ""}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {err && <div className="mx-6 mt-3 rounded-xl px-4 py-2 text-sm" style={{ background: "var(--c-error-container)", color: "var(--c-error)" }}>{err}</div>}
         <div className="flex flex-col px-6" style={{ borderTop: "1px solid var(--c-outline-variant)" }}>
           {[{ label: "To", value: to, set: setTo, placeholder: "recipients@example.com" }, { label: "Subject", value: subject, set: setSubject, placeholder: "Subject" }].map((f, i) => (
@@ -50,9 +125,18 @@ function ComposeModal({ onClose }: { onClose: () => void }) {
 }
 
 // ── Thread detail pane ────────────────────────────────────────────────────────
-function ThreadPane({ thread, onClose, onMarkRead, onTrash }: { thread: EmailThread; onClose: () => void; onMarkRead: (id: string) => void; onTrash: (id: string) => void }) {
+function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, canSummarize, canAiCompose }: { thread: EmailThread; onClose: () => void; onMarkRead: (id: string) => void; onTrash: (id: string) => void; canWrite: boolean; canSummarize: boolean; canAiCompose: boolean }) {
   const [replyBody, setReplyBody] = useState("");
   const [sending, setSending] = useState(false);
+
+  // AI Summary state
+  const [summary, setSummary] = useState<AiSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryErr, setSummaryErr] = useState<string | null>(null);
+
+  // AI Reply state
+  const [aiReplyTone, setAiReplyTone] = useState<"professional" | "friendly" | "concise">("professional");
+  const [aiReplyLoading, setAiReplyLoading] = useState(false);
 
   async function handleReply() {
     if (!replyBody.trim()) return;
@@ -63,12 +147,31 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash }: { thread: EmailThr
     } finally { setSending(false); }
   }
 
+  async function handleSummarize() {
+    setSummaryLoading(true); setSummaryErr(null);
+    try {
+      const r = await aiApi.summarizeThread(thread.id);
+      if (!r.ai_available) { setSummaryErr(r.hint ?? "AI not configured"); return; }
+      setSummary(r);
+    } catch (e) { setSummaryErr(e instanceof Error ? e.message : "Failed to summarize"); }
+    finally { setSummaryLoading(false); }
+  }
+
+  async function handleAiReply() {
+    setAiReplyLoading(true);
+    try {
+      const r = await aiApi.compose({ type: "reply", tone: aiReplyTone, context: thread.subject, thread_snippet: thread.snippet, recipient_name: thread.from });
+      if (r.ai_available && r.body) setReplyBody(r.body);
+    } catch { /* ignore */ }
+    finally { setAiReplyLoading(false); }
+  }
+
   async function handleAction(action: "archive" | "read" | "unread" | "trash") {
     const map: Record<string, { add: string[]; remove: string[] }> = {
       archive: { add: [],         remove: ["INBOX"] },
       read:    { add: [],         remove: ["UNREAD"] },
       unread:  { add: ["UNREAD"], remove: [] },
-      trash:   { add: [],         remove: [] }, // uses trash endpoint
+      trash:   { add: [],         remove: [] },
     };
     if (action === "trash") {
       onTrash(thread.id);
@@ -81,6 +184,13 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash }: { thread: EmailThr
     onClose();
   }
 
+  const SENTIMENT_COLOR: Record<string, string> = {
+    positive: "var(--c-primary)",
+    urgent: "var(--c-error)",
+    negative: "var(--c-error)",
+    neutral: "var(--c-on-surface-variant)",
+  };
+
   return (
     <div className="flex flex-col h-full" style={{ background: "var(--c-background)" }}>
       <div className="flex items-start justify-between px-8 py-5" style={{ borderBottom: "1px solid var(--c-outline-variant)" }}>
@@ -91,7 +201,19 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash }: { thread: EmailThr
             From: {thread.from} · {new Date(thread.updatedAt).toLocaleString()}
           </p>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1 shrink-0 flex-wrap">
+          {canSummarize && (
+            <button
+              onClick={handleSummarize}
+              disabled={summaryLoading}
+              className="btn-ghost text-xs flex items-center gap-1 disabled:opacity-50"
+              style={{ color: "var(--c-primary)" }}
+              title="Summarise with AI"
+            >
+              <span className="material-symbols-outlined text-base">{summaryLoading ? "progress_activity" : "auto_awesome"}</span>
+              {summaryLoading ? "…" : "Summarize"}
+            </button>
+          )}
           <button onClick={() => handleAction("archive")} className="btn-ghost p-2" title="Archive"><span className="material-symbols-outlined text-xl">archive</span></button>
           <button onClick={() => handleAction("trash")} className="btn-ghost p-2" title="Move to trash" style={{ color: "var(--c-error)" }}><span className="material-symbols-outlined text-xl">delete</span></button>
           {thread.isUnread
@@ -101,7 +223,50 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash }: { thread: EmailThr
           <button onClick={onClose} className="btn-ghost p-2"><span className="material-symbols-outlined text-xl">close</span></button>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto px-8 py-6">
+      <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
+        {/* AI Summary card */}
+        {summaryErr && (
+          <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "var(--c-error-container)", color: "var(--c-error)" }}>{summaryErr}</div>
+        )}
+        {summary && (
+          <div className="rounded-2xl p-5" style={{ background: "color-mix(in srgb, var(--c-primary) 6%, var(--c-surface-container))", border: "1px solid color-mix(in srgb, var(--c-primary) 20%, transparent)" }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="material-symbols-outlined text-base" style={{ color: "var(--c-primary)" }}>auto_awesome</span>
+              <span className="text-xs font-semibold" style={{ color: "var(--c-primary)" }}>AI SUMMARY</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: "var(--c-surface-container-high)", color: SENTIMENT_COLOR[summary.sentiment] ?? "var(--c-on-surface-variant)" }}>
+                {summary.sentiment}
+              </span>
+              <span className="text-[10px] ml-auto" style={{ color: "var(--c-outline)" }}>{summary.model}</span>
+            </div>
+            <p className="text-sm mb-3" style={{ color: "var(--c-on-surface)" }}>{summary.summary}</p>
+            {summary.key_points.length > 0 && (
+              <div className="mb-2">
+                <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--c-on-surface-variant)" }}>Key Points</p>
+                <ul className="space-y-1">
+                  {summary.key_points.map((p, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs" style={{ color: "var(--c-on-surface)" }}>
+                      <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ background: "var(--c-primary)" }} />
+                      {p}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {summary.action_items.length > 0 && (
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--c-on-surface-variant)" }}>Action Items</p>
+                <ul className="space-y-1">
+                  {summary.action_items.map((a, i) => (
+                    <li key={i} className="flex items-start gap-2 text-xs" style={{ color: "var(--c-on-surface)" }}>
+                      <span className="material-symbols-outlined text-sm shrink-0" style={{ color: "var(--c-tertiary)" }}>task_alt</span>
+                      {a}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
         <div className="nimbus-card p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style={{ background: "var(--c-primary-container)", color: "var(--c-on-primary-container)" }}>
@@ -112,8 +277,6 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash }: { thread: EmailThr
               <p className="text-xs" style={{ color: "var(--c-on-surface-variant)" }}>{new Date(thread.updatedAt).toLocaleString()}</p>
             </div>
           </div>
-          {/* Render real HTML (when available) inside a strict sandboxed iframe.
-              CSP blocks remote scripts/network; allow-popups lets links open externally with target=_blank. */}
           {thread.bodyHtml ? (
             <iframe
               key={thread.id}
@@ -129,9 +292,38 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash }: { thread: EmailThr
         </div>
       </div>
       <div className="px-8 py-4" style={{ borderTop: "1px solid var(--c-outline-variant)" }}>
+        {/* AI Reply tone selector — only shown when canAiCompose */}
+        {canAiCompose && (
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[10px] font-semibold" style={{ color: "var(--c-on-surface-variant)" }}>TONE:</span>
+            {(["professional", "friendly", "concise"] as const).map((t) => (
+              <button key={t} onClick={() => setAiReplyTone(t)}
+                className="px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-all capitalize"
+                style={aiReplyTone === t
+                  ? { background: "var(--c-primary)", color: "var(--c-on-primary)", borderColor: "var(--c-primary)" }
+                  : { background: "transparent", color: "var(--c-on-surface-variant)", borderColor: "var(--c-outline-variant)" }}>
+                {t}
+              </button>
+            ))}
+            <button onClick={handleAiReply} disabled={aiReplyLoading}
+              className="ml-auto btn-ghost text-[10px] flex items-center gap-1 disabled:opacity-50"
+              style={{ color: "var(--c-primary)" }}>
+              <span className="material-symbols-outlined text-sm">{aiReplyLoading ? "progress_activity" : "auto_awesome"}</span>
+              AI Reply
+            </button>
+          </div>
+        )}
         <div className="flex items-center gap-3 rounded-2xl px-5 py-3" style={{ background: "var(--c-surface-container)", border: "1px solid var(--c-outline-variant)" }}>
-          <input value={replyBody} onChange={(e) => setReplyBody(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(); }}} placeholder="Reply… (Enter to send)" className="flex-1 bg-transparent text-sm outline-none" style={{ color: "var(--c-on-surface)" }} />
-          <button onClick={handleReply} disabled={sending || !replyBody.trim()} className="transition-all disabled:opacity-40" style={{ color: "var(--c-primary)" }}>
+          <input
+            value={replyBody}
+            onChange={(e) => setReplyBody(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(); }}}
+            placeholder={canWrite ? "Reply… (Enter to send)" : "Send Email feature disabled"}
+            disabled={!canWrite}
+            className="flex-1 bg-transparent text-sm outline-none disabled:opacity-50"
+            style={{ color: "var(--c-on-surface)" }}
+          />
+          <button onClick={handleReply} disabled={sending || !replyBody.trim() || !canWrite} className="transition-all disabled:opacity-40" style={{ color: "var(--c-primary)" }}>
             {sending ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : <span className="material-symbols-outlined">send</span>}
           </button>
         </div>
@@ -143,10 +335,24 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash }: { thread: EmailThr
 // ── Main InboxPage ─────────────────────────────────────────────────────────────
 export function InboxPage() {
   const ready = useClerkReady();
+  const { hasFeature } = useFeatures();
   const { status: connStatus, loading: connLoading, refresh: refreshConn } = useConnectionStatus();
+
+  // Feature gate — show disabled card if email_read is off
+  if (!hasFeature("email_read")) {
+    return (
+      <FeatureDisabledCard
+        featureKey="email_read"
+        title="Inbox Locked"
+        description="You don't have access to email yet. Request it from your teacher and they can enable it for you."
+        icon="inbox"
+      />
+    );
+  }
   const [selected, setSelected] = useState<EmailThread | null>(null);
   const [composing, setComposing] = useState(false);
   const [search, setSearch] = useState("");
+  const canWrite = hasFeature("email_write");
   // Gmail category tabs (Primary / Social / Promotions / Updates / Forums) with
   // pseudo-categories "all" and "unread" prepended for convenience.
   const [filter, setFilter] = useState<
@@ -248,8 +454,13 @@ export function InboxPage() {
                 <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold" style={{ background: "var(--c-primary)", color: "var(--c-on-primary)" }}>{unreadCount}</span>
               )}
             </div>
-            <button onClick={() => setComposing(true)} className="btn-primary py-2 px-4 text-xs">
-              <span className="material-symbols-outlined text-sm">edit</span>
+            <button
+              onClick={() => canWrite && setComposing(true)}
+              disabled={!canWrite}
+              title={canWrite ? undefined : "Send Email feature is disabled — request access in Profile"}
+              className="btn-primary py-2 px-4 text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <span className="material-symbols-outlined text-sm">{canWrite ? "edit" : "lock"}</span>
               Compose
             </button>
           </div>
@@ -337,6 +548,9 @@ export function InboxPage() {
             onClose={() => setSelected(null)}
             onMarkRead={markLocalRead}
             onTrash={(id) => trashMut.mutate(id)}
+            canWrite={canWrite}
+            canSummarize={hasFeature("ai_summary")}
+            canAiCompose={canWrite && hasFeature("ai_compose")}
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full gap-4" style={{ color: "var(--c-on-surface-variant)" }}>
@@ -347,7 +561,7 @@ export function InboxPage() {
         )}
       </div>
 
-      {composing && <ComposeModal onClose={() => { setComposing(false); refetch(); }} />}
+      {composing && <ComposeModal onClose={() => { setComposing(false); refetch(); }} canAiCompose={canWrite && hasFeature("ai_compose")} />}
     </div>
   );
 }

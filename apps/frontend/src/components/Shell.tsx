@@ -1,6 +1,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { UserButton, useUser } from "@clerk/react";
 import { useAuth } from "../context/AuthContext.tsx";
+import { useFeatures } from "../context/FeatureContext.tsx";
 import { useTheme } from "../context/ThemeContext.tsx";
 import { getDemoToken, setDemoToken } from "../api/client.ts";
 import { useState, useEffect, useRef, type ReactNode } from "react";
@@ -9,13 +10,13 @@ import { RoleBadge } from "./RoleBadge.tsx";
 import { playChime } from "../lib/chime.ts";
 
 const NAV = [
-  { to: "/inbox",    icon: "inbox",          label: "Inbox",    roles: ["super_admin","manager_admin","user"] },
-  { to: "/calendar", icon: "calendar_today",  label: "Calendar", roles: ["super_admin","manager_admin","user"] },
-  { to: "/org",      icon: "account_tree",    label: "Org Tree", roles: ["super_admin","manager_admin","user"] },
-  { to: "/manager",  icon: "group",           label: "My Students", roles: ["super_admin","manager_admin"] },
-  { to: "/admin",    icon: "shield_person",   label: "Admin",    roles: ["super_admin"] },
-  { to: "/api-docs", icon: "api",             label: "API Docs", roles: ["super_admin"] },
-  { to: "/profile",  icon: "account_circle",  label: "Profile",  roles: ["super_admin","manager_admin","user"] },
+  { to: "/inbox",    icon: "inbox",          label: "Inbox",       roles: ["super_admin","manager_admin","user"], featureKey: "email_read" },
+  { to: "/calendar", icon: "calendar_today", label: "Calendar",    roles: ["super_admin","manager_admin","user"], featureKey: "calendar_read" },
+  { to: "/org",      icon: "account_tree",   label: "Org Tree",    roles: ["super_admin","manager_admin","user"], featureKey: null },
+  { to: "/manager",  icon: "group",          label: "My Students", roles: ["super_admin","manager_admin"],        featureKey: null },
+  { to: "/admin",    icon: "shield_person",  label: "Admin",       roles: ["super_admin"],                       featureKey: null },
+  { to: "/api-docs", icon: "api",            label: "API Docs",    roles: ["super_admin"],                       featureKey: null },
+  { to: "/profile",  icon: "account_circle", label: "Profile",     roles: ["super_admin","manager_admin","user"], featureKey: null },
 ] as const;
 
 const COLLAPSED_W = 72;
@@ -26,6 +27,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const { user } = useUser();
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
+  const { hasFeature } = useFeatures();
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     return localStorage.getItem("googenie-sidebar-collapsed") === "1";
@@ -134,19 +136,40 @@ export function Shell({ children }: { children: ReactNode }) {
 
         {/* Navigation */}
         <nav className={`flex-1 ${collapsed ? "px-2" : "px-3"} space-y-0.5`}>
-          {navToShow.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              title={collapsed ? item.label : undefined}
-              className={({ isActive }) =>
-                "nav-item " + (isActive ? "nav-item-active" : "") + (collapsed ? " justify-center px-0" : "")
-              }
-            >
-              <span className="material-symbols-outlined text-[20px] shrink-0">{item.icon}</span>
-              {!collapsed && <span className="text-sm">{item.label}</span>}
-            </NavLink>
-          ))}
+          {navToShow.map((item) => {
+            const featureLocked = item.featureKey !== null && !hasFeature(item.featureKey);
+            if (featureLocked) {
+              // Locked nav item — not clickable, shows lock icon, tooltip to request
+              return (
+                <div
+                  key={item.to}
+                  title={collapsed ? `${item.label} (locked — request access in Profile)` : "Request access in Profile"}
+                  className={`nav-item opacity-40 cursor-not-allowed select-none ${collapsed ? "justify-center px-0" : ""}`}
+                >
+                  <span className="material-symbols-outlined text-[20px] shrink-0">{item.icon}</span>
+                  {!collapsed && (
+                    <>
+                      <span className="text-sm flex-1">{item.label}</span>
+                      <span className="material-symbols-outlined text-[14px]" style={{ color: "var(--c-outline)" }}>lock</span>
+                    </>
+                  )}
+                </div>
+              );
+            }
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                title={collapsed ? item.label : undefined}
+                className={({ isActive }) =>
+                  "nav-item " + (isActive ? "nav-item-active" : "") + (collapsed ? " justify-center px-0" : "")
+                }
+              >
+                <span className="material-symbols-outlined text-[20px] shrink-0">{item.icon}</span>
+                {!collapsed && <span className="text-sm">{item.label}</span>}
+              </NavLink>
+            );
+          })}
         </nav>
 
         {/* Bottom section */}

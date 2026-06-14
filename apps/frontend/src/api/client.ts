@@ -333,6 +333,46 @@ export const agentApi = {
     })
 };
 
+// AI endpoints
+export interface AiSummary {
+  summary: string;
+  key_points: string[];
+  action_items: string[];
+  sentiment: "positive" | "neutral" | "negative" | "urgent";
+  model: string;
+  ai_available: boolean;
+  hint?: string;
+}
+
+export interface AiCompose {
+  body: string;
+  subject?: string;
+  alternatives: string[];
+  model?: string;
+  ai_available: boolean;
+  hint?: string;
+}
+
+export const aiApi = {
+  summarizeThread: (threadId: string) =>
+    apiFetch<AiSummary>("/v1/ai/summarize-thread", {
+      method: "POST",
+      body: JSON.stringify({ thread_id: threadId }),
+    }),
+
+  compose: (args: {
+    type: "new" | "reply";
+    tone: "professional" | "friendly" | "concise";
+    context: string;
+    thread_snippet?: string;
+    recipient_name?: string;
+  }) =>
+    apiFetch<AiCompose>("/v1/ai/compose", {
+      method: "POST",
+      body: JSON.stringify(args),
+    }),
+};
+
 // Demo accounts
 export interface DemoAccount {
   role: string;
