@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { emailApi, type EmailThread } from "../api/client.ts";
+import { useEmailThreads, useMarkThreadRead, useTrashThread } from "../api/hooks.ts";
 import { useClerkReady } from "../hooks/useClerkReady.ts";
 import { ConnectionBar, useConnectionStatus } from "../components/ConnectBanner.tsx";
 
@@ -49,7 +50,7 @@ function ComposeModal({ onClose }: { onClose: () => void }) {
 }
 
 // ── Thread detail pane ────────────────────────────────────────────────────────
-function ThreadPane({ thread, onClose, onMarkRead }: { thread: EmailThread; onClose: () => void; onMarkRead: (id: string) => void }) {
+function ThreadPane({ thread, onClose, onMarkRead, onTrash }: { thread: EmailThread; onClose: () => void; onMarkRead: (id: string) => void; onTrash: (id: string) => void }) {
   const [replyBody, setReplyBody] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -70,7 +71,9 @@ function ThreadPane({ thread, onClose, onMarkRead }: { thread: EmailThread; onCl
       trash:   { add: [],         remove: [] }, // uses trash endpoint
     };
     if (action === "trash") {
-      await emailApi.trash(thread.id).catch(() => null);
+      onTrash(thread.id);
+      onClose();
+      return;
     } else {
       await emailApi.modifyLabels(thread.id, { add_label_ids: map[action].add, remove_label_ids: map[action].remove }).catch(() => null);
     }
@@ -128,25 +131,22 @@ function ThreadPane({ thread, onClose, onMarkRead }: { thread: EmailThread; onCl
 export function InboxPage() {
   const ready = useClerkReady();
   const { status: connStatus, loading: connLoading, refresh: refreshConn } = useConnectionStatus();
-  const [threads, setThreads] = useState<EmailThread[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<EmailThread | null>(null);
   const [composing, setComposing] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "unread" | "flagged">("all");
   const [serverSearch, setServerSearch] = useState(""); // debounced server search
 
-  const loadThreads = useCallback(() => {
-    if (!ready) return;
-    setLoading(true);
-    emailApi.listThreads({ q: serverSearch || undefined })
-      .then((r) => setThreads(r.threads))
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [ready, serverSearch]);
+  // React Query — instant cache hits on revisit + 60s background refetch
+  const { data, isLoading: loading, error, refetch } = useEmailThreads({
+    q: serverSearch,
+    enabled: ready,
+  });
+  const threads: EmailThread[] = data?.threads ?? [];
 
-  useEffect(() => { loadThreads(); }, [loadThreads]);
+  // Optimistic mutations
+  const markReadMut = useMarkThreadRead();
+  const trashMut = useTrashThread();
 
   // Trigger server search when user presses Enter
   function handleSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -154,26 +154,30 @@ export function InboxPage() {
     if (e.key === "Escape") { setSearch(""); setServerSearch(""); }
   }
 
-  // Mark a thread as read in local state
+  // Mark a thread as read locally before server confirms (optimistic)
   function markLocalRead(threadId: string) {
-    setThreads((prev) => prev.map((t) => t.id === threadId ? { ...t, isUnread: false, labelIds: t.labelIds?.filter((l) => l !== "UNREAD") ?? [] } : t));
     if (selected?.id === threadId) setSelected((s) => s ? { ...s, isUnread: false } : s);
+    markReadMut.mutate(threadId);
   }
 
   // Open thread and auto-mark as read
-  async function openThread(thread: EmailThread) {
+  function openThread(thread: EmailThread) {
     setSelected(thread);
-    if (thread.isUnread) {
-      await emailApi.modifyLabels(thread.id, { add_label_ids: [], remove_label_ids: ["UNREAD"] }).catch(() => null);
-      markLocalRead(thread.id);
-    }
+    if (thread.isUnread) markLocalRead(thread.id);
   }
+
+  // Keep `selected` in sync if cache replaces the underlying object
+  useEffect(() => {
+    if (!selected) return;
+    const fresh = threads.find((t) => t.id === selected.id);
+    if (fresh && fresh !== selected) setSelected(fresh);
+  }, [threads, selected]);
 
   if (!connLoading && connStatus && !connStatus.gmail) {
     return (
       <div className="pt-4">
         <h1 className="font-headline text-3xl mb-6" style={{ color: "var(--c-on-surface)" }}>Inbox</h1>
-        <ConnectionBar plugins={["gmail"]} status={connStatus} loading={connLoading} onConnected={() => { refreshConn(); loadThreads(); }} />
+        <ConnectionBar plugins={["gmail"]} status={connStatus} loading={connLoading} onConnected={() => { refreshConn(); refetch(); }} />
       </div>
     );
   }
@@ -202,7 +206,7 @@ export function InboxPage() {
             plugins={["gmail"]}
             status={connStatus}
             loading={connLoading}
-            onConnected={() => { refreshConn(); loadThreads(); }}
+            onConnected={() => { refreshConn(); refetch(); }}
           />
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -242,7 +246,7 @@ export function InboxPage() {
         {/* Thread items */}
         <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5">
           {loading && <div className="flex items-center justify-center py-16"><span className="material-symbols-outlined animate-spin text-3xl" style={{ color: "var(--c-primary)" }}>progress_activity</span></div>}
-          {error && <p className="text-sm px-4 py-8 text-center" style={{ color: "var(--c-error)" }}>{error}</p>}
+          {error && <p className="text-sm px-4 py-8 text-center" style={{ color: "var(--c-error)" }}>{(error as Error).message}</p>}
           {!loading && filtered.length === 0 && !error && (
             <p className="text-sm px-4 py-8 text-center" style={{ color: "var(--c-on-surface-variant)" }}>
               {search ? `No results for "${search}"` : filter === "unread" ? "No unread emails" : "No threads found"}
@@ -279,7 +283,12 @@ export function InboxPage() {
       {/* ── Thread detail ── */}
       <div className="flex-1 overflow-hidden">
         {selected ? (
-          <ThreadPane thread={selected} onClose={() => setSelected(null)} onMarkRead={markLocalRead} />
+          <ThreadPane
+            thread={selected}
+            onClose={() => setSelected(null)}
+            onMarkRead={markLocalRead}
+            onTrash={(id) => trashMut.mutate(id)}
+          />
         ) : (
           <div className="flex flex-col items-center justify-center h-full gap-4" style={{ color: "var(--c-on-surface-variant)" }}>
             <span className="material-symbols-outlined text-6xl" style={{ opacity: 0.3 }}>inbox</span>
@@ -289,7 +298,7 @@ export function InboxPage() {
         )}
       </div>
 
-      {composing && <ComposeModal onClose={() => { setComposing(false); loadThreads(); }} />}
+      {composing && <ComposeModal onClose={() => { setComposing(false); refetch(); }} />}
     </div>
   );
 }

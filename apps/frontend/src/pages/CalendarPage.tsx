@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
 import { calendarApi, type CalendarEvent } from "../api/client.ts";
+import { useCalendarEvents, useDeleteCalendarEvent } from "../api/hooks.ts";
 import { useClerkReady } from "../hooks/useClerkReady.ts";
 import { ConnectionBar, useConnectionStatus } from "../components/ConnectBanner.tsx";
 
@@ -221,9 +222,6 @@ function EventCard({ event, onEdit, onDelete }: { event: CalendarEvent; onEdit: 
 export function CalendarPage() {
   const ready = useClerkReady();
   const { status: connStatus, loading: connLoading, refresh: refreshConn } = useConnectionStatus();
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
@@ -231,23 +229,24 @@ export function CalendarPage() {
   const [search, setSearch] = useState("");
   const [serverSearch, setServerSearch] = useState("");
 
-  const loadEvents = useCallback(() => {
-    if (!ready) return;
-    setLoading(true);
-    calendarApi.listEvents({ q: serverSearch || undefined }).then((r) => setEvents(r.events)).catch((e) => setError(e.message)).finally(() => setLoading(false));
-  }, [ready, serverSearch]);
-  useEffect(() => { loadEvents(); }, [loadEvents]);
+  // React Query — instant cache hits + 60s background refetch
+  const { data, isLoading: loading, error, refetch } = useCalendarEvents({
+    q: serverSearch,
+    enabled: ready,
+  });
+  const events: CalendarEvent[] = data?.events ?? [];
 
-  async function handleDelete(eventId: string) {
-    await calendarApi.deleteEvent(eventId).catch(() => null);
-    setEvents((prev) => prev.filter((e) => e.id !== eventId));
+  const deleteMut = useDeleteCalendarEvent();
+
+  function handleDelete(eventId: string) {
+    deleteMut.mutate(eventId);
   }
 
   if (!connLoading && connStatus && !connStatus.googlecalendar) {
     return (
       <div className="pt-4">
         <h1 className="font-headline text-3xl mb-6" style={{ color: "var(--c-on-surface)" }}>Calendar</h1>
-        <ConnectionBar plugins={["googlecalendar"]} status={connStatus} loading={connLoading} onConnected={() => { refreshConn(); loadEvents(); }} />
+        <ConnectionBar plugins={["googlecalendar"]} status={connStatus} loading={connLoading} onConnected={() => { refreshConn(); refetch(); }} />
       </div>
     );
   }
@@ -269,7 +268,7 @@ export function CalendarPage() {
         plugins={["googlecalendar"]}
         status={connStatus}
         loading={connLoading}
-        onConnected={() => { refreshConn(); loadEvents(); }}
+        onConnected={() => { refreshConn(); refetch(); }}
       />
       {/* AI Insight banner */}
       <div className="ai-insight mb-6">
@@ -327,7 +326,7 @@ export function CalendarPage() {
 
       {/* Event list */}
       {loading && <div className="flex items-center justify-center py-16"><span className="material-symbols-outlined animate-spin text-3xl" style={{ color: "var(--c-primary)" }}>progress_activity</span></div>}
-      {error && <p className="text-sm py-8 text-center" style={{ color: "var(--c-error)" }}>{error}</p>}
+      {error && <p className="text-sm py-8 text-center" style={{ color: "var(--c-error)" }}>{(error as Error).message}</p>}
       {!loading && filtered.length === 0 && !error && (
         <div className="flex flex-col items-center justify-center py-24 gap-4" style={{ color: "var(--c-on-surface-variant)" }}>
           <span className="material-symbols-outlined text-6xl" style={{ opacity: 0.3 }}>calendar_today</span>
@@ -339,8 +338,8 @@ export function CalendarPage() {
         {filtered.map((event) => <EventCard key={event.id} event={event} onEdit={setEditing} onDelete={handleDelete} />)}
       </div>
 
-      {creating && <CreateEventModal onClose={() => setCreating(false)} onCreated={(e) => { setEvents((prev) => [...prev, e]); }} />}
-      {editing && <EditEventModal event={editing} onClose={() => setEditing(null)} onUpdated={(updated) => { setEvents((prev) => prev.map((e) => e.id === updated.id ? updated : e)); setEditing(null); }} />}
+      {creating && <CreateEventModal onClose={() => setCreating(false)} onCreated={() => { refetch(); }} />}
+      {editing && <EditEventModal event={editing} onClose={() => setEditing(null)} onUpdated={() => { refetch(); setEditing(null); }} />}
       {checkingAvailability && <AvailabilityModal onClose={() => setCheckingAvailability(false)} />}
     </div>
   );

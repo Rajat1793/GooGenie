@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { setClerkTokenGetter } from "./api/client.ts";
 import { getDemoToken } from "./api/client.ts";
 import { authApi2 } from "./api/client.ts";
+import { prefetchUserData } from "./api/hooks.ts";
+import { useLiveCacheStream } from "./hooks/useLiveCacheStream.ts";
 import { ManagerSelectModal } from "./components/ManagerSelectModal.tsx";
 import { Shell } from "./components/Shell.tsx";
 import { LoginPage } from "./pages/LoginPage.tsx";
@@ -26,6 +28,11 @@ function ClerkTokenWirer() {
   const { getToken, isSignedIn } = useClerkAuthDirect();
   const { user } = useClerkUser();
   const [needsManager, setNeedsManager] = useState(false);
+
+  // Live cache invalidation via SSE: when the backend emits an event for this
+  // user (e.g. Gmail webhook fired, or another tab mutated something) the
+  // matching React Query keys are invalidated, triggering silent refetch.
+  useLiveCacheStream();
 
   useEffect(() => {
     if (isSignedIn) {
@@ -50,6 +57,9 @@ function ClerkTokenWirer() {
         // Clear the pending role after it's been applied
         localStorage.removeItem("googenie-pending-role");
         if (r.needsManager) setNeedsManager(true);
+        // Warm the React Query cache so the first /inbox or /calendar nav
+        // is served from cache (0 ms) — silent background refetch keeps it fresh.
+        prefetchUserData().catch(() => null);
       })
       .catch(() => {
         localStorage.removeItem("googenie-pending-role");

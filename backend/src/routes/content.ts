@@ -14,6 +14,7 @@ import {
 import { fetchGmailThreads, fetchGmailThread, sendEmail, replyToThread, modifyThreadLabels, trashThread, untrashThread, batchModifyMessages, listGmailLabels, listDrafts, createDraft, sendDraft, deleteDraft } from "../integrations/gmail.js";
 import { fetchCalendarEvents, createGCalEvent, updateGCalEvent, deleteGCalEvent, getCalendarEvent, checkAvailability } from "../integrations/googlecalendar.js";
 import { getCorsairTenant } from "../integrations/corsair-tenant.js";
+import { publish } from "../integrations/event-bus.js";
 import { emitAuditEvent } from "../security/audit.js";
 import { createApiError } from "../security/errors.js";
 import { paginate } from "../security/pagination.js";
@@ -55,6 +56,7 @@ contentRouter.post("/email/messages/send", requireAuth, requireFeature("email_re
     if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid send payload", false, req.traceId);
 
     const result = await sendEmail(getCorsairTenant(auth.userId), parsed.data);
+    publish({ kind: "email.changed", userId: auth.userId, threadId: result.threadId });
     emitAuditEvent(req, "email_message_sent", { to: parsed.data.to, message_id: result.id });
     res.status(201).json({ message_id: result.id, thread_id: result.threadId });
   } catch (err) { next(err); }
@@ -71,6 +73,7 @@ contentRouter.post("/email/threads/:threadId/reply", requireAuth, requireFeature
       ...parsed.data,
       messageId: parsed.data.message_id
     });
+    publish({ kind: "email.changed", userId: auth.userId, threadId: result.threadId ?? req.params.threadId });
     emitAuditEvent(req, "email_thread_replied", { thread_id: req.params.threadId, message_id: result.id });
     res.status(201).json({ message_id: result.id, thread_id: result.threadId });
   } catch (err) { next(err); }
@@ -90,6 +93,7 @@ contentRouter.patch("/email/threads/:threadId/labels", requireAuth, requireFeatu
       parsed.data.add_label_ids,
       parsed.data.remove_label_ids
     );
+    publish({ kind: "email.changed", userId: auth.userId, threadId: req.params.threadId });
     emitAuditEvent(req, "email_thread_labels_modified", { thread_id: req.params.threadId });
     res.status(200).json({ thread_id: result.id ?? req.params.threadId });
   } catch (err) { next(err); }
@@ -120,6 +124,7 @@ contentRouter.post("/calendar/events", requireAuth, requireFeature("calendar_wri
     if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid calendar event payload", false, req.traceId);
 
     const created = await createGCalEvent({ tenantId: getCorsairTenant(auth.userId), ownerUserId: auth.userId, title: parsed.data.title, startsAt: parsed.data.starts_at, endsAt: parsed.data.ends_at, attendees: parsed.data.attendees });
+    publish({ kind: "calendar.changed", userId: auth.userId, eventId: created.id });
     emitAuditEvent(req, "calendar_event_create", { event_id: created.id });
     res.status(201).json({ event: created });
   } catch (err) { next(err); }
@@ -140,6 +145,7 @@ contentRouter.patch("/calendar/events/:eventId", requireAuth, requireFeature("ca
       endsAt: parsed.data.ends_at,
       attendees: parsed.data.attendees
     });
+    publish({ kind: "calendar.changed", userId: auth.userId, eventId: updated.id });
     emitAuditEvent(req, "calendar_event_update", { event_id: updated.id });
     res.status(200).json({ event: updated });
   } catch (err) { next(err); }
@@ -168,6 +174,7 @@ contentRouter.delete("/calendar/events/:eventId", requireAuth, requireFeature("c
   try {
     const auth = req.auth!;
     await deleteGCalEvent(getCorsairTenant(auth.userId), req.params.eventId);
+    publish({ kind: "calendar.changed", userId: auth.userId, eventId: req.params.eventId });
     emitAuditEvent(req, "calendar_event_delete", { event_id: req.params.eventId });
     res.status(204).send();
   } catch (err) { next(err); }
@@ -197,6 +204,7 @@ contentRouter.post("/email/threads/:threadId/trash", requireAuth, requireFeature
   try {
     const auth = req.auth!;
     await trashThread(getCorsairTenant(auth.userId), req.params.threadId);
+    publish({ kind: "email.changed", userId: auth.userId, threadId: req.params.threadId });
     emitAuditEvent(req, "email_thread_trashed", { thread_id: req.params.threadId });
     res.status(200).json({ success: true });
   } catch (err) { next(err); }
@@ -206,6 +214,7 @@ contentRouter.post("/email/threads/:threadId/untrash", requireAuth, requireFeatu
   try {
     const auth = req.auth!;
     await untrashThread(getCorsairTenant(auth.userId), req.params.threadId);
+    publish({ kind: "email.changed", userId: auth.userId, threadId: req.params.threadId });
     emitAuditEvent(req, "email_thread_untrashed", { thread_id: req.params.threadId });
     res.status(200).json({ success: true });
   } catch (err) { next(err); }

@@ -1,4 +1,5 @@
 /// <reference path="./contracts/request.d.ts" />
+import compression from "compression";
 import cors from "cors";
 import express, { type Request, type Response, type NextFunction } from "express";
 
@@ -22,11 +23,20 @@ import { agentRouter } from "./routes/agent.js";
 import { connectRouter } from "./routes/connect.js";
 import { demoRouter } from "./routes/demo.js";
 import { authRouter } from "./routes/auth.js";
+import { streamRouter } from "./routes/stream.js";
 
 export const app = express();
 app.disable("x-powered-by");
 app.use(attachTraceId);
 app.use(secureHeaders);
+
+app.use(compression({
+  threshold: 1024,
+  filter: (req, res) => {
+    if (res.getHeader("Content-Type")?.toString().includes("text/event-stream")) return false;
+    return compression.filter(req, res);
+  },
+}));
 // CORS: allow localhost in dev and the Render frontend in production
 app.use(cors({
   origin: (origin, cb) => {
@@ -73,6 +83,7 @@ app.use("/v1", agentRouter);            // /v1/agent/execute
 app.use("/v1", connectRouter);          // /v1/me/connect/*
 app.use("/v1", demoRouter);             // /v1/demo/tokens
 app.use("/v1", authRouter);             // /v1/auth/*
+app.use("/v1", streamRouter);           // /v1/stream (SSE push)
 
 // ── Error handlers ────────────────────────────────────────────────────────
 app.use((_req: Request, _res: Response, next: NextFunction) => {
