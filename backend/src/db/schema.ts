@@ -110,3 +110,36 @@ export const roleChangeLogs = pgTable("role_change_logs", {
   reason: text("reason").notNull().default("unspecified"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
 });
+
+/**
+ * Feature-access requests — when a user lacks a feature they can request it
+ * from their direct manager (or a teacher can request from their big boss).
+ * Approving a request flips the corresponding `user_feature_access.is_enabled`
+ * to true.
+ */
+export const featureRequests = pgTable(
+  "feature_requests",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
+    tenantId: varchar("tenant_id", { length: 64 })
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    requesterUserId: varchar("requester_user_id", { length: 64 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    targetManagerUserId: varchar("target_manager_user_id", { length: 64 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    featureKey: varchar("feature_key", { length: 64 }).notNull(),
+    /** pending | approved | denied */
+    status: varchar("status", { length: 16 }).notNull().default("pending"),
+    reason: text("reason"),
+    decidedByUserId: varchar("decided_by_user_id", { length: 64 }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    targetStatusIdx: index("feature_requests_target_status_idx").on(table.targetManagerUserId, table.status),
+    requesterIdx: index("feature_requests_requester_idx").on(table.requesterUserId)
+  })
+);

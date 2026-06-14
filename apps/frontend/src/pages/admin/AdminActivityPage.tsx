@@ -5,24 +5,11 @@ import { PageHeader } from "../../components/PageHeader.tsx";
 import { Card } from "../../components/Card.tsx";
 import { DataState } from "../../components/DataState.tsx";
 import { RoleBadge } from "../../components/RoleBadge.tsx";
-
-const ACTION_ICONS: Record<string, string> = {
-  admin_user_role_update: "manage_accounts",
-  admin_user_manager_update: "group",
-  admin_users_list_read: "group",
-  admin_activity_read: "visibility",
-  manager_users_read: "people",
-  manager_user_activity_read: "history",
-  manager_user_feature_update: "toggle_on",
-  manager_bulk_set_feature_access: "sync",
-  email_threads_read: "inbox",
-  email_thread_read: "mail",
-  calendar_events_read: "calendar_month",
-  calendar_event_create: "event"
-};
+import { formatActivity, activityIcon } from "../../lib/formatActivity.ts";
 
 function EventCard({ event }: { event: AuditEvent }) {
-  const icon = ACTION_ICONS[event.action] ?? "info";
+  const icon = activityIcon(event.action);
+  const text = formatActivity(event.action, event.metadata);
   return (
     <div className="flex items-start gap-4 p-4 rounded-xl border border-outline-variant/20 bg-surface-container-lowest card-hover">
       <div className="w-9 h-9 rounded-full bg-secondary-container/50 flex items-center justify-center flex-shrink-0">
@@ -30,20 +17,15 @@ function EventCard({ event }: { event: AuditEvent }) {
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-ink-text">{event.action.replace(/_/g, " ")}</span>
+          <span className="text-sm font-medium text-ink-text">{text}</span>
           <RoleBadge role={event.role} />
         </div>
         <p className="text-xs text-on-surface-variant mt-0.5">
-          {event.actor_user_id} · {event.method} {event.route}
+          By {event.actor_user_id}
         </p>
-        {event.metadata && Object.keys(event.metadata).length > 0 && (
-          <pre className="mt-1.5 text-xs bg-surface-container rounded-lg p-2 overflow-x-auto text-on-surface-variant">
-            {JSON.stringify(event.metadata, null, 2)}
-          </pre>
-        )}
       </div>
       <span className="text-xs text-outline flex-shrink-0">
-        {new Date(event.at).toLocaleTimeString()}
+        {new Date(event.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
       </span>
     </div>
   );

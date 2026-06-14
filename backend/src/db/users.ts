@@ -114,6 +114,31 @@ export async function listTenantUsersFromDb(tenantId: string): Promise<DbUser[]>
   return rows as DbUser[];
 }
 
+// ── List users across all role tenants (super_admin global view) ──────────────
+// Used for admin user roster and org-tree where the super_admin needs visibility
+// over teachers (dev-teachers) and students (dev-students) in addition to peers.
+const ROLE_TENANT_IDS = ["dev-admin", "dev-teachers", "dev-students"] as const;
+
+export async function listAllRoleTenantUsers(): Promise<DbUser[]> {
+  const rows: DbUser[] = [];
+  for (const tid of ROLE_TENANT_IDS) {
+    const r = await db.select().from(schema.users).where(eq(schema.users.tenantId, tid));
+    rows.push(...(r as DbUser[]));
+  }
+  // Dedup by email keeping the highest-privilege role
+  // (super_admin > manager_admin > user)
+  const priority: Record<string, number> = { super_admin: 3, manager_admin: 2, user: 1 };
+  const byEmail = new Map<string, DbUser>();
+  for (const u of rows) {
+    const key = (u.email ?? u.id).toLowerCase();
+    const existing = byEmail.get(key);
+    if (!existing || (priority[u.role] ?? 0) > (priority[existing.role] ?? 0)) {
+      byEmail.set(key, u);
+    }
+  }
+  return [...byEmail.values()];
+}
+
 // ── Get user by email+tenantId ─────────────────────────────────────────────────
 export async function getUserByEmail(tenantId: string, email: string): Promise<DbUser | null> {
   const u = await db.query.users.findFirst({

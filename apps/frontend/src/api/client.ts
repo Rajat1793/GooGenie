@@ -140,12 +140,55 @@ export const authApi = {
 };
 
 // Self-service (S2-7)
+export interface FeatureCatalogEntry {
+  key: string;
+  label: string;
+}
+
+export interface FeatureToggleWithLabel extends FeatureToggle {
+  label?: string;
+}
+
+export interface FeatureRequest {
+  id: number;
+  tenant_id: string;
+  requester_user_id: string;
+  target_manager_user_id: string;
+  feature_key: string;
+  status: "pending" | "approved" | "denied";
+  reason: string | null;
+  decided_by_user_id: string | null;
+  decided_at: string | null;
+  created_at: string;
+  requester?: { id: string; displayName: string; email: string; role: string } | null;
+}
+
 export const meApi = {
   getFeatures: () =>
-    apiFetch<{ features: FeatureToggle[] }>("/v1/me/features"),
+    apiFetch<{
+      features: FeatureToggleWithLabel[];
+      catalog: FeatureCatalogEntry[];
+      pending_requests: Array<{ id: number; feature_key: string; status: string; created_at: string }>;
+      history: Array<{ id: number; feature_key: string; status: string; decided_at: string | null }>;
+    }>("/v1/me/features"),
 
   getActivity: () =>
-    apiFetch<{ activity: AuditEvent[] }>("/v1/me/activity")
+    apiFetch<{ activity: AuditEvent[] }>("/v1/me/activity"),
+
+  createFeatureRequest: (featureKey: string, reason?: string) =>
+    apiFetch<{ request: FeatureRequest }>("/v1/me/feature-requests", {
+      method: "POST",
+      body: JSON.stringify({ feature_key: featureKey, reason }),
+    }),
+
+  getIncomingFeatureRequests: () =>
+    apiFetch<{ requests: FeatureRequest[]; pending_count: number }>("/v1/me/feature-requests/incoming"),
+
+  decideFeatureRequest: (id: number, decision: "approved" | "denied") =>
+    apiFetch<{ request: FeatureRequest }>(`/v1/me/feature-requests/${id}/decide`, {
+      method: "POST",
+      body: JSON.stringify({ decision }),
+    }),
 };
 
 // Email / Gmail
@@ -326,6 +369,7 @@ export const authApi2 = {
     }),
   me: () => apiFetch<{ user: DbUser }>("/v1/auth/me"),
   managers: () => apiFetch<{ managers: Array<{ id: string; displayName: string; email: string }> }>("/v1/auth/managers"),
+  bosses: () => apiFetch<{ bosses: Array<{ id: string; displayName: string; email: string }> }>("/v1/auth/bosses"),
   selectManager: (managerId: string) =>
     apiFetch<{ success: boolean }>("/v1/auth/select-manager", {
       method: "POST",

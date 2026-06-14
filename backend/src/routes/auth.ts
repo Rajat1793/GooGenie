@@ -88,8 +88,8 @@ authRouter.post("/auth/clerk-sync", requireAuth, async (req: Request, res: Respo
       role: chosenRole as import("../auth/roles.js").Role,
     });
 
-    // Only ask students to pick a teacher; Big Boss and Teachers don't need one
-    const needsManager = user.role === "user" && !user.managerUserId;
+    // Teachers without a boss also need to select one for the org chart
+    const needsManager = (!user.managerUserId) && (user.role === "user" || user.role === "manager_admin");
     res.json({ user, needsManager });
   } catch (err) { next(err); }
 });
@@ -113,6 +113,16 @@ authRouter.get("/auth/managers", requireAuth, async (req: Request, res: Response
   try {
     const managers = await listManagers("dev-teachers");
     res.json({ managers: managers.map(m => ({ id: m.id, displayName: m.displayName, email: m.email })) });
+  } catch (err) { next(err); }
+});
+
+// ── GET /v1/auth/bosses ────────────────────────────────────────────────────────
+// Returns all super_admin users — used by teachers to select their Big Boss.
+authRouter.get("/auth/bosses", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const bosses = await listTenantUsersFromDb("dev-admin");
+    const superAdmins = bosses.filter(u => u.role === "super_admin");
+    res.json({ bosses: superAdmins.map(b => ({ id: b.id, displayName: b.displayName, email: b.email })) });
   } catch (err) { next(err); }
 });
 

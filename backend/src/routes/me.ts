@@ -1,13 +1,36 @@
 /// <reference path="../contracts/request.d.ts" />
 import { Router, type Request, type Response } from "express";
+import { z } from "zod";
 import { requireAuth } from "../auth/middleware.js";
-import { listFeatureTogglesForUser } from "../auth/policy-store.js";
 import { listAuditEvents } from "../security/audit.js";
 import { emitAuditEvent } from "../security/audit.js";
 import { createApiError } from "../security/errors.js";
 import { paginate } from "../security/pagination.js";
+import { getUserById, getUserByClerkId } from "../db/users.js";
+import {
+  createFeatureRequest,
+  decideFeatureRequest,
+  getFeatureRequest,
+  listFeatureAccessForUser,
+  listIncomingRequests,
+  listOutgoingRequests,
+} from "../db/featureRequests.js";
 
 export const meRouter = Router();
+
+/**
+ * Canonical feature catalog — used to render the "available features" list
+ * on the profile page and to validate request payloads.
+ */
+const FEATURE_CATALOG: Array<{ key: string; label: string }> = [
+  { key: "email_read",     label: "Read Email" },
+  { key: "email_write",    label: "Send Email" },
+  { key: "calendar_read",  label: "View Calendar" },
+  { key: "calendar_write", label: "Manage Calendar" },
+  { key: "ai_summary",     label: "AI Summaries" },
+  { key: "ai_compose",     label: "AI Compose" },
+];
+const FEATURE_KEYS = FEATURE_CATALOG.map((f) => f.key) as [string, ...string[]];
 
 meRouter.get("/profile", requireAuth, (req: Request, res: Response) => {
   const auth = req.auth!;
@@ -15,16 +38,50 @@ meRouter.get("/profile", requireAuth, (req: Request, res: Response) => {
   res.status(200).json({ id: auth.userId, tenant_id: auth.tenantId, role: auth.role });
 });
 
-meRouter.get("/features", requireAuth, (req: Request, res: Response) => {
+/**
+ * Return the user's feature toggles plus the catalog so the UI can render
+ * "available but not yet granted" features alongside enabled ones, plus
+ * any pending requests the user has open.
+ */
+meRouter.get("/features", requireAuth, async (req: Request, res: Response) => {
   const auth = req.auth!;
-  const features = listFeatureTogglesForUser(auth.tenantId, auth.userId);
+  // Resolve the actual DB row for this caller. For Clerk users our DB id is
+  // `clerk_<sub>` (the JWT sub). Auth middleware already sets userId to this id.
+  const me = (await getUserById(auth.userId)) ?? (await getUserByClerkId(auth.userId));
+  const userId = me?.id ?? auth.userId;
+  const tenantId = me?.tenantId ?? auth.tenantId;
+
+  const dbToggles = await listFeatureAccessForUser(tenantId, userId);
+  const enabledKeys = new Set(dbToggles.filter((t) => t.isEnabled).map((t) => t.featureKey));
+
+  // Project the catalog into the response so the UI sees every feature.
+  const features = FEATURE_CATALOG.map((f) => ({
+    tenantId,
+    userId,
+    featureKey: f.key,
+    label: f.label,
+    isEnabled: enabledKeys.has(f.key),
+  }));
+
+  const outgoing = me ? await listOutgoingRequests(userId) : [];
+
   emitAuditEvent(req, "me_features_read", { count: features.length });
-  const page = paginate(
+  res.status(200).json({
     features,
-    typeof req.query.cursor === "string" ? req.query.cursor : undefined,
-    typeof req.query.limit === "string" ? req.query.limit : undefined
-  );
-  res.status(200).json({ features: page.items, total: page.total, next_cursor: page.next_cursor });
+    catalog: FEATURE_CATALOG,
+    pending_requests: outgoing.filter((r) => r.status === "pending").map((r) => ({
+      id: r.id,
+      feature_key: r.featureKey,
+      status: r.status,
+      created_at: r.createdAt,
+    })),
+    history: outgoing.filter((r) => r.status !== "pending").map((r) => ({
+      id: r.id,
+      feature_key: r.featureKey,
+      status: r.status,
+      decided_at: r.decidedAt,
+    })),
+  });
 });
 
 meRouter.get("/activity", requireAuth, (req: Request, res: Response) => {
@@ -38,6 +95,149 @@ meRouter.get("/activity", requireAuth, (req: Request, res: Response) => {
   );
   res.status(200).json({ activity: page.items, total: page.total, next_cursor: page.next_cursor });
 });
+
+// ── Feature request inbox ────────────────────────────────────────────────────
+const createRequestSchema = z.object({
+  feature_key: z.enum(FEATURE_KEYS),
+  reason: z.string().max(500).optional(),
+});
+
+/**
+ * Submit a feature-access request. Routed automatically to the requester's
+ * direct manager (set during onboarding via /auth/select-manager). Big bosses
+ * have no manager, so they receive a validation error.
+ */
+meRouter.post("/feature-requests", requireAuth, async (req: Request, res: Response) => {
+  const auth = req.auth!;
+  const parsed = createRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw createApiError("VALIDATION_ERROR", "Invalid feature request payload", false, req.traceId);
+  }
+
+  const me = (await getUserById(auth.userId)) ?? (await getUserByClerkId(auth.userId));
+  if (!me) throw createApiError("NOT_FOUND", "User not found", false, req.traceId);
+  if (!me.managerUserId) {
+    throw createApiError("VALIDATION_ERROR", "You don't have a manager assigned to receive this request.", false, req.traceId);
+  }
+
+  const row = await createFeatureRequest({
+    tenantId: me.tenantId,
+    requesterUserId: me.id,
+    targetManagerUserId: me.managerUserId,
+    featureKey: parsed.data.feature_key,
+    reason: parsed.data.reason,
+  });
+
+  emitAuditEvent(req, "me_feature_request_created", {
+    feature_key: parsed.data.feature_key,
+    target_manager_user_id: me.managerUserId,
+    request_id: row.id,
+  });
+
+  res.status(201).json({ request: serialiseRequest(row) });
+});
+
+/**
+ * List requests addressed to the caller (manager view). Default returns all
+ * statuses so the UI can show a notification badge for pending and history
+ * for decided. Pass ?status=pending to filter.
+ */
+meRouter.get("/feature-requests/incoming", requireAuth, async (req: Request, res: Response) => {
+  const auth = req.auth!;
+  const me = (await getUserById(auth.userId)) ?? (await getUserByClerkId(auth.userId));
+  if (!me) {
+    res.status(200).json({ requests: [], pending_count: 0 });
+    return;
+  }
+
+  const status = typeof req.query.status === "string" ? req.query.status : undefined;
+  const rows = await listIncomingRequests(
+    me.id,
+    status === "approved" || status === "denied" || status === "pending" ? status : undefined,
+  );
+
+  // Hydrate requester display info so the UI can show who is asking.
+  const requesterIds = [...new Set(rows.map((r) => r.requesterUserId))];
+  const requesterMap = new Map<string, { id: string; displayName: string; email: string; role: string }>();
+  for (const id of requesterIds) {
+    const u = await getUserById(id);
+    if (u) requesterMap.set(id, { id: u.id, displayName: u.displayName, email: u.email, role: u.role });
+  }
+
+  const pending = rows.filter((r) => r.status === "pending").length;
+  res.status(200).json({
+    requests: rows.map((r) => ({
+      ...serialiseRequest(r),
+      requester: requesterMap.get(r.requesterUserId) ?? null,
+    })),
+    pending_count: pending,
+  });
+});
+
+const decideSchema = z.object({ decision: z.enum(["approved", "denied"]) });
+
+meRouter.post("/feature-requests/:id/decide", requireAuth, async (req: Request, res: Response) => {
+  const auth = req.auth!;
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) throw createApiError("VALIDATION_ERROR", "Invalid request id", false, req.traceId);
+
+  const parsed = decideSchema.safeParse(req.body);
+  if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid decision payload", false, req.traceId);
+
+  const me = (await getUserById(auth.userId)) ?? (await getUserByClerkId(auth.userId));
+  if (!me) throw createApiError("NOT_FOUND", "User not found", false, req.traceId);
+
+  const existing = await getFeatureRequest(id);
+  if (!existing) throw createApiError("NOT_FOUND", "Request not found", false, req.traceId);
+  if (existing.targetManagerUserId !== me.id) {
+    throw createApiError("FORBIDDEN", "Only the addressed manager can decide this request", false, req.traceId);
+  }
+  if (existing.status !== "pending") {
+    throw createApiError("VALIDATION_ERROR", "Request already decided", false, req.traceId);
+  }
+
+  const updated = await decideFeatureRequest({
+    id,
+    decidedByUserId: me.id,
+    decision: parsed.data.decision,
+  });
+  if (!updated) throw createApiError("NOT_FOUND", "Request could not be updated", false, req.traceId);
+
+  emitAuditEvent(req, "me_feature_request_decided", {
+    feature_key: updated.featureKey,
+    decision: parsed.data.decision,
+    request_id: updated.id,
+    requester_user_id: updated.requesterUserId,
+  });
+
+  res.status(200).json({ request: serialiseRequest(updated) });
+});
+
+function serialiseRequest(r: {
+  id: number;
+  tenantId: string;
+  requesterUserId: string;
+  targetManagerUserId: string;
+  featureKey: string;
+  status: string;
+  reason: string | null;
+  decidedByUserId: string | null;
+  decidedAt: Date | null;
+  createdAt: Date;
+}) {
+  return {
+    id: r.id,
+    tenant_id: r.tenantId,
+    requester_user_id: r.requesterUserId,
+    target_manager_user_id: r.targetManagerUserId,
+    feature_key: r.featureKey,
+    status: r.status,
+    reason: r.reason,
+    decided_by_user_id: r.decidedByUserId,
+    decided_at: r.decidedAt,
+    created_at: r.createdAt,
+  };
+}
 
 /** requireAuth guard — throws if auth missing (used by routes that inline-check) */
 export function assertAuth(req: Request): NonNullable<typeof req.auth> {

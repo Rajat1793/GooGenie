@@ -2,21 +2,34 @@
 import { Router, type Request, type Response } from "express";
 import { requireAuth, requireRole } from "../auth/middleware.js";
 import { ROLE } from "../auth/roles.js";
-import { assignManager, listRoleChanges, listTenantUsers, updateUserRole } from "../auth/policy-store.js";
+import { assignManager, listRoleChanges, updateUserRole } from "../auth/policy-store.js";
 import { adminUpdateManagerSchema, adminUpdateRoleSchema } from "../contracts/schemas.js";
 import { emitAuditEvent, listAuditEvents } from "../security/audit.js";
 import { createApiError } from "../security/errors.js";
 import { createRateLimitMiddleware } from "../security/rate-limit.js";
 import { paginate } from "../security/pagination.js";
+import { listAllRoleTenantUsers } from "../db/users.js";
 
 const rateLimit = createRateLimitMiddleware({ windowMs: 60_000, max: 30 });
 const guard = [requireAuth, requireRole([ROLE.SUPER_ADMIN]), rateLimit];
 
 export const adminRouter = Router();
 
-adminRouter.get("/users", ...guard, (req: Request, res: Response) => {
-  const auth = req.auth!;
-  const users = listTenantUsers(auth.tenantId);
+adminRouter.get("/users", ...guard, async (req: Request, res: Response) => {
+  // Super-admin sees the entire org across all three role-based tenants
+  // (dev-admin / dev-teachers / dev-students). Reading purely from the
+  // policy-store would only return seed data plus the caller themselves
+  // because each role lives in its own tenant.
+  const dbUsers = await listAllRoleTenantUsers();
+  const users = dbUsers.map((u) => ({
+    id: u.id,
+    tenantId: u.tenantId,
+    role: u.role,
+    email: u.email,
+    displayName: u.displayName,
+    managerUserId: u.managerUserId ?? undefined,
+    isActive: u.isActive,
+  }));
   emitAuditEvent(req, "admin_users_list_read", { count: users.length });
   const page = paginate(
     users,
