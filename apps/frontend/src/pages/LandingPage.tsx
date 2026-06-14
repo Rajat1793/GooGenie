@@ -1,7 +1,93 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth as useClerkAuth } from "@clerk/react";
 import { useTheme } from "../context/ThemeContext.tsx";
+
+const PLANS = [
+  {
+    name: "Learner",
+    price: 0,
+    period: null as string | null,
+    description: "Perfect for individuals exploring GooGenie. No credit card required.",
+    color: "bg-secondary-container text-secondary",
+    iconColor: "text-secondary",
+    icon: "school",
+    highlighted: false,
+    cta: "Get started free",
+    ctaHref: "/login",
+    badge: null as string | null,
+    features: [
+      { text: "Personal Gmail inbox (read & send)", included: true },
+      { text: "Google Calendar view", included: true },
+      { text: "HTML email rendering", included: true },
+      { text: "Gmail category tabs", included: true },
+      { text: "Up to 50 emails / day", included: true },
+      { text: "Google Meet in events", included: false },
+      { text: "Team hierarchy (Org Tree)", included: false },
+      { text: "Manager-level views", included: false },
+      { text: "Audit trail", included: false },
+      { text: "Webhook real-time push", included: false },
+    ],
+  },
+  {
+    name: "Startup",
+    price: 199,
+    period: "/ month",
+    description: "For growing teams that need collaboration, role-based access, and real-time sync.",
+    color: "bg-primary-container text-primary",
+    iconColor: "text-primary",
+    icon: "rocket_launch",
+    highlighted: true,
+    cta: "Start 14-day trial",
+    ctaHref: "/login",
+    badge: "Most popular",
+    features: [
+      { text: "Everything in Learner", included: true },
+      { text: "Unlimited emails", included: true },
+      { text: "Up to 25 team members", included: true },
+      { text: "Google Meet in events", included: true },
+      { text: "Team hierarchy (Org Tree)", included: true },
+      { text: "Manager-level views", included: true },
+      { text: "Audit trail (30-day retention)", included: true },
+      { text: "Webhook real-time push", included: true },
+      { text: "Role-based access control", included: true },
+      { text: "Priority email support", included: true },
+    ],
+  },
+  {
+    name: "Enterprise",
+    price: null as number | null,
+    period: null as string | null,
+    description: "Tailored for large orgs with custom integrations, SLAs, and a dedicated account manager.",
+    color: "bg-error-container text-error",
+    iconColor: "text-error",
+    icon: "domain",
+    highlighted: false,
+    cta: "Contact sales",
+    ctaHref: "mailto:sales@googenie.ai",
+    badge: null as string | null,
+    features: [
+      { text: "Everything in Startup", included: true },
+      { text: "Unlimited team members", included: true },
+      { text: "Custom OAuth & SSO", included: true },
+      { text: "Dedicated infrastructure", included: true },
+      { text: "Unlimited audit retention", included: true },
+      { text: "Custom role definitions", included: true },
+      { text: "SLA guarantee (99.9% uptime)", included: true },
+      { text: "Onboarding & training sessions", included: true },
+      { text: "Dedicated account manager", included: true },
+      { text: "Custom integrations on request", included: true },
+    ],
+  },
+];
+
+const FAQS = [
+  { q: "Is the Learner plan really free forever?", a: "Yes — no credit card, no trial expiry. Permanently free for individuals with a single Google account." },
+  { q: "What counts as a 'team member' in Startup?", a: "Any user invited to your GooGenie workspace. Managers and admins each count as one seat." },
+  { q: "Can I switch plans at any time?", a: "Absolutely. Upgrades take effect immediately; downgrades apply at the next billing cycle." },
+  { q: "Do you offer annual billing?", a: "Yes — pay annually and get 2 months free (17% off). Contact us to switch." },
+  { q: "Is my Google data safe?", a: "Yes. OAuth tokens are encrypted at rest per-tenant using AES-256 (Corsair KEK). We never store email content — all reads are live from the Gmail API." },
+];
 
 const FEATURES = [
   {
@@ -67,6 +153,8 @@ export function LandingPage() {
   const { isSignedIn, isLoaded } = useClerkAuth();
   const navigate = useNavigate();
   const { theme, toggle } = useTheme();
+  const [billing, setBilling] = useState<"monthly" | "annual">("monthly");
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   useEffect(() => {
     if (isLoaded && isSignedIn) navigate("/inbox", { replace: true });
@@ -82,12 +170,13 @@ export function LandingPage() {
             <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center">
               <span className="material-symbols-outlined text-white text-base">cloud</span>
             </div>
-            <span className="font-headline text-xl text-ink-text tracking-tight">Googenie</span>
+            <span className="font-headline text-xl text-ink-text tracking-tight">GooGenie</span>
           </div>
           <nav className="hidden md:flex items-center gap-6 text-sm text-on-surface-variant">
             <a href="#features" className="hover:text-ink-text transition-colors">Features</a>
             <a href="#how-it-works" className="hover:text-ink-text transition-colors">How it works</a>
             <a href="#roles" className="hover:text-ink-text transition-colors">Roles</a>
+            <a href="#pricing" className="hover:text-ink-text transition-colors">Pricing</a>
           </nav>
           <div className="flex items-center gap-3">
             <button onClick={toggle} className="btn-ghost p-2" title="Toggle theme">
@@ -119,7 +208,7 @@ export function LandingPage() {
         </h1>
 
         <p className="text-lg text-on-surface-variant max-w-2xl mx-auto mb-10 leading-relaxed">
-          Googenie connects Gmail and Google Calendar to a role-aware workspace. Every user sees their own inbox. Managers see their team's. Admins see everything — with a full audit trail.
+          GooGenie connects Gmail and Google Calendar to a role-aware workspace. Every user sees their own inbox. Managers see their team's. Admins see everything — with a full audit trail.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -284,6 +373,107 @@ export function LandingPage() {
         </div>
       </section>
 
+      {/* ── Pricing ───────────────────────────────────────────────── */}
+      <section id="pricing" className="py-24 bg-gradient-to-br from-primary/5 via-transparent to-secondary/5">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="section-label mb-3">Pricing</p>
+            <h2 className="font-headline text-4xl text-ink-text mb-4">Simple, transparent pricing</h2>
+            <p className="text-on-surface-variant max-w-xl mx-auto mb-8">Start free. Scale when you're ready. No hidden fees.</p>
+            {/* Billing toggle */}
+            <div className="inline-flex items-center gap-1 p-1 rounded-full" style={{ background: "var(--c-surface-container)", border: "1px solid var(--c-outline-variant)" }}>
+              <button onClick={() => setBilling("monthly")} className="px-5 py-2 rounded-full text-sm font-semibold transition-all" style={billing === "monthly" ? { background: "var(--c-primary)", color: "var(--c-on-primary)" } : { color: "var(--c-on-surface-variant)" }}>Monthly</button>
+              <button onClick={() => setBilling("annual")} className="px-5 py-2 rounded-full text-sm font-semibold transition-all flex items-center gap-2" style={billing === "annual" ? { background: "var(--c-primary)", color: "var(--c-on-primary)" } : { color: "var(--c-on-surface-variant)" }}>
+                Annual
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: billing === "annual" ? "rgba(255,255,255,0.25)" : "color-mix(in srgb, var(--c-primary) 15%, transparent)", color: billing === "annual" ? "white" : "var(--c-primary)" }}>−17%</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Plan cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start mb-16">
+            {PLANS.map((plan) => {
+              const displayPrice = plan.price !== null && plan.price > 0 && billing === "annual"
+                ? Math.round(plan.price * 0.83) : plan.price;
+              return (
+                <div
+                  key={plan.name}
+                  className={`relative rounded-3xl flex flex-col transition-all duration-200 ${plan.highlighted ? "shadow-2xl scale-[1.03] -translate-y-1" : "hover:shadow-lg hover:-translate-y-0.5"}`}
+                  style={{
+                    background: plan.highlighted ? "var(--c-surface-container)" : "var(--c-surface-container-low)",
+                    border: plan.highlighted ? "2px solid color-mix(in srgb, var(--c-primary) 40%, transparent)" : "1px solid var(--c-outline-variant)",
+                    padding: plan.highlighted ? "2rem" : "1.75rem",
+                  }}
+                >
+                  {plan.badge && (
+                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-xs font-bold" style={{ background: "var(--c-primary)", color: "var(--c-on-primary)" }}>{plan.badge}</div>
+                  )}
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${plan.color.split(" ")[0]}`}>
+                      <span className={`material-symbols-outlined text-xl ${plan.iconColor}`}>{plan.icon}</span>
+                    </div>
+                    <div>
+                      <h3 className="font-headline text-xl text-ink-text">{plan.name}</h3>
+                      <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${plan.color}`}>{plan.name}</span>
+                    </div>
+                  </div>
+                  <div className="mb-5">
+                    <div className="flex items-end gap-1">
+                      <span className="font-headline text-5xl text-ink-text leading-none">
+                        {plan.price === null ? "Custom" : plan.price === 0 ? "Free" : `$${displayPrice}`}
+                      </span>
+                      {plan.period && plan.price !== null && plan.price > 0 && (
+                        <span className="text-sm text-on-surface-variant mb-1">{plan.period}</span>
+                      )}
+                    </div>
+                    {billing === "annual" && plan.price !== null && plan.price > 0 && (
+                      <p className="text-xs text-on-surface-variant mt-1">
+                        <span className="line-through">${plan.price}/mo</span>
+                        <span className="font-semibold ml-1.5" style={{ color: "var(--c-primary)" }}>Save ${Math.round(plan.price * 12 * 0.17)}/yr</span>
+                      </p>
+                    )}
+                    <p className="text-sm text-on-surface-variant mt-2 leading-relaxed">{plan.description}</p>
+                  </div>
+                  <Link to={plan.ctaHref} className={`${plan.highlighted ? "btn-primary" : "btn-secondary"} text-sm w-full justify-center mb-6`}>
+                    {plan.cta}
+                    <span className="material-symbols-outlined text-base">{plan.name === "Enterprise" ? "mail" : "arrow_forward"}</span>
+                  </Link>
+                  <div className="h-px mb-5" style={{ background: "var(--c-outline-variant)" }} />
+                  <ul className="space-y-3 flex-1">
+                    {plan.features.map((f) => (
+                      <li key={f.text} className="flex items-start gap-2.5 text-sm">
+                        <span className="material-symbols-outlined text-base mt-px shrink-0" style={{ color: f.included ? "var(--c-primary)" : "var(--c-outline)" }}>
+                          {f.included ? "check_circle" : "cancel"}
+                        </span>
+                        <span style={{ color: f.included ? "var(--c-on-surface)" : "var(--c-outline)" }}>{f.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* FAQ */}
+          <div className="max-w-3xl mx-auto">
+            <h3 className="font-headline text-2xl text-ink-text text-center mb-8">Common questions</h3>
+            <div className="space-y-3">
+              {FAQS.map((faq, i) => (
+                <div key={i} className="rounded-2xl overflow-hidden transition-all" style={{ border: "1px solid var(--c-outline-variant)", background: openFaq === i ? "var(--c-surface-container)" : "var(--c-surface-container-low)" }}>
+                  <button className="w-full flex items-center justify-between px-6 py-4 text-left gap-4" onClick={() => setOpenFaq(openFaq === i ? null : i)}>
+                    <span className="font-semibold text-sm text-ink-text">{faq.q}</span>
+                    <span className="material-symbols-outlined text-xl shrink-0 transition-transform" style={{ color: "var(--c-primary)", transform: openFaq === i ? "rotate(180deg)" : "rotate(0deg)" }}>expand_more</span>
+                  </button>
+                  {openFaq === i && (
+                    <div className="px-6 pb-5"><p className="text-sm leading-relaxed text-on-surface-variant">{faq.a}</p></div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── Tech stack strip ──────────────────────────────────────── */}
       <section className="py-12 border-y border-outline-variant/20 bg-surface-container-low/40">
         <div className="max-w-5xl mx-auto px-6 text-center">
@@ -321,10 +511,13 @@ export function LandingPage() {
             <div className="w-6 h-6 rounded-lg bg-primary flex items-center justify-center">
               <span className="material-symbols-outlined text-white text-sm">cloud</span>
             </div>
-            <span className="font-headline text-base text-ink-text">Googenie</span>
+            <span className="font-headline text-base text-ink-text">GooGenie</span>
           </div>
           <p className="text-xs text-on-surface-variant">AI-first workspace for Google Workspace teams. Built with Corsair SDK.</p>
-          <Link to="/login" className="text-xs text-primary font-semibold hover:underline">Sign in →</Link>
+          <div className="flex items-center gap-4 text-xs">
+            <a href="#pricing" className="text-primary font-semibold hover:underline">Pricing</a>
+            <Link to="/login" className="text-primary font-semibold hover:underline">Sign in →</Link>
+          </div>
         </div>
       </footer>
 
