@@ -1,125 +1,23 @@
-import { useClerkReady } from "../../hooks/useClerkReady.ts";
 import { useEffect, useState, useCallback } from "react";
-import { managerApi, type PolicyUser } from "../../api/client.ts";
+import { managerApi, type PolicyUser, type AuditEvent } from "../../api/client.ts";
 import { PageHeader } from "../../components/PageHeader.tsx";
 import { RoleBadge } from "../../components/RoleBadge.tsx";
 import { DataState } from "../../components/DataState.tsx";
-import { Toggle } from "../../components/Toggle.tsx";
+import { Card } from "../../components/Card.tsx";
+import { formatActivity, activityIcon } from "../../lib/formatActivity.ts";
 
-const FEATURE_KEYS = [
-  "email_read",
-  "email_write",
-  "calendar_read",
-  "calendar_write",
-  "ai_summary",
-  "ai_compose"
-] as const;
+const FEATURE_CATALOG: Array<{ key: string; label: string; icon: string }> = [
+  { key: "email_read",     label: "Read Email",        icon: "inbox" },
+  { key: "email_write",    label: "Send Email",         icon: "edit" },
+  { key: "calendar_read",  label: "View Calendar",      icon: "calendar_month" },
+  { key: "calendar_write", label: "Manage Calendar",    icon: "edit_calendar" },
+  { key: "ai_summary",     label: "AI Summaries",       icon: "auto_awesome" },
+  { key: "ai_compose",     label: "AI Compose",         icon: "draw" },
+];
 
-const FEATURE_ICONS: Record<string, string> = {
-  email_read: "inbox", email_write: "edit", calendar_read: "calendar_month",
-  calendar_write: "edit_calendar", ai_summary: "auto_awesome", ai_compose: "draw"
-};
-
-interface UserRowProps {
-  user: PolicyUser;
-  onViewActivity: (user: PolicyUser) => void;
-}
-
-function UserFeatureRow({ user, onViewActivity }: UserRowProps) {
-  const [toggles, setToggles] = useState<Map<string, boolean>>(new Map());
-  const [initialised, setInitialised] = useState(false);
-  const [mutating, setMutating] = useState(false);
-
-  // Load real initial state from backend
-  useEffect(() => {
-    managerApi.getFeatureAccess(user.id)
-      .then((r) => {
-        const m = new Map<string, boolean>();
-        for (const t of r.feature_access) m.set(t.featureKey, t.isEnabled);
-        setToggles(m);
-      })
-      .catch(console.error)
-      .finally(() => setInitialised(true));
-  }, [user.id]);
-
-  async function handleToggle(key: string, val: boolean) {
-    setMutating(true);
-    // Optimistic update
-    setToggles((prev) => new Map(prev).set(key, val));
-    try {
-      const res = await managerApi.setFeatureAccess(user.id, key, val);
-      const next = new Map<string, boolean>();
-      for (const t of res.feature_access) next.set(t.featureKey, t.isEnabled);
-      setToggles(next);
-    } catch {
-      // Revert on failure
-      setToggles((prev) => new Map(prev).set(key, !val));
-    } finally {
-      setMutating(false);
-    }
-  }
-
-  const enabledCount = FEATURE_KEYS.filter((k) => toggles.get(k)).length;
-
-  return (
-    <div className="glass-panel rounded-2xl overflow-hidden card-hover">
-      {/* User header */}
-      <div className="px-6 py-4 border-b border-outline-variant/15 flex items-center justify-between bg-gradient-to-r from-surface-container-low/60 to-transparent">
-        <div className="flex items-center gap-3">
-          <div className="avatar-md">
-            {(user.displayName ?? user.email ?? user.id).charAt(0).toUpperCase()}
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-ink-text">{user.displayName ?? "—"}</p>
-            <p className="text-xs text-on-surface-variant">{user.email ?? user.id}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-on-surface-variant">
-            <span className={`w-2 h-2 rounded-full ${enabledCount > 0 ? "bg-primary" : "bg-outline-variant"}`} />
-            {initialised ? `${enabledCount}/${FEATURE_KEYS.length} on` : "loading…"}
-          </div>
-          <RoleBadge role={user.role} />
-          <button onClick={() => onViewActivity(user)} className="btn-ghost text-xs">
-            <span className="material-symbols-outlined text-[15px]">history</span>
-            Activity
-          </button>
-        </div>
-      </div>
-
-      {/* Feature toggles */}
-      <div className="p-5 grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {FEATURE_KEYS.map((key) => {
-          const on = toggles.get(key) ?? false;
-          return (
-            <div
-              key={key}
-              className={on ? "feature-chip-on" : "feature-chip-off"}
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className={`material-symbols-outlined text-[16px] flex-shrink-0 ${on ? "text-primary" : "text-outline"}`}>
-                  {FEATURE_ICONS[key] ?? "toggle_on"}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-ink-text capitalize truncate">{key.replace(/_/g, " ")}</p>
-                  <p className={`text-[10px] ${on ? "text-primary" : "text-outline"}`}>{on ? "on" : "off"}</p>
-                </div>
-              </div>
-              <Toggle
-                enabled={on}
-                onChange={(v) => handleToggle(key, v)}
-                disabled={mutating || !initialised}
-              />
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
+// ── Activity slide-over ───────────────────────────────────────────────────────
 function ActivityPanel({ user, onClose }: { user: PolicyUser; onClose: () => void }) {
-  const [events, setEvents] = useState<Array<{ at: string; action: string; method: string; route: string }>>([]);
+  const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -131,8 +29,8 @@ function ActivityPanel({ user, onClose }: { user: PolicyUser; onClose: () => voi
 
   return (
     <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end md:items-center justify-end">
-      <div className="glass-panel w-full md:w-[400px] h-[65vh] md:h-[75vh] md:m-6 flex flex-col rounded-t-3xl md:rounded-2xl shadow-2xl">
-        <div className="px-6 py-4 border-b border-outline-variant/20 flex items-center justify-between bg-surface-container-low/40 rounded-t-3xl md:rounded-t-2xl">
+      <div className="glass-panel w-full md:w-[420px] h-[65vh] md:h-[78vh] md:m-6 flex flex-col rounded-t-3xl md:rounded-2xl shadow-2xl">
+        <div className="px-6 py-4 border-b border-outline-variant/20 flex items-center justify-between bg-surface-container-low/40 rounded-t-3xl md:rounded-t-2xl flex-shrink-0">
           <div>
             <p className="font-semibold text-ink-text text-sm">Activity — {user.displayName ?? user.id}</p>
             <p className="text-xs text-on-surface-variant">{user.email}</p>
@@ -142,33 +40,135 @@ function ActivityPanel({ user, onClose }: { user: PolicyUser; onClose: () => voi
           </button>
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
-          {loading && <div className="empty-state"><span className="material-symbols-outlined animate-spin text-2xl">progress_activity</span></div>}
-          {!loading && events.length === 0 && <div className="empty-state text-sm">No activity yet.</div>}
-          {events.map((ev, i) => (
-            <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-white/60 border border-outline-variant/15">
-              <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-ink-text">{ev.action.replace(/_/g, " ")}</p>
-                <p className="text-[10px] text-on-surface-variant mt-0.5">{ev.method} {ev.route}</p>
-              </div>
-              <p className="text-[10px] text-outline flex-shrink-0">{new Date(ev.at).toLocaleTimeString()}</p>
+          {loading && (
+            <div className="empty-state">
+              <span className="material-symbols-outlined animate-spin text-2xl">progress_activity</span>
             </div>
-          ))}
+          )}
+          {!loading && events.length === 0 && (
+            <div className="empty-state text-sm">No activity yet.</div>
+          )}
+          {events.map((ev, i) => {
+            const text = formatActivity(ev.action, ev.metadata);
+            const icon = activityIcon(ev.action);
+            return (
+              <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-white/60 border border-outline-variant/15">
+                <div className="w-7 h-7 rounded-full bg-secondary-container/40 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="material-symbols-outlined text-sm text-primary">{icon}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-ink-text">{text}</p>
+                  <p className="text-[10px] text-on-surface-variant mt-0.5">
+                    {new Date(ev.at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 }
 
+// ── Feature-access expand row ─────────────────────────────────────────────────
+function FeatureExpandRow({
+  user,
+  onClose,
+}: {
+  user: PolicyUser;
+  onClose: () => void;
+}) {
+  const [toggles, setToggles] = useState<Map<string, boolean>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [mutating, setMutating] = useState<string | null>(null);
+
+  useEffect(() => {
+    managerApi.getFeatureAccess(user.id)
+      .then((r) => {
+        const m = new Map<string, boolean>();
+        for (const t of r.feature_access) m.set(t.featureKey, t.isEnabled);
+        setToggles(m);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [user.id]);
+
+  async function handleToggle(key: string, val: boolean) {
+    setMutating(key);
+    setToggles((prev) => new Map(prev).set(key, val));
+    try {
+      const res = await managerApi.setFeatureAccess(user.id, key, val);
+      const next = new Map<string, boolean>();
+      for (const t of res.feature_access) next.set(t.featureKey, t.isEnabled);
+      setToggles(next);
+    } catch {
+      setToggles((prev) => new Map(prev).set(key, !val));
+    } finally {
+      setMutating(null);
+    }
+  }
+
+  return (
+    <tr className="bg-surface-container-low/40">
+      <td colSpan={5} className="px-6 py-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest">
+            Feature Access — {user.displayName}
+          </p>
+          <button onClick={onClose} className="btn-ghost text-xs py-1">
+            <span className="material-symbols-outlined text-[14px]">close</span>
+            Close
+          </button>
+        </div>
+        {loading ? (
+          <p className="text-xs text-on-surface-variant">Loading…</p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+            {FEATURE_CATALOG.map(({ key, label, icon }) => {
+              const on = toggles.get(key) ?? false;
+              const busy = mutating === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => handleToggle(key, !on)}
+                  disabled={busy}
+                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all disabled:opacity-50 cursor-pointer ${
+                    on
+                      ? "bg-primary/8 border-primary/30 text-primary"
+                      : "bg-surface-container border-outline-variant/20 text-on-surface-variant hover:border-outline-variant/50"
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-xl">
+                    {busy ? "progress_activity" : icon}
+                  </span>
+                  <span className="text-[10px] font-medium text-center leading-tight">{label}</span>
+                  <span className={`text-[9px] font-semibold uppercase tracking-widest ${on ? "text-primary" : "text-outline"}`}>
+                    {on ? "ON" : "OFF"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
 export function ManagerTeamPage() {
   const [users, setUsers] = useState<PolicyUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeUser, setActiveUser] = useState<PolicyUser | null>(null);
+  const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [activityUser, setActivityUser] = useState<PolicyUser | null>(null);
+
+  // Bulk controls
   const [bulkFeature, setBulkFeature] = useState("email_read");
   const [bulkEnabled, setBulkEnabled] = useState(true);
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkResult, setBulkResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [bulkMsg, setBulkMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -187,17 +187,27 @@ export function ManagerTeamPage() {
 
   async function handleBulk() {
     setBulkLoading(true);
-    setBulkResult(null);
+    setBulkMsg(null);
     try {
       const ids = users.map((u) => u.id);
       const res = await managerApi.bulkSetFeatureAccess(ids, bulkFeature, bulkEnabled);
-      setBulkResult({ ok: true, msg: `Updated ${res.updated_count} team members` });
+      setBulkMsg({ ok: true, text: `Updated ${res.updated_count} student${res.updated_count === 1 ? "" : "s"}` });
     } catch (e) {
-      setBulkResult({ ok: false, msg: (e as Error).message });
+      setBulkMsg({ ok: false, text: (e as Error).message });
     } finally {
       setBulkLoading(false);
     }
   }
+
+  function toggleExpand(userId: string) {
+    setExpandedUser((prev) => (prev === userId ? null : userId));
+  }
+
+  const enabledCountForUser = (user: PolicyUser) => {
+    // Shown lazily via FeatureExpandRow; show "-" until expanded
+    return null;
+  };
+  void enabledCountForUser; // suppress unused warning
 
   return (
     <div>
@@ -205,7 +215,7 @@ export function ManagerTeamPage() {
         title="My Students"
         subtitle="Manage feature access and activity for your enrolled students."
         action={
-          <button onClick={load} className="btn-secondary flex items-center gap-1.5">
+          <button onClick={load} className="btn-ghost flex items-center gap-1.5">
             <span className="material-symbols-outlined text-[16px]">refresh</span>
             Refresh
           </button>
@@ -213,46 +223,135 @@ export function ManagerTeamPage() {
       />
 
       {/* Bulk action bar */}
-      <div className="glass-panel rounded-2xl p-5 mb-8 border-l-4 border-[#FFEBCC]">
+      <Card className="mb-6" padded>
         <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-4">
           Bulk action — apply to whole team
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="section-label block mb-1.5">Feature</label>
-            <select value={bulkFeature} onChange={(e) => setBulkFeature(e.target.value)} className="input-field w-44">
-              {FEATURE_KEYS.map((k) => <option key={k} value={k}>{k.replace(/_/g, " ")}</option>)}
+            <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-1.5">
+              Feature
+            </label>
+            <select
+              value={bulkFeature}
+              onChange={(e) => setBulkFeature(e.target.value)}
+              className="input-field w-44 rounded-xl"
+            >
+              {FEATURE_CATALOG.map(({ key, label }) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="section-label block mb-1.5">Set to</label>
-            <select value={String(bulkEnabled)} onChange={(e) => setBulkEnabled(e.target.value === "true")} className="input-field w-32">
+            <label className="block text-xs font-semibold text-on-surface-variant uppercase tracking-widest mb-1.5">
+              Set to
+            </label>
+            <select
+              value={String(bulkEnabled)}
+              onChange={(e) => setBulkEnabled(e.target.value === "true")}
+              className="input-field w-32 rounded-xl"
+            >
               <option value="true">Enabled</option>
               <option value="false">Disabled</option>
             </select>
           </div>
-          <button onClick={handleBulk} disabled={bulkLoading || users.length === 0} className="btn-primary disabled:opacity-50">
+          <button
+            onClick={handleBulk}
+            disabled={bulkLoading || users.length === 0}
+            className="btn-primary disabled:opacity-50"
+          >
             <span className="material-symbols-outlined text-[16px]">sync</span>
             Apply to all
           </button>
-          {bulkResult && (
-            <p className={`text-xs font-medium ${bulkResult.ok ? "text-primary" : "text-error"}`}>
-              {bulkResult.ok ? "✓" : "✗"} {bulkResult.msg}
+          {bulkMsg && (
+            <p className={`text-xs font-medium ${bulkMsg.ok ? "text-primary" : "text-error"}`}>
+              {bulkMsg.ok ? "✓" : "✗"} {bulkMsg.text}
             </p>
           )}
         </div>
-      </div>
+      </Card>
 
-      <DataState loading={loading} error={error} show={users.length > 0} empty="No team members in your scope.">
-        <div className="space-y-5">
-          {users.map((u) => (
-            <UserFeatureRow key={u.id} user={u} onViewActivity={setActiveUser} />
-          ))}
-        </div>
-      </DataState>
+      {/* Students table */}
+      <Card header={<span className="text-sm font-semibold text-ink-text">Team Members</span>} padded={false}>
+        <DataState
+          loading={loading}
+          error={error}
+          show={users.length > 0}
+          empty="No team members in your scope."
+        >
+          <div className="overflow-x-auto">
+            <table className="data-table w-full">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Features</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <>
+                    <tr
+                      key={u.id}
+                      className="hover:bg-surface-container-low/50 transition-colors cursor-pointer"
+                      onClick={() => toggleExpand(u.id)}
+                    >
+                      <td>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container font-semibold text-xs flex-shrink-0">
+                            {(u.displayName ?? u.email ?? "?").charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-medium text-ink-text">{u.displayName ?? "—"}</p>
+                            <p className="text-xs text-on-surface-variant">{u.email ?? u.id}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td><RoleBadge role={u.role} /></td>
+                      <td>
+                        <span className={`badge ${u.isActive ? "badge-success" : "bg-surface-container text-on-surface-variant"}`}>
+                          {u.isActive ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleExpand(u.id); }}
+                          className="btn-ghost text-xs py-1 flex items-center gap-1"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">toggle_on</span>
+                          {expandedUser === u.id ? "Hide" : "Manage"}
+                        </button>
+                      </td>
+                      <td>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setActivityUser(u); }}
+                          className="btn-ghost text-xs py-1 flex items-center gap-1"
+                        >
+                          <span className="material-symbols-outlined text-[14px]">history</span>
+                          Activity
+                        </button>
+                      </td>
+                    </tr>
+                    {expandedUser === u.id && (
+                      <FeatureExpandRow
+                        key={`${u.id}-features`}
+                        user={u}
+                        onClose={() => setExpandedUser(null)}
+                      />
+                    )}
+                  </>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </DataState>
+      </Card>
 
-      {activeUser && <ActivityPanel user={activeUser} onClose={() => setActiveUser(null)} />}
+      {activityUser && (
+        <ActivityPanel user={activityUser} onClose={() => setActivityUser(null)} />
+      )}
     </div>
   );
 }
-

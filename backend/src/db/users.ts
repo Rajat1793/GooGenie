@@ -56,10 +56,28 @@ export async function upsertClerkUser(opts: {
     },
   });
 
-  // Ensure feature toggles exist for the (possibly updated) tenantId
-  const features = ["email_read", "calendar_read", "calendar_write"];
+  // Seed feature toggles for the user.
+  // super_admin and manager_admin get all features ON; students start with
+  // the core reading features so they can request the rest from their teacher.
+  const CATALOG = [
+    "email_read", "email_write",
+    "calendar_read", "calendar_write",
+    "ai_summary", "ai_compose",
+  ];
+  const enabledByDefault: Record<string, string[]> = {
+    super_admin:   CATALOG,
+    manager_admin: CATALOG,
+    user:          ["email_read", "calendar_read"],
+  };
+  const enabledSet = new Set(enabledByDefault[chosenRole] ?? ["email_read", "calendar_read"]);
+
   await db.insert(schema.userFeatureAccess)
-    .values(features.map(fk => ({ tenantId: opts.tenantId, userId: id, featureKey: fk, isEnabled: true })))
+    .values(CATALOG.map(fk => ({
+      tenantId: opts.tenantId,
+      userId: id,
+      featureKey: fk,
+      isEnabled: enabledSet.has(fk),
+    })))
     .onConflictDoNothing();
 
   return (await db.query.users.findFirst({ where: eq(schema.users.id, id) })) as DbUser;
