@@ -7,6 +7,7 @@ import { verifyAccessToken } from "./token.js";
 import { verifyClerkJWT, looksLikeClerkJWT } from "./clerk-jwt.js";
 import { createApiError } from "../security/errors.js";
 import { env } from "../security/env.js";
+import { getUserByClerkId } from "../db/users.js";
 
 export function attachTraceId(req: Request, _res: Response, next: NextFunction): void {
   req.traceId = req.traceId ?? randomUUID();
@@ -29,22 +30,27 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
 
   if (looksLikeClerkJWT(token)) {
     // Clerk JWT — verify async then continue
-    verifyClerkJWT(token).then((payload) => {
+    verifyClerkJWT(token).then(async (payload) => {
       if (!payload) {
         next(createApiError("UNAUTHORIZED", "Invalid or expired Clerk token", false, req.traceId));
         return;
       }
-      // Map Clerk userId to our auth context
-      // Role: check publicMetadata via Clerk dashboard, default to "user"
-      const role: Role = ((payload as unknown as Record<string, unknown>)["role"] as Role) ?? "user";
-      // Use DEFAULT_TENANT_ID for all Clerk users so they share the same tenant
-      // as the seeded teachers (Hitesh, Piyush) and Big Boss (Anirudh).
-      const tenantId = env.DEFAULT_TENANT_ID;
-      req.auth = {
-        userId: payload.sub,
-        tenantId,
-        role
-      };
+
+      // Look up the authoritative role + tenant from the DB.
+      // Clerk JWTs don't carry a role claim by default, so we can't rely on the
+      // JWT payload for RBAC — we always read from our own DB after clerkSync.
+      try {
+        const dbUser = await getUserByClerkId(payload.sub);
+        const role: Role = (dbUser?.role as Role) ?? "user";
+        // Use the user's actual tenant from DB; fall back to DEFAULT_TENANT_ID for
+        // first-request race (before clerkSync has run).
+        const tenantId = dbUser?.tenantId ?? env.DEFAULT_TENANT_ID;
+        req.auth = { userId: payload.sub, tenantId, role };
+      } catch {
+        // DB unavailable — fall back to defaults so the request can still succeed
+        req.auth = { userId: payload.sub, tenantId: env.DEFAULT_TENANT_ID, role: "user" };
+      }
+
       next();
     }).catch(() => {
       next(createApiError("UNAUTHORIZED", "Token verification failed", false, req.traceId));

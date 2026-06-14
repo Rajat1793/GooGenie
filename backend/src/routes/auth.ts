@@ -58,7 +58,7 @@ authRouter.post("/auth/login", async (req: Request, res: Response, next: NextFun
 // Returns whether manager selection is required (new user with no manager).
 authRouter.post("/auth/clerk-sync", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { userId: clerkUserId, tenantId } = req.auth!;
+    const { userId: clerkUserId } = req.auth!;
     const parsed = z.object({
       email: z.string().email(),
       displayName: z.string().min(1),
@@ -67,12 +67,25 @@ authRouter.post("/auth/clerk-sync", requireAuth, async (req: Request, res: Respo
     }).safeParse(req.body);
     if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Email and displayName required", false, req.traceId);
 
+    const chosenRole = parsed.data.role ?? "user";
+
+    // Each role lives in its own tenant namespace so data is logically isolated:
+    //   super_admin  → dev-admin
+    //   manager_admin → dev-teachers
+    //   user          → dev-students
+    const ROLE_TENANT: Record<string, string> = {
+      super_admin: "dev-admin",
+      manager_admin: "dev-teachers",
+      user: "dev-students",
+    };
+    const tenantId = ROLE_TENANT[chosenRole] ?? TENANT_ID;
+
     const user = await upsertClerkUser({
       clerkUserId,
       tenantId,
       email: parsed.data.email,
       displayName: parsed.data.displayName,
-      role: parsed.data.role as import("../auth/roles.js").Role | undefined,
+      role: chosenRole as import("../auth/roles.js").Role,
     });
 
     // Only ask students to pick a teacher; Big Boss and Teachers don't need one
@@ -94,11 +107,11 @@ authRouter.get("/auth/me", requireAuth, async (req: Request, res: Response, next
 });
 
 // ── GET /v1/auth/managers ──────────────────────────────────────────────────────
-// Returns all manager_admin users in the tenant (for the popup selector).
+// Returns all manager_admin users (for the popup selector).
+// Reads from the teachers tenant so students can pick a teacher as their manager.
 authRouter.get("/auth/managers", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { tenantId } = req.auth!;
-    const managers = await listManagers(tenantId);
+    const managers = await listManagers("dev-teachers");
     res.json({ managers: managers.map(m => ({ id: m.id, displayName: m.displayName, email: m.email })) });
   } catch (err) { next(err); }
 });
@@ -143,10 +156,28 @@ authRouter.get("/auth/team", requireAuth, async (req: Request, res: Response, ne
 
 // ── GET /v1/auth/org-tree ──────────────────────────────────────────────────────
 // Returns the full org tree for visualization. Available to all authenticated users.
+// Queries across all role-based tenants (dev-admin, dev-teachers, dev-students)
+// so the hierarchy always shows the complete picture regardless of the caller's role.
 authRouter.get("/auth/org-tree", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { tenantId } = req.auth!;
-    const allUsers = await listTenantUsersFromDb(tenantId);
+    // Gather users from all three role-based tenants
+    const [adminUsers, teacherUsers, studentUsers] = await Promise.all([
+      listTenantUsersFromDb("dev-admin").catch(() => [] as Awaited<ReturnType<typeof listTenantUsersFromDb>>),
+      listTenantUsersFromDb("dev-teachers").catch(() => [] as Awaited<ReturnType<typeof listTenantUsersFromDb>>),
+      listTenantUsersFromDb("dev-students").catch(() => [] as Awaited<ReturnType<typeof listTenantUsersFromDb>>),
+    ]);
+
+    // Deduplicate by email — same person can appear in multiple tenants if they
+    // re-logged in with a different role tab. Keep the most-privileged row per email.
+    const ROLE_RANK: Record<string, number> = { super_admin: 3, manager_admin: 2, user: 1 };
+    const byEmail = new Map<string, typeof adminUsers[number]>();
+    for (const u of [...adminUsers, ...teacherUsers, ...studentUsers]) {
+      const existing = byEmail.get(u.email);
+      if (!existing || ROLE_RANK[u.role] > ROLE_RANK[existing.role]) {
+        byEmail.set(u.email, u);
+      }
+    }
+    const allUsers = Array.from(byEmail.values());
 
     // Build tree: big-boss → teachers → students
     const bigBoss = allUsers.filter(u => u.role === "super_admin");
@@ -163,8 +194,6 @@ authRouter.get("/auth/org-tree", requireAuth, async (req: Request, res: Response
         }))
     }));
 
-    // Also include unassigned students
-    const assignedStudentIds = new Set(students.filter(s => s.managerUserId).map(s => s.id));
     const unassigned = students.filter(s => !s.managerUserId);
 
     res.json({ tree, unassigned, stats: { bigBoss: bigBoss.length, teachers: teachers.length, students: students.length } });

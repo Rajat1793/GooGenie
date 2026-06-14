@@ -35,7 +35,8 @@ export async function upsertClerkUser(opts: {
 
   const id = `clerk_${opts.clerkUserId}`;
 
-  // Upsert: insert new or update role/displayName on re-login
+  // Upsert: insert new or update role/displayName/tenantId on re-login.
+  // tenantId CAN change if the user re-logs in with a different role tab.
   await db.insert(schema.users).values({
     id,
     tenantId: opts.tenantId,
@@ -48,13 +49,14 @@ export async function upsertClerkUser(opts: {
     target: schema.users.id,
     set: {
       role: chosenRole,
+      tenantId: opts.tenantId,
       displayName: opts.displayName,
       email: opts.email,
       updatedAt: new Date(),
     },
   });
 
-  // Ensure feature toggles exist (onConflictDoNothing — don't override manual overrides)
+  // Ensure feature toggles exist for the (possibly updated) tenantId
   const features = ["email_read", "calendar_read", "calendar_write"];
   await db.insert(schema.userFeatureAccess)
     .values(features.map(fk => ({ tenantId: opts.tenantId, userId: id, featureKey: fk, isEnabled: true })))

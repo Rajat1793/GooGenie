@@ -174,42 +174,56 @@ export function OrgTreePage() {
         )}
       </div>
 
-      {/* Tree */}
+      {/* Tree — multiple Big Boss nodes render side by side */}
       <div className="overflow-x-auto">
-        {tree.map((boss) => (
-          <div key={boss.id} className="flex flex-col items-center min-w-max mx-auto">
-
-            {/* Big Boss */}
-            <OrgCard user={boss} size="lg" />
-
-            {boss.children.length > 0 && (
-              <>
-                <VLine h={28} />
-
-                {/* "Reports to" label */}
-                <div className="px-3 py-1 rounded-full mb-4 text-[11px]"
-                  style={{ background: "var(--c-surface-container-high)", color: "var(--c-on-surface-variant)", border: "1px solid var(--c-outline-variant)" }}>
-                  Teachers reporting to {boss.displayName}
-                </div>
-
-                {/* Teachers row */}
-                <div className="relative flex gap-8 items-start flex-wrap justify-center">
-                  {/* Horizontal span connector */}
-                  {boss.children.length > 1 && (
-                    <div className="absolute top-0 left-[12%] right-[12%]" style={{ height: 2, background: LINE_COLOR }} />
-                  )}
-                  {boss.children.map((teacher) => (
-                    <TeacherBranch key={teacher.id} teacher={teacher} />
-                  ))}
-                </div>
-              </>
-            )}
-
-            {boss.children.length === 0 && (
-              <p className="text-sm mt-4" style={{ color: "var(--c-on-surface-variant)" }}>No teachers yet</p>
-            )}
+        {tree.length === 0 && !loading && (
+          <div className="flex flex-col items-center justify-center py-24 gap-3" style={{ color: "var(--c-on-surface-variant)" }}>
+            <span className="material-symbols-outlined text-5xl" style={{ opacity: 0.3 }}>account_tree</span>
+            <p className="font-headline text-2xl">No org structure yet</p>
+            <p className="text-sm">Users appear here once they sign in and are assigned roles.</p>
           </div>
-        ))}
+        )}
+        <div className="flex gap-16 justify-center items-start min-w-max mx-auto">
+          {tree.map((boss) => (
+            <div key={boss.id} className="flex flex-col items-center">
+
+              {/* Big Boss */}
+              <OrgCard user={boss} size="lg" />
+
+              {boss.children.length > 0 && (
+                <>
+                  <VLine h={28} />
+
+                  {/* "Reports to" label */}
+                  <div className="px-3 py-1 rounded-full mb-4 text-[11px]"
+                    style={{ background: "var(--c-surface-container-high)", color: "var(--c-on-surface-variant)", border: "1px solid var(--c-outline-variant)" }}>
+                    Teachers reporting to {boss.displayName}
+                  </div>
+
+                  {/* Teachers row */}
+                  <div className="relative flex gap-8 items-start flex-wrap justify-center">
+                    {boss.children.length > 1 && (
+                      <div className="absolute top-0 left-[12%] right-[12%]" style={{ height: 2, background: LINE_COLOR }} />
+                    )}
+                    {boss.children.map((teacher) => (
+                      <TeacherBranch key={teacher.id} teacher={teacher} />
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {boss.children.length === 0 && (
+                <>
+                  <VLine h={16} />
+                  <p className="text-xs px-3 py-1.5 rounded-full"
+                    style={{ color: "var(--c-on-surface-variant)", background: "var(--c-surface-container-high)" }}>
+                    No teachers yet
+                  </p>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Unassigned students */}

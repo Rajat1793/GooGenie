@@ -9,5 +9,17 @@ export default defineConfig({
       "/v1": "http://localhost:4000",
       "/health": "http://localhost:4000"
     }
+  },
+  build: {
+    // Split vendor chunks so the app shell loads independently of heavy deps
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-clerk": ["@clerk/react"],
+          "vendor-query": ["@tanstack/react-query"],
+          "vendor-react": ["react", "react-dom", "react-router-dom"],
+        }
+      }
+    }
   }
 });

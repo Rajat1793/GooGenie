@@ -13,6 +13,7 @@ import { secureHeaders } from "./security/secure-headers.js";
 import { env } from "./security/env.js";
 
 import { corsair, setupCorsair } from "./integrations/corsair.js";
+import { runStartupMigrations } from "./db/client.js";
 import { systemRouter } from "./routes/system.js";
 import { meRouter } from "./routes/me.js";
 import { adminRouter } from "./routes/admin.js";
@@ -97,8 +98,8 @@ app.use((err: ApiError, _req: Request, res: Response, _next: NextFunction) => {
 const port = env.PORT;
 if (process.env.NODE_ENV !== "test") {
   setupCorsair(corsair)
+    .then(() => runStartupMigrations())
     .then(() => {
-      // seedOnStartup() removed — start with a clean DB; users provisioned via Clerk sync
       app.listen(port, () => console.log(`Googenie backend listening on port ${port}`));
     })
     .catch((err) => {
