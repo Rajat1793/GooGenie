@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { emailApi, aiApi, type EmailThread, type AiSummary, type AiSearchResult } from "../api/client.ts";
 import { useEmailThreads, useMarkThreadRead, useTrashThread } from "../api/hooks.ts";
 import { useClerkReady } from "../hooks/useClerkReady.ts";
@@ -138,6 +139,14 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, canSummari
   const [aiReplyTone, setAiReplyTone] = useState<"professional" | "friendly" | "concise">("professional");
   const [aiReplyLoading, setAiReplyLoading] = useState(false);
 
+  // Reset state when the user switches threads (Fix #1)
+  useEffect(() => {
+    setSummary(null);
+    setSummaryErr(null);
+    setSummaryLoading(false);
+    setReplyBody("");
+  }, [thread.id]);
+
   async function handleReply() {
     if (!replyBody.trim()) return;
     setSending(true);
@@ -229,8 +238,17 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, canSummari
           <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "var(--c-error-container)", color: "var(--c-error)" }}>{summaryErr}</div>
         )}
         {summary && (
-          <div className="rounded-2xl p-5" style={{ background: "color-mix(in srgb, var(--c-primary) 6%, var(--c-surface-container))", border: "1px solid color-mix(in srgb, var(--c-primary) 20%, transparent)" }}>
-            <div className="flex items-center gap-2 mb-3">
+          <div className="rounded-2xl p-5 relative" style={{ background: "color-mix(in srgb, var(--c-primary) 6%, var(--c-surface-container))", border: "1px solid color-mix(in srgb, var(--c-primary) 20%, transparent)" }}>
+            <button
+              onClick={() => setSummary(null)}
+              className="absolute top-3 right-3 btn-ghost p-1 rounded-full"
+              title="Close summary"
+              aria-label="Close summary"
+              style={{ color: "var(--c-on-surface-variant)" }}
+            >
+              <span className="material-symbols-outlined text-base">close</span>
+            </button>
+            <div className="flex items-center gap-2 mb-3 pr-7">
               <span className="material-symbols-outlined text-base" style={{ color: "var(--c-primary)" }}>auto_awesome</span>
               <span className="text-xs font-semibold" style={{ color: "var(--c-primary)" }}>AI SUMMARY</span>
               <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: "var(--c-surface-container-high)", color: SENTIMENT_COLOR[summary.sentiment] ?? "var(--c-on-surface-variant)" }}>
@@ -313,17 +331,24 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, canSummari
             </button>
           </div>
         )}
-        <div className="flex items-center gap-3 rounded-2xl px-5 py-3" style={{ background: "var(--c-surface-container)", border: "1px solid var(--c-outline-variant)" }}>
-          <input
+        <div className="flex items-end gap-3 rounded-2xl px-5 py-3" style={{ background: "var(--c-surface-container)", border: "1px solid var(--c-outline-variant)" }}>
+          <textarea
             value={replyBody}
             onChange={(e) => setReplyBody(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(); }}}
-            placeholder={canWrite ? "Reply… (Enter to send)" : "Send Email feature disabled"}
+            placeholder={canWrite ? "Reply… (Enter to send, Shift+Enter for newline)" : "Send Email feature disabled"}
             disabled={!canWrite}
-            className="flex-1 bg-transparent text-sm outline-none disabled:opacity-50"
-            style={{ color: "var(--c-on-surface)" }}
+            rows={1}
+            className="flex-1 bg-transparent text-sm outline-none disabled:opacity-50 resize-none leading-relaxed py-1"
+            style={{ color: "var(--c-on-surface)", maxHeight: "180px", overflowY: "auto" }}
+            ref={(el) => {
+              if (el) {
+                el.style.height = "auto";
+                el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+              }
+            }}
           />
-          <button onClick={handleReply} disabled={sending || !replyBody.trim() || !canWrite} className="transition-all disabled:opacity-40" style={{ color: "var(--c-primary)" }}>
+          <button onClick={handleReply} disabled={sending || !replyBody.trim() || !canWrite} className="transition-all disabled:opacity-40 self-end pb-1" style={{ color: "var(--c-primary)" }}>
             {sending ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : <span className="material-symbols-outlined">send</span>}
           </button>
         </div>
@@ -338,20 +363,10 @@ export function InboxPage() {
   const { hasFeature } = useFeatures();
   const { status: connStatus, loading: connLoading, refresh: refreshConn } = useConnectionStatus();
 
-  // Feature gate — show disabled card if email_read is off
-  if (!hasFeature("email_read")) {
-    return (
-      <FeatureDisabledCard
-        featureKey="email_read"
-        title="Inbox Locked"
-        description="You don't have access to email yet. Request it from your teacher and they can enable it for you."
-        icon="inbox"
-      />
-    );
-  }
-  const [selected, setSelected] = useState<EmailThread | null>(null);
+    const [selected, setSelected] = useState<EmailThread | null>(null);
   const [composing, setComposing] = useState(false);
   const [search, setSearch] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
   const canWrite = hasFeature("email_write");
   // Gmail category tabs (Primary / Social / Promotions / Updates / Forums) with
   // pseudo-categories "all" and "unread" prepended for convenience.
@@ -449,6 +464,58 @@ export function InboxPage() {
     const fresh = threads.find((t) => t.id === selected.id);
     if (fresh && fresh !== selected) setSelected(fresh);
   }, [threads, selected]);
+
+  // Deep-link: open a specific thread when ?thread=<id> is in the URL
+  // (used by the AI assistant when it references an email).
+  useEffect(() => {
+    const want = searchParams.get("thread");
+    if (!want) return;
+    const match = threads.find((t) => t.id === want);
+    if (match) {
+      setSelected(match);
+      if (match.isUnread) markLocalRead(match.id);
+      // Clear the param so reload / nav-back doesn't re-trigger.
+      setSearchParams((sp) => {
+        const next = new URLSearchParams(sp);
+        next.delete("thread");
+        return next;
+      }, { replace: true });
+      return;
+    }
+    // Thread isn't in the currently loaded list (e.g. archived, in trash, beyond
+    // the page limit, or we just haven't loaded yet). Fetch it directly so the
+    // assistant's email link always works.
+    let cancelled = false;
+    emailApi.getThread(want)
+      .then((r) => {
+        if (cancelled || !r?.thread) return;
+        setSelected(r.thread);
+        if (r.thread.isUnread) markLocalRead(r.thread.id);
+      })
+      .catch(() => { /* leave param so user sees no-op rather than silent failure */ })
+      .finally(() => {
+        if (cancelled) return;
+        setSearchParams((sp) => {
+          const next = new URLSearchParams(sp);
+          next.delete("thread");
+          return next;
+        }, { replace: true });
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, threads]);
+
+    // Feature gate — show disabled card if email_read is off (MUST be after all hooks)
+    if (!hasFeature("email_read")) {
+      return (
+        <FeatureDisabledCard
+          featureKey="email_read"
+          title="Inbox Locked"
+          description="You don't have access to email yet. Request it from your teacher and they can enable it for you."
+          icon="inbox"
+        />
+      );
+    }
 
   if (!connLoading && connStatus && !connStatus.gmail) {
     return (

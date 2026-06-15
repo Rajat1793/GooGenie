@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, Fragment } from "react";
 import { managerApi, type PolicyUser, type AuditEvent } from "../../api/client.ts";
 import { PageHeader } from "../../components/PageHeader.tsx";
 import { RoleBadge } from "../../components/RoleBadge.tsx";
@@ -292,9 +292,8 @@ export function ManagerTeamPage() {
               </thead>
               <tbody>
                 {users.map((u) => (
-                  <>
+                  <Fragment key={u.id}>
                     <tr
-                      key={u.id}
                       className="hover:bg-surface-container-low/50 transition-colors cursor-pointer"
                       onClick={() => toggleExpand(u.id)}
                     >
@@ -341,7 +340,7 @@ export function ManagerTeamPage() {
                         onClose={() => setExpandedUser(null)}
                       />
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

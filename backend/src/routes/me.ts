@@ -56,13 +56,16 @@ meRouter.get("/features", requireAuth, async (req: Request, res: Response) => {
   const dbToggles = await listFeatureAccessForUser(tenantId, userId);
   const enabledKeys = new Set(dbToggles.filter((t) => t.isEnabled).map((t) => t.featureKey));
 
-  // Project the catalog into the response so the UI sees every feature.
+    // super_admin always has every feature enabled (they're the platform owners)
+    const isAdmin = auth.role === "super_admin";
+
+    // Project the catalog into the response so the UI sees every feature.
   const features = FEATURE_CATALOG.map((f) => ({
     tenantId,
     userId,
     featureKey: f.key,
     label: f.label,
-    isEnabled: enabledKeys.has(f.key),
+      isEnabled: isAdmin ? true : enabledKeys.has(f.key),
   }));
 
   const outgoing = me ? await listOutgoingRequests(userId) : [];

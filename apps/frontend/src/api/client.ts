@@ -9,8 +9,14 @@ let _getToken: (() => Promise<string | null>) | null = null;
 export function setClerkTokenGetter(fn: () => Promise<string | null>) { _getToken = fn; }
 
 // Demo token override — bypasses Clerk, set when user clicks a demo account button
-let _demoToken: string | null = null;
-export function setDemoToken(token: string | null) { _demoToken = token; }
+// Persisted in sessionStorage so page refresh doesn't break the demo session
+const _SESSION_KEY = "googenie_demo_token";
+let _demoToken: string | null = sessionStorage.getItem(_SESSION_KEY);
+export function setDemoToken(token: string | null) {
+  _demoToken = token;
+  if (token) sessionStorage.setItem(_SESSION_KEY, token);
+  else sessionStorage.removeItem(_SESSION_KEY);
+}
 export function getDemoToken() { return _demoToken; }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -395,10 +401,10 @@ export const aiApi = {
       { method: "POST", body: JSON.stringify({ limit }) },
     ),
 
-  agent: (prompt: string) =>
+  agent: (prompt: string, history?: Array<{ role: "user" | "assistant"; content: string }>) =>
     apiFetch<AgentResponse>("/v1/agent/execute", {
       method: "POST",
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt, history }),
     }),
 };
 
@@ -407,6 +413,7 @@ export interface AgentResponse {
   message: string;
   suggestions: string[];
   data?: Record<string, unknown>;
+  email_refs?: Array<{ thread_id: string; subject: string; from?: string }>;
   model?: string;
   ai_available: boolean;
 }

@@ -45,8 +45,9 @@ function ClerkTokenWirer() {
   }, [getToken, isSignedIn]);
 
   // Sync Clerk user to DB after sign-in, applying the role chosen on the login page
+  // Skip entirely when using a demo token — demo users are not real Clerk users
   useEffect(() => {
-    if (!isSignedIn || !user) return;
+    if (!isSignedIn || !user || getDemoToken()) return;
     const email = user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? "";
     const displayName = user.fullName ?? user.firstName ?? email.split("@")[0];
     // Read role chosen by the login tab (stored before Clerk redirected)

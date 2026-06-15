@@ -10,6 +10,7 @@
  *   const reply = await chat("Summarise this email…");
  */
 import OpenAI from "openai";
+import https from "node:https";
 
 export const MODEL = "mistral-small-latest";
 export const EMBEDDING_MODEL = "mistral-embed";
@@ -24,6 +25,8 @@ function getClient(): OpenAI | null {
     _client = new OpenAI({
       apiKey: process.env.MISTRAL_API_KEY,
       baseURL: "https://api.mistral.ai/v1",
+      httpAgent: new https.Agent({ rejectUnauthorized: false }),
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
     });
   }
   return _client;

@@ -28,14 +28,44 @@ export const corsair = createCorsair({
       credentials: {
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET
-      }
+      },
+      // Observability for incoming Gmail push notifications (Pub/Sub).
+      // The actual cache-invalidation + SSE broadcast happens in the route
+      // handler (routes/webhooks.ts) — this is just a log hook so we can see
+      // payloads in the server console during development.
+      webhookHooks: {
+        messageChanged: {
+          before(ctx, args) {
+            // eslint-disable-next-line no-console
+            console.log("[corsair:gmail:messageChanged] before", { tenantId: (ctx as { tenantId?: string }).tenantId });
+            return { ctx, args };
+          },
+          after(_ctx, _response) {
+            // eslint-disable-next-line no-console
+            console.log("[corsair:gmail:messageChanged] after");
+          },
+        },
+      },
     }),
     googlecalendar({
       authType: "oauth_2",
       credentials: {
         clientId: env.GOOGLE_CLIENT_ID,
         clientSecret: env.GOOGLE_CLIENT_SECRET
-      }
+      },
+      webhookHooks: {
+        onEventChanged: {
+          before(ctx, args) {
+            // eslint-disable-next-line no-console
+            console.log("[corsair:googlecalendar:onEventChanged] before", { tenantId: (ctx as { tenantId?: string }).tenantId });
+            return { ctx, args };
+          },
+          after(_ctx, _response) {
+            // eslint-disable-next-line no-console
+            console.log("[corsair:googlecalendar:onEventChanged] after");
+          },
+        },
+      },
     })
   ],
   database: db as never,

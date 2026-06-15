@@ -14,6 +14,7 @@ import { env } from "./security/env.js";
 
 import { corsair, setupCorsair } from "./integrations/corsair.js";
 import { runStartupMigrations } from "./db/client.js";
+import { prewarmJwksCache } from "./auth/clerk-jwt.js";
 import { systemRouter } from "./routes/system.js";
 import { meRouter } from "./routes/me.js";
 import { adminRouter } from "./routes/admin.js";
@@ -93,14 +94,35 @@ app.use((_req: Request, _res: Response, next: NextFunction) => {
   next({ code: "NOT_FOUND", message: "Route not found", trace_id: _req.traceId ?? "", retryable: false } satisfies ApiError);
 });
 
-app.use((err: ApiError, _req: Request, res: Response, _next: NextFunction) => {
-  res.status(statusFromApiError(err.code)).json(err);
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  // Handle both ApiError and regular Error types
+  if (err && typeof err === "object" && "code" in err && typeof (err as any).code === "string") {
+    const apiErr = err as ApiError;
+    res.status(statusFromApiError(apiErr.code)).json(apiErr);
+  } else if (err instanceof Error) {
+    console.error("Unhandled error:", err.message, err.stack);
+    res.status(500).json({
+      code: "INTERNAL_ERROR",
+      message: "An unexpected error occurred",
+      trace_id: _req.traceId ?? "",
+      retryable: false,
+    } satisfies ApiError);
+  } else {
+    console.error("Unknown error:", err);
+    res.status(500).json({
+      code: "INTERNAL_ERROR",
+      message: "An unexpected error occurred",
+      trace_id: _req.traceId ?? "",
+      retryable: false,
+    } satisfies ApiError);
+  }
 });
 
 const port = env.PORT;
 if (process.env.NODE_ENV !== "test") {
   setupCorsair(corsair)
     .then(() => runStartupMigrations())
+    .then(() => prewarmJwksCache())
     .then(() => {
       app.listen(port, () => console.log(`Googenie backend listening on port ${port}`));
     })

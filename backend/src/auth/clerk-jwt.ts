@@ -7,6 +7,7 @@
  * Payload shape: { sub: "user_xxx", azp, iss, exp, iat, ... }
  */
 import { createRequire } from "node:module";
+import https from "node:https";
 const _require = createRequire(import.meta.url);
 // eslint-disable-next-line
 const jwt = _require("jsonwebtoken") as typeof import("jsonwebtoken");
@@ -44,9 +45,29 @@ const jwksClient = jwksUri
       jwksUri,
       cache: true,
       cacheMaxEntries: 10,
-      cacheMaxAge: 10 * 60 * 1000 // 10 minutes
+      cacheMaxAge: 10 * 60 * 1000, // 10 minutes
+      // On corporate/dev networks with SSL inspection the JWKS fetch fails with
+      // "unable to get local issuer certificate". Use a permissive agent in dev only.
+      requestHeaders: {},
+      ...(env.NODE_ENV !== "production" && {
+        requestAgent: new https.Agent({ rejectUnauthorized: false })
+      })
     })
   : null;
+
+/**
+ * Pre-fetch all signing keys from Clerk's JWKS endpoint so the cache is warm
+ * before the first real request arrives. Call once at server startup.
+ */
+export async function prewarmJwksCache(): Promise<void> {
+  if (!jwksClient) return;
+  try {
+    await jwksClient.getSigningKeys();
+    console.log("[clerk-jwt] JWKS pre-warmed ✓");
+  } catch (err) {
+    console.warn("[clerk-jwt] JWKS pre-warm failed (will retry on first request):", (err as Error).message);
+  }
+}
 
 export async function verifyClerkJWT(token: string): Promise<ClerkJWTPayload | null> {
   if (!jwksClient) return null;

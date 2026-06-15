@@ -75,6 +75,17 @@ export function Shell({ children }: { children: ReactNode }) {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Listen for global toast events fired by useLiveCacheStream (Corsair
+  // webhooks → SSE → here), so users see a visible "new mail" cue.
+  useEffect(() => {
+    function onGlobalToast(e: Event) {
+      const detail = (e as CustomEvent<{ message?: string }>).detail;
+      if (detail?.message) setToast(detail.message);
+    }
+    window.addEventListener("googenie:toast", onGlobalToast);
+    return () => window.removeEventListener("googenie:toast", onGlobalToast);
+  }, []);
+
   async function handleDecide(id: number, decision: "approved" | "denied") {
     setDecidingId(id);
     try {

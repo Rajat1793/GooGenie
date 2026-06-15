@@ -77,3 +77,30 @@ webhooksRouter.get("/webhooks/events", requireAuth, requireRole(["super_admin"])
   const events = webhookStore.list(tenantId);
   res.status(200).json({ events, total: events.length });
 });
+
+/**
+ * POST /v1/webhooks/simulate
+ * Dev/demo helper: fires a synthetic email.changed or calendar.changed event
+ * for the authenticated user so we can demonstrate the full live-update
+ * pipeline (Corsair webhook → SSE → React Query invalidate → toast + chime)
+ * without needing Google Cloud Pub/Sub configured.
+ *
+ * Body: { kind: "email" | "calendar", threadId?: string, eventId?: string }
+ */
+webhooksRouter.post("/webhooks/simulate", requireAuth, (req: Request, res: Response) => {
+  const userId = req.auth!.userId;
+  const kind = req.body?.kind;
+  if (kind === "email") {
+    publish({ kind: "email.changed", userId, ...(req.body?.threadId ? { threadId: String(req.body.threadId) } : {}) });
+    cache.invalidatePrefix(`threads:u_${userId}`);
+    res.status(200).json({ ok: true, fired: "email.changed", userId });
+    return;
+  }
+  if (kind === "calendar") {
+    publish({ kind: "calendar.changed", userId, ...(req.body?.eventId ? { eventId: String(req.body.eventId) } : {}) });
+    cache.invalidatePrefix(`events:u_${userId}`);
+    res.status(200).json({ ok: true, fired: "calendar.changed", userId });
+    return;
+  }
+  res.status(400).json({ error: "kind must be 'email' or 'calendar'" });
+});

@@ -68,6 +68,15 @@ export const availabilityCheckSchema = z.object({
 
 export const agentExecuteSchema = z.object({
   prompt: z.string().min(1).max(4000),
-  context: z.record(z.unknown()).optional()
+  context: z.record(z.unknown()).optional(),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().min(1).max(4000),
+      })
+    )
+    .max(20)
+    .optional(),
 });
 

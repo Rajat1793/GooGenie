@@ -1,20 +1,38 @@
 import { SignIn } from "@clerk/react";
 import { useAuth as useClerkAuth } from "@clerk/react";
 import { dark } from "@clerk/themes";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext.tsx";
 import { useEffect, useState } from "react";
+import { setDemoToken } from "../api/client.ts";
 
 export function LoginPage() {
   const { isSignedIn, isLoaded } = useClerkAuth();
   const { theme, toggle } = useTheme();
+  const navigate = useNavigate();
   const [tab, setTab] = useState<"user" | "super_admin" | "manager_admin">("user");
+  const [demoAccounts, setDemoAccounts] = useState<Array<{ role: string; label: string; token: string; email: string }>>([]);
+  const [demoLoading, setDemoLoading] = useState(false);
 
   if (isLoaded && isSignedIn) return <Navigate to="/" replace />;
 
   useEffect(() => {
     localStorage.setItem("googenie-pending-role", tab);
   }, [tab]);
+
+  // Fetch demo accounts from backend on mount
+  useEffect(() => {
+    fetch("/v1/demo/tokens")
+      .then((r) => r.json())
+      .then((d) => { if (d.accounts) setDemoAccounts(d.accounts); })
+      .catch(() => null);
+  }, []);
+
+  async function handleDemoLogin(token: string) {
+    setDemoLoading(true);
+    setDemoToken(token);
+    navigate("/inbox");
+  }
 
   const isDark = theme === "dark";
 
@@ -98,6 +116,49 @@ export function LoginPage() {
         <div className="w-full">
           <SignIn routing="hash" appearance={clerkAppearance} />
         </div>
+
+        {/* Demo quick-login — only shown when demo tokens are configured */}
+        {demoAccounts.length > 0 && (
+          <div className="w-full">
+            <div className="flex items-center gap-2 mb-3">
+              <div style={{ flex: 1, height: 1, background: "var(--c-outline-variant)" }} />
+              <span className="text-[11px] font-semibold uppercase tracking-widest"
+                style={{ color: "var(--c-on-surface-variant)" }}>or try a demo account</span>
+              <div style={{ flex: 1, height: 1, background: "var(--c-outline-variant)" }} />
+            </div>
+            <div className="flex flex-col gap-2">
+              {demoAccounts.map((acct) => (
+                <button
+                  key={acct.role + acct.label}
+                  onClick={() => handleDemoLogin(acct.token)}
+                  disabled={demoLoading}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-left transition-all"
+                  style={{
+                    border: "1px solid var(--c-outline-variant)",
+                    background: "var(--c-surface-container)",
+                    opacity: demoLoading ? 0.6 : 1,
+                  }}
+                >
+                  <span className="material-symbols-outlined text-base"
+                    style={{ color: "var(--c-primary)", fontVariationSettings: "FILL 1" }}>
+                    {acct.role === "super_admin" ? "admin_panel_settings" : acct.role === "manager_admin" ? "school" : "person"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold leading-tight"
+                      style={{ color: "var(--c-on-surface)" }}>{acct.label}</div>
+                    <div className="text-[11px] truncate"
+                      style={{ color: "var(--c-on-surface-variant)" }}>{acct.email}</div>
+                  </div>
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full"
+                    style={{
+                      background: "color-mix(in srgb, var(--c-primary) 12%, transparent)",
+                      color: "var(--c-primary)"
+                    }}>demo</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

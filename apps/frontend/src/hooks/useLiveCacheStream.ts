@@ -99,6 +99,14 @@ function handleFrame(frame: string, qc: ReturnType<typeof useQueryClient>) {
         const parsed = JSON.parse(data) as { threadId?: string };
         if (parsed.threadId) qc.invalidateQueries({ queryKey: ["email", "thread", parsed.threadId] });
       } catch { /* ignore */ }
+      // Visible feedback so the user knows the inbox just updated from a webhook
+      playChime("in");
+      window.dispatchEvent(new CustomEvent("googenie:toast", {
+        detail: { message: "📬 New mail just arrived", icon: "mail" },
+      }));
+      if (typeof Notification !== "undefined" && Notification.permission === "granted" && document.hidden) {
+        new Notification("GooGenie — New mail", { body: "Your inbox just updated.", icon: "/favicon.svg" });
+      }
       break;
     case "calendar.changed":
       qc.invalidateQueries({ queryKey: ["calendar", "events"] });
@@ -106,6 +114,10 @@ function handleFrame(frame: string, qc: ReturnType<typeof useQueryClient>) {
         const parsed = JSON.parse(data) as { eventId?: string };
         if (parsed.eventId) qc.invalidateQueries({ queryKey: ["calendar", "event", parsed.eventId] });
       } catch { /* ignore */ }
+      playChime("in");
+      window.dispatchEvent(new CustomEvent("googenie:toast", {
+        detail: { message: "📅 Calendar updated", icon: "event" },
+      }));
       break;
     case "feature.request.created":
       // Manager receives this — refresh their notification bell immediately

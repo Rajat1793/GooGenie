@@ -23,9 +23,12 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       retry: (failureCount, error) => {
-        // Never retry 429s — backing off is handled by the 60s background poll.
         const status = (error as { status?: number })?.status;
+        // Never retry 429s — backing off is handled by the 60s background poll.
         if (status === 429) return false;
+        // Retry 401s up to 2 times — covers the JWKS cold-start window on local
+        // where the first batch of requests arrive before Clerk's JWKS is cached.
+        if (status === 401) return failureCount < 2;
         return failureCount < 1;
       },
     },

@@ -11,6 +11,7 @@
  * action/message/suggestions returned from the backend.
  */
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { aiApi, type AgentResponse } from "../api/client";
 import { useFeatures } from "../context/FeatureContext";
 
@@ -22,6 +23,41 @@ export function AgentBar() {
   const inputRef = useRef<HTMLInputElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
   const { hasFeature } = useFeatures();
+  const navigate = useNavigate();
+
+  function openEmailRef(threadId: string) {
+    setOpen(false);
+    navigate(`/inbox?thread=${encodeURIComponent(threadId)}`);
+  }
+
+  // Map a suggestion chip to a starter-template prompt the user can edit
+  // before sending. Some templates end with a trailing space so the cursor
+  // lands at the end ready for input.
+  function suggestionToTemplate(s: string): string {
+    const k = s.toLowerCase();
+    if (k.includes("confirm") && k.includes("create")) return "Yes, create the event";
+    if (k.includes("confirm") && k.includes("send")) return "Yes, send the email";
+    if (k.includes("schedule anyway")) return "Schedule it anyway";
+    if (k.includes("different time") || k === "change time") return "Change the time to ";
+    if (k.includes("free slots")) return "Show me my free slots ";
+    if (k.includes("attendees")) return "Add attendees: ";
+    if (k.includes("edit body")) return "Edit the body: ";
+    if (k.includes("tone")) return "Use a friendlier tone";
+    return s;
+  }
+
+  function applySuggestion(s: string) {
+    const tpl = suggestionToTemplate(s);
+    setPrompt(tpl);
+    // Defer focus so the value is in place before we move the caret to the end.
+    setTimeout(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      const end = tpl.length;
+      try { el.setSelectionRange(end, end); } catch { /* noop */ }
+    }, 0);
+  }
 
   // Open with Cmd/Ctrl+K
   useEffect(() => {
@@ -63,7 +99,13 @@ export function AgentBar() {
     if (!q || busy) return;
     setBusy(true);
     try {
-      const reply = await aiApi.agent(q);
+      // Build conversation history (memory) from previous turns — last 10 to stay in context window
+      const memory: Array<{ role: "user" | "assistant"; content: string }> = [];
+      for (const h of history.slice(-5)) {
+        memory.push({ role: "user", content: h.user });
+        if (h.reply.message) memory.push({ role: "assistant", content: h.reply.message });
+      }
+      const reply = await aiApi.agent(q, memory);
       setHistory((h) => [...h, { user: q, reply }]);
       setPrompt("");
     } catch (err) {
@@ -82,6 +124,12 @@ export function AgentBar() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function clearConversation() {
+    setHistory([]);
+    setPrompt("");
+    inputRef.current?.focus();
   }
 
   return (
@@ -129,14 +177,37 @@ export function AgentBar() {
                 <span className="font-semibold text-sm" style={{ color: "var(--c-on-surface)" }}>
                   GooGenie Assistant
                 </span>
+                {history.length > 0 && (
+                  <span
+                    className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
+                    style={{ background: "var(--c-tertiary-container)", color: "var(--c-on-tertiary-container)" }}
+                    title="Conversation memory active"
+                  >
+                    {history.length} {history.length === 1 ? "turn" : "turns"}
+                  </span>
+                )}
               </div>
-              <button
-                onClick={() => setOpen(false)}
-                className="text-xs px-2 py-1 rounded hover:opacity-70"
-                style={{ color: "var(--c-on-surface-variant)" }}
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-1">
+                {history.length > 0 && (
+                  <button
+                    onClick={clearConversation}
+                    className="text-xs px-2 py-1 rounded hover:opacity-70 flex items-center gap-1"
+                    style={{ color: "var(--c-on-surface-variant)" }}
+                    title="Clear conversation memory"
+                  >
+                    <span className="material-symbols-outlined text-sm">refresh</span>
+                    Clear
+                  </button>
+                )}
+                <button
+                  onClick={() => setOpen(false)}
+                  className="text-xs px-2 py-1 rounded hover:opacity-70"
+                  style={{ color: "var(--c-on-surface-variant)" }}
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             {/* Conversation */}
@@ -150,6 +221,13 @@ export function AgentBar() {
                   }}
                 >
                   <div className="font-medium" style={{ color: "var(--c-on-surface)" }}>
+                    Hi! I help with your email & calendar only.
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    I can summarize threads, draft replies, find emails, and schedule events.
+                    I won't answer general questions outside this workspace.
+                  </p>
+                  <div className="font-medium pt-1" style={{ color: "var(--c-on-surface)" }}>
                     Try asking…
                   </div>
                   {[
@@ -166,6 +244,10 @@ export function AgentBar() {
                       {s}
                     </button>
                   ))}
+                  <p className="text-[10px] pt-1 italic flex items-center gap-1" style={{ color: "var(--c-primary)" }}>
+                    <span className="material-symbols-outlined text-xs">arrow_downward</span>
+                    Type your request in the box below
+                  </p>
                 </div>
               )}
               {history.map((h, i) => (
@@ -187,19 +269,47 @@ export function AgentBar() {
                       }}
                     >
                       {h.reply.message || "(no response)"}
+                      {h.reply.email_refs && h.reply.email_refs.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          {h.reply.email_refs.map((ref) => (
+                            <button
+                              key={ref.thread_id}
+                              onClick={() => openEmailRef(ref.thread_id)}
+                              className="w-full text-left flex items-start gap-2 px-2 py-1.5 rounded-lg text-[11px] transition hover:opacity-90 group"
+                              style={{
+                                background: "var(--c-primary-container)",
+                                color: "var(--c-on-primary-container)",
+                                border: "1px solid var(--c-outline-variant)",
+                              }}
+                              title="Open this email in the inbox"
+                            >
+                              <span className="material-symbols-outlined text-sm shrink-0 mt-0.5">mail</span>
+                              <span className="flex-1 min-w-0">
+                                <span className="block font-semibold truncate">{ref.subject || "(no subject)"}</span>
+                                {ref.from && <span className="block opacity-70 truncate">{ref.from}</span>}
+                              </span>
+                              <span className="material-symbols-outlined text-sm opacity-60 group-hover:opacity-100 shrink-0">open_in_new</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {h.reply.suggestions.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1">
                           {h.reply.suggestions.map((s) => (
-                            <span
+                            <button
                               key={s}
-                              className="text-[10px] px-2 py-0.5 rounded-full"
+                              type="button"
+                              onClick={() => applySuggestion(s)}
+                              className="text-[10px] px-2 py-0.5 rounded-full transition hover:scale-105 active:scale-95 cursor-pointer"
                               style={{
                                 background: "var(--c-tertiary-container)",
                                 color: "var(--c-on-tertiary-container)",
+                                border: "1px solid var(--c-outline-variant)",
                               }}
+                              title={`Use "${s}" as a starter — you can edit before sending`}
                             >
                               {s}
-                            </span>
+                            </button>
                           ))}
                         </div>
                       )}
@@ -237,7 +347,7 @@ export function AgentBar() {
                     void send();
                   }
                 }}
-                placeholder="Ask anything…"
+                placeholder="Ask about your email or calendar…"
                 className="flex-1 px-3 py-2 rounded-xl text-sm outline-none"
                 style={{
                   background: "var(--c-surface-container-lowest)",
