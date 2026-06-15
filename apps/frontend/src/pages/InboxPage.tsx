@@ -138,6 +138,10 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, canSummari
   // AI Reply state
   const [aiReplyTone, setAiReplyTone] = useState<"professional" | "friendly" | "concise">("professional");
   const [aiReplyLoading, setAiReplyLoading] = useState(false);
+  // Tracks whether the textarea currently holds AI-generated text. When true,
+  // changing the tone pill will auto-regenerate; once the user manually edits
+  // the body it flips false so we don't clobber their edits.
+  const [bodyIsAiGenerated, setBodyIsAiGenerated] = useState(false);
 
   // Reset state when the user switches threads (Fix #1)
   useEffect(() => {
@@ -145,6 +149,7 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, canSummari
     setSummaryErr(null);
     setSummaryLoading(false);
     setReplyBody("");
+    setBodyIsAiGenerated(false);
   }, [thread.id]);
 
   async function handleReply() {
@@ -166,13 +171,31 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, canSummari
     finally { setSummaryLoading(false); }
   }
 
-  async function handleAiReply() {
+  async function handleAiReply(toneOverride?: "professional" | "friendly" | "concise") {
+    const useTone = toneOverride ?? aiReplyTone;
     setAiReplyLoading(true);
     try {
-      const r = await aiApi.compose({ type: "reply", tone: aiReplyTone, context: thread.subject, thread_snippet: thread.snippet, recipient_name: thread.from });
-      if (r.ai_available && r.body) setReplyBody(r.body);
+      const r = await aiApi.compose({ type: "reply", tone: useTone, context: thread.subject, thread_snippet: thread.snippet, recipient_name: thread.from });
+      if (r.ai_available && r.body) {
+        setReplyBody(r.body);
+        setBodyIsAiGenerated(true);
+      }
     } catch { /* ignore */ }
     finally { setAiReplyLoading(false); }
+  }
+
+  /**
+   * Switch tone pill. If the textarea currently holds AI-generated text,
+   * regenerate it with the new tone immediately so the user doesn't have to
+   * click "AI Reply" again. If the user has edited the body manually we just
+   * remember the new tone for the next AI Reply click.
+   */
+  function handleToneChange(t: "professional" | "friendly" | "concise") {
+    if (t === aiReplyTone) return;
+    setAiReplyTone(t);
+    if (bodyIsAiGenerated && !aiReplyLoading && canAiCompose) {
+      void handleAiReply(t);
+    }
   }
 
   async function handleAction(action: "archive" | "read" | "unread" | "trash") {
@@ -315,15 +338,19 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, canSummari
           <div className="flex items-center gap-2 mb-2">
             <span className="text-[10px] font-semibold" style={{ color: "var(--c-on-surface-variant)" }}>TONE:</span>
             {(["professional", "friendly", "concise"] as const).map((t) => (
-              <button key={t} onClick={() => setAiReplyTone(t)}
-                className="px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-all capitalize"
+              <button
+                key={t}
+                onClick={() => handleToneChange(t)}
+                disabled={aiReplyLoading}
+                title={bodyIsAiGenerated ? `Regenerate with ${t} tone` : `Set tone to ${t} for next AI Reply`}
+                className="px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-all capitalize disabled:opacity-50"
                 style={aiReplyTone === t
                   ? { background: "var(--c-primary)", color: "var(--c-on-primary)", borderColor: "var(--c-primary)" }
                   : { background: "transparent", color: "var(--c-on-surface-variant)", borderColor: "var(--c-outline-variant)" }}>
                 {t}
               </button>
             ))}
-            <button onClick={handleAiReply} disabled={aiReplyLoading}
+            <button onClick={() => handleAiReply()} disabled={aiReplyLoading}
               className="ml-auto btn-ghost text-[10px] flex items-center gap-1 disabled:opacity-50"
               style={{ color: "var(--c-primary)" }}>
               <span className="material-symbols-outlined text-sm">{aiReplyLoading ? "progress_activity" : "auto_awesome"}</span>
@@ -334,7 +361,7 @@ function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, canSummari
         <div className="flex items-end gap-3 rounded-2xl px-5 py-3" style={{ background: "var(--c-surface-container)", border: "1px solid var(--c-outline-variant)" }}>
           <textarea
             value={replyBody}
-            onChange={(e) => setReplyBody(e.target.value)}
+            onChange={(e) => { setReplyBody(e.target.value); setBodyIsAiGenerated(false); }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(); }}}
             placeholder={canWrite ? "Reply… (Enter to send, Shift+Enter for newline)" : "Send Email feature disabled"}
             disabled={!canWrite}
@@ -455,6 +482,25 @@ export function InboxPage() {
     const t = setTimeout(() => setServerSearch(trimmed), 400);
     return () => clearTimeout(t);
   }, [search, aiSearchOn, serverSearch]);
+
+  // ── Pick up ?q=… from the global header search bar ────────────────────────
+  // The Shell's top header has a search box that navigates to /inbox?q=<text>.
+  // When we land here, hydrate the local search state from that URL param so
+  // the user sees the input pre-filled and results immediately.
+  useEffect(() => {
+    const urlQ = searchParams.get("q");
+    if (urlQ && urlQ !== search) {
+      setSearch(urlQ);
+      setServerSearch(urlQ);
+      // Clear the param so navigating back/forward doesn't re-fight local state
+      setSearchParams((sp) => {
+        const next = new URLSearchParams(sp);
+        next.delete("q");
+        return next;
+      }, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Trigger server search when user presses Enter (still works as a shortcut)
   function handleSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {

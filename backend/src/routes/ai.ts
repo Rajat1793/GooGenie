@@ -21,6 +21,7 @@ import { chat, isAiAvailable, MODEL, embed } from "../integrations/openai.js";
 import { aiCache } from "../lib/cache.js";
 import { checkAvailability } from "../integrations/googlecalendar.js";
 import { searchEmbeddings, embeddingsAvailable, upsertEmbedding, isAlreadyEmbedded } from "../db/embeddings.js";
+import { getUserById, getUserByClerkId } from "../db/users.js";
 
 export const aiRouter = Router();
 
@@ -145,6 +146,15 @@ aiRouter.post(
 
       const { type, tone, context, thread_snippet, recipient_name } = parsed.data;
 
+      // Resolve the logged-in user's display name so the AI can sign the
+      // email correctly instead of leaving "[Your Name]" placeholders. Falls
+      // back to the email local-part, then a neutral signature.
+      const auth = req.auth!;
+      const dbUser = (await getUserById(auth.userId)) ?? (await getUserByClerkId(auth.userId));
+      const senderName = dbUser?.displayName?.trim()
+        || (dbUser?.email ? dbUser.email.split("@")[0] : null)
+        || null;
+
       const toneInstructions: Record<string, string> = {
         professional: "formal, polished, business-appropriate language",
         friendly: "warm, approachable, conversational but still respectful",
@@ -164,6 +174,10 @@ ${recipient_name ? `To: ${recipient_name}` : ""}`;
       const prompt = `${basePrompt}
 
 Use ${toneInstructions[tone]}.
+
+${senderName
+  ? `Sign the email "${senderName}" — DO NOT use placeholders like "[Your Name]", "[Sender Name]", or "[Name]". Use the real name "${senderName}" exactly.`
+  : `If the email needs a signature, just use "Best regards" with no name placeholder. NEVER write "[Your Name]" or any bracketed placeholder.`}
 
 Respond with ONLY valid JSON matching this exact shape:
 {
@@ -188,6 +202,25 @@ Respond with ONLY valid JSON matching this exact shape:
         result = JSON.parse(raw);
       } catch {
         result = { body: raw.slice(0, 800), alternatives: [] };
+      }
+
+      // Defensive scrub: even with explicit instructions some models still
+      // emit "[Your Name]" / "[Sender Name]" / "[Name]". Replace with the
+      // real name when known, or strip the placeholder line entirely.
+      const scrub = (s: string | undefined): string | undefined => {
+        if (!s) return s;
+        const placeholderRe = /\[\s*(your|sender|user|my)?\s*name\s*\]/gi;
+        if (senderName) return s.replace(placeholderRe, senderName);
+        // Drop any line that consists mostly of the placeholder
+        return s
+          .split("\n")
+          .filter((line) => !/^\s*\[\s*(your|sender|user|my)?\s*name\s*\]\s*$/i.test(line))
+          .join("\n")
+          .replace(placeholderRe, "");
+      };
+      result.body = scrub(result.body) ?? result.body;
+      if (Array.isArray(result.alternatives)) {
+        result.alternatives = result.alternatives.map((a) => scrub(a) ?? a);
       }
 
       emitAuditEvent(req, "ai_compose", { type, tone, model: MODEL });

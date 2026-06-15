@@ -239,20 +239,7 @@ export function Shell({ children }: { children: ReactNode }) {
         style={{ marginLeft: `${sidebarWidth}px` }}
       >
         {/* Top header */}
-        <header className="app-header sticky top-0 z-40 h-14 flex items-center justify-between px-8">
-          {/* Search */}
-          <div className="relative max-w-xs w-full">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px]" style={{ color: "var(--c-outline)" }}>search</span>
-            <input
-              className="pl-10 pr-4 py-1.5 rounded-full text-sm w-full outline-none transition-all"
-              placeholder="Search... (Cmd+K)"
-              style={{
-                background: "var(--c-surface-container-low)",
-                border: "1px solid var(--c-outline-variant)",
-                color: "var(--c-on-surface)",
-              }}
-            />
-          </div>
+        <header className="app-header sticky top-0 z-40 h-14 flex items-center justify-end px-8">
           {/* Right actions */}
           <div className="flex items-center gap-4">
             {/* Notification bell */}

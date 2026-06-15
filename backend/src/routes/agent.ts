@@ -123,6 +123,14 @@ agentRouter.post("/agent/execute", requireAuth, async (req: Request, res: Respon
     const dbUser = (await getUserById(auth.userId)) ?? (await getUserByClerkId(auth.userId));
     const corsairTenant = getCorsairTenant(auth.userId);
 
+    // Best-effort display name. The DB stores `displayName` (set by Clerk
+    // sync); fall back to email local-part, then "there". Used in the system
+    // prompt so the assistant can address the user by name.
+    const userName = dbUser?.displayName?.trim()
+      || (dbUser?.email ? dbUser.email.split("@")[0] : null)
+      || "there";
+    const userEmail = dbUser?.email ?? null;
+
     // ── System prompt with guardrails ────────────────────────────────────────
     const systemContent = `You are GooGenie, an AI assistant ONLY for an email and calendar workspace. Your tools call the user's real Gmail and Google Calendar via the Corsair connector — never invent data, only describe what the tools return.
 
@@ -137,8 +145,11 @@ STRICT GUARDRAILS — you MUST follow these:
 8. Be concise (2-3 sentences max) and action-oriented. Prefer using tools over chat replies when the user wants something done.
 9. Use the prior conversation turns (memory) to maintain context — e.g. if the user says "make it shorter" or "send it to her instead", refer back to what was just discussed.
 10. When you mention specific emails, ALWAYS refer to them by their subject line so the user can recognize them. The UI will automatically attach a clickable "Open" link for each email you reference.
+11. The user's name is "${userName}". Address them by their first name when it feels natural (e.g. greeting them, confirming an action). Do NOT over-use the name — once or twice per conversation is plenty.
+12. When composing an email or reply on the user's behalf, sign it with their name "${userName}" — never use placeholders like "[Your Name]".
 
 Workspace context:
+- The user's name is: ${userName}.${userEmail ? `\n- The user's email is: ${userEmail}.` : ""}
 - The user's role is: ${auth.role}.
 - Today is: ${new Date().toDateString()}.
 - Available tools (all backed by Corsair → live Gmail/Calendar): list_threads, summarize_thread, compose_email, list_events, create_calendar_event.
