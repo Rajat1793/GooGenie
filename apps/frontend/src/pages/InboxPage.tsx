@@ -435,11 +435,32 @@ export function InboxPage() {
   const markReadMut = useMarkThreadRead();
   const trashMut = useTrashThread();
 
-  // Trigger server search when user presses Enter
+  // ── Live search (debounced) ────────────────────────────────────────────────
+  // Old behaviour required pressing Enter to actually hit the server, which
+  // felt like the search bar was dead when the locally-loaded 10 threads
+  // didn't contain the query. Now we:
+  //   • filter the currently-loaded list instantly as the user types, AND
+  //   • after 400 ms of typing, kick off a server-side search via Corsair so
+  //     the full Gmail account is queried (DB-backed: near-instant).
+  // Pressing Enter still works (forces immediate server search).
+  useEffect(() => {
+    // Don't debounce while AI semantic mode is on — that's Enter-triggered.
+    if (aiSearchOn) return;
+    const trimmed = search.trim();
+    // If the query just emptied, clear server search immediately
+    if (!trimmed) {
+      if (serverSearch) setServerSearch("");
+      return;
+    }
+    const t = setTimeout(() => setServerSearch(trimmed), 400);
+    return () => clearTimeout(t);
+  }, [search, aiSearchOn, serverSearch]);
+
+  // Trigger server search when user presses Enter (still works as a shortcut)
   function handleSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       if (aiSearchOn) void runAiSearch(search);
-      else setServerSearch(search);
+      else setServerSearch(search.trim());
     }
     if (e.key === "Escape") {
       setSearch(""); setServerSearch(""); setAiResults(null); setAiSearchHint(null);
@@ -645,7 +666,7 @@ export function InboxPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={handleSearchKey}
-              placeholder={aiSearchOn ? "Ask in plain English… (Enter)" : "Search… (Enter to search server)"}
+              placeholder={aiSearchOn ? "Ask in plain English… (Enter)" : "Search Gmail (live)…"}
               className="pl-9 pr-20 py-2 rounded-xl text-sm w-full outline-none"
               style={{
                 background: "var(--c-surface-container)",
@@ -654,6 +675,18 @@ export function InboxPage() {
               }}
             />
             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              {/* Live-search spinner: visible while the user is typing faster
+                  than the 400ms debounce, or while the server search is
+                  fetching results from Gmail/Corsair DB. */}
+              {!aiSearchOn && search && (loading || search.trim() !== serverSearch) && (
+                <span
+                  className="material-symbols-outlined text-base animate-spin"
+                  style={{ color: "var(--c-primary)" }}
+                  title="Searching Gmail…"
+                >
+                  progress_activity
+                </span>
+              )}
               {(search || serverSearch || aiResults) && (
                 <button
                   onClick={() => { setSearch(""); setServerSearch(""); setAiResults(null); setAiSearchHint(null); }}
@@ -699,9 +732,22 @@ export function InboxPage() {
           {loading && <div className="flex items-center justify-center py-16"><span className="material-symbols-outlined animate-spin text-3xl" style={{ color: "var(--c-primary)" }}>progress_activity</span></div>}
           {error && <p className="text-sm px-4 py-8 text-center" style={{ color: "var(--c-error)" }}>{(error as Error).message}</p>}
           {!loading && displayList.length === 0 && !error && (
-            <p className="text-sm px-4 py-8 text-center" style={{ color: "var(--c-on-surface-variant)" }}>
-              {aiSearchOn && search ? `No semantic matches for "${search}"` : search ? `No results for "${search}"` : filter === "unread" ? "No unread emails" : "No threads found"}
-            </p>
+            <div className="px-4 py-8 text-center" style={{ color: "var(--c-on-surface-variant)" }}>
+              <p className="text-sm">
+                {aiSearchOn && search
+                  ? `No semantic matches for "${search}"`
+                  : search
+                    ? `No results for "${search}"`
+                    : filter === "unread"
+                      ? "No unread emails"
+                      : "No threads found"}
+              </p>
+              {search && !aiSearchOn && (
+                <p className="text-xs mt-2 opacity-70">
+                  Tip: Gmail-style operators work — try <code>from:</code>, <code>subject:</code>, <code>has:attachment</code>, or quoted phrases.
+                </p>
+              )}
+            </div>
           )}
           {displayList.map((thread) => {
             const isActive = selected?.id === thread.id;

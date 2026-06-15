@@ -162,35 +162,47 @@ meRouter.post("/feature-requests", requireAuth, async (req: Request, res: Respon
  */
 meRouter.get("/feature-requests/incoming", requireAuth, async (req: Request, res: Response) => {
   const auth = req.auth!;
-  const me = (await getUserById(auth.userId)) ?? (await getUserByClerkId(auth.userId));
-  if (!me) {
+  try {
+    const me = (await getUserById(auth.userId)) ?? (await getUserByClerkId(auth.userId));
+    if (!me) {
+      res.status(200).json({ requests: [], pending_count: 0 });
+      return;
+    }
+
+    const status = typeof req.query.status === "string" ? req.query.status : undefined;
+    const normalizedStatus = status === "approved" || status === "denied" || status === "pending" ? status : undefined;
+    // super_admin sees ALL requests across every manager, not just their own
+    const rows = me.role === "super_admin"
+      ? await listAllRequests(normalizedStatus)
+      : await listIncomingRequests(me.id, normalizedStatus);
+
+    // Hydrate requester display info so the UI can show who is asking.
+    const requesterIds = [...new Set(rows.map((r) => r.requesterUserId))];
+    const requesterMap = new Map<string, { id: string; displayName: string; email: string; role: string }>();
+    for (const id of requesterIds) {
+      const u = await getUserById(id);
+      if (u) requesterMap.set(id, { id: u.id, displayName: u.displayName, email: u.email, role: u.role });
+    }
+
+    const pending = rows.filter((r) => r.status === "pending").length;
+    res.status(200).json({
+      requests: rows.map((r) => ({
+        ...serialiseRequest(r),
+        requester: requesterMap.get(r.requesterUserId) ?? null,
+      })),
+      pending_count: pending,
+    });
+  } catch (err) {
+    // Don't 500 the notification bell — it polls every 15s and an empty
+    // result is far better UX than a flashing error. Log so we can diagnose.
+    console.error("[feature-requests/incoming] DB error", {
+      userId: auth.userId,
+      tenantId: auth.tenantId,
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     res.status(200).json({ requests: [], pending_count: 0 });
-    return;
   }
-
-  const status = typeof req.query.status === "string" ? req.query.status : undefined;
-  const normalizedStatus = status === "approved" || status === "denied" || status === "pending" ? status : undefined;
-  // super_admin sees ALL requests across every manager, not just their own
-  const rows = me.role === "super_admin"
-    ? await listAllRequests(normalizedStatus)
-    : await listIncomingRequests(me.id, normalizedStatus);
-
-  // Hydrate requester display info so the UI can show who is asking.
-  const requesterIds = [...new Set(rows.map((r) => r.requesterUserId))];
-  const requesterMap = new Map<string, { id: string; displayName: string; email: string; role: string }>();
-  for (const id of requesterIds) {
-    const u = await getUserById(id);
-    if (u) requesterMap.set(id, { id: u.id, displayName: u.displayName, email: u.email, role: u.role });
-  }
-
-  const pending = rows.filter((r) => r.status === "pending").length;
-  res.status(200).json({
-    requests: rows.map((r) => ({
-      ...serialiseRequest(r),
-      requester: requesterMap.get(r.requesterUserId) ?? null,
-    })),
-    pending_count: pending,
-  });
 });
 
 const decideSchema = z.object({ decision: z.enum(["approved", "denied"]) });

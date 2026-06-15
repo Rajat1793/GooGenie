@@ -100,7 +100,17 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     const apiErr = err as ApiError;
     res.status(statusFromApiError(apiErr.code)).json(apiErr);
   } else if (err instanceof Error) {
-    console.error("Unhandled error:", err.message, err.stack);
+    // Include request context so 500s in production logs can be traced to a
+    // specific route/user/tenant without needing to attach a debugger.
+    console.error("[500]", {
+      method: _req.method,
+      path: _req.originalUrl ?? _req.url,
+      userId: _req.auth?.userId,
+      tenantId: _req.auth?.tenantId,
+      traceId: _req.traceId,
+      message: err.message,
+      stack: err.stack,
+    });
     res.status(500).json({
       code: "INTERNAL_ERROR",
       message: "An unexpected error occurred",
@@ -108,7 +118,13 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
       retryable: false,
     } satisfies ApiError);
   } else {
-    console.error("Unknown error:", err);
+    console.error("[500] non-Error thrown", {
+      method: _req.method,
+      path: _req.originalUrl ?? _req.url,
+      userId: _req.auth?.userId,
+      traceId: _req.traceId,
+      err,
+    });
     res.status(500).json({
       code: "INTERNAL_ERROR",
       message: "An unexpected error occurred",
