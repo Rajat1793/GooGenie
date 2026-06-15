@@ -9,6 +9,7 @@ import { useNotifications } from "../hooks/useNotifications.ts";
 import { RoleBadge } from "./RoleBadge.tsx";
 import { AgentBar } from "./AgentBar.tsx";
 import { playChime } from "../lib/chime.ts";
+import { STORAGE_KEYS } from "../lib/storage.ts";
 
 const NAV = [
   { to: "/inbox",    icon: "inbox",          label: "Inbox",       roles: ["super_admin","manager_admin","user"], featureKey: "email_read" },
@@ -31,11 +32,11 @@ export function Shell({ children }: { children: ReactNode }) {
   const { hasFeature } = useFeatures();
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
-    return localStorage.getItem("googenie-sidebar-collapsed") === "1";
+    return localStorage.getItem(STORAGE_KEYS.sidebarCollapsed) === "1";
   });
 
   useEffect(() => {
-    localStorage.setItem("googenie-sidebar-collapsed", collapsed ? "1" : "0");
+    localStorage.setItem(STORAGE_KEYS.sidebarCollapsed, collapsed ? "1" : "0");
   }, [collapsed]);
 
   // Decode demo token if active

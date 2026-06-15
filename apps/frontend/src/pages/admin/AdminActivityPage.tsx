@@ -6,6 +6,7 @@ import { Card } from "../../components/Card.tsx";
 import { DataState } from "../../components/DataState.tsx";
 import { RoleBadge } from "../../components/RoleBadge.tsx";
 import { formatActivity, activityIcon } from "../../lib/formatActivity.ts";
+import { getErrorMessage } from "../../lib/errors.ts";
 
 function EventCard({ event }: { event: AuditEvent }) {
   const icon = activityIcon(event.action);
@@ -48,7 +49,7 @@ export function AdminActivityPage() {
       });
       setEvents(res.activity.slice().reverse());
     } catch (e) {
-      setError((e as Error).message);
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }

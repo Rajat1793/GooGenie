@@ -3,7 +3,7 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { requireAuth } from "../auth/middleware.js";
 import { agentExecuteSchema } from "../contracts/schemas.js";
 import { emitAuditEvent } from "../security/audit.js";
-import { createApiError } from "../security/errors.js";
+import { validateBody } from "../lib/validation.js";
 import { chatWithTools, chat, isAiAvailable, MODEL } from "../integrations/openai.js";
 import { fetchGmailThreads, fetchGmailThread } from "../integrations/gmail.js";
 import { fetchCalendarEvents, checkAvailability } from "../integrations/googlecalendar.js";
@@ -106,10 +106,7 @@ const TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
 agentRouter.post("/agent/execute", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const auth = req.auth!;
-    const parsed = agentExecuteSchema.safeParse(req.body);
-    if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid agent execute payload", false, req.traceId);
-
-    const { prompt, context, history } = parsed.data;
+    const { prompt, history } = validateBody(agentExecuteSchema, req, "Invalid agent execute payload");
 
     if (!isAiAvailable()) {
       // Graceful fallback — keyword stub

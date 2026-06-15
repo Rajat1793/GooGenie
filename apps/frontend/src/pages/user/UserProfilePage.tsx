@@ -8,7 +8,7 @@ import {
   type FeatureCatalogEntry,
   type FeatureRequest,
 } from "../../api/client.ts";
-import { PageHeader } from "../../components/PageHeader.tsx";
+import { getErrorMessage } from "../../lib/errors.ts";import { PageHeader } from "../../components/PageHeader.tsx";
 import { Card } from "../../components/Card.tsx";
 import { RoleBadge } from "../../components/RoleBadge.tsx";
 import { DataState } from "../../components/DataState.tsx";
@@ -302,7 +302,7 @@ export function UserProfilePage() {
       }
       setHistory(h);
     } catch (e) {
-      setErrorF((e as Error).message);
+      setErrorF(getErrorMessage(e));
     } finally {
       setLoadingF(false);
     }
@@ -315,7 +315,7 @@ export function UserProfilePage() {
       const r = await meApi.getIncomingFeatureRequests();
       setIncoming(r.requests);
     } catch (e) {
-      setErrorI((e as Error).message);
+      setErrorI(getErrorMessage(e));
     } finally {
       setLoadingI(false);
     }
@@ -378,7 +378,7 @@ export function UserProfilePage() {
       broadcastRequestUpdate();
       await loadFeatures();
     } catch (e) {
-      setToast({ kind: "error", message: (e as Error).message });
+      setToast({ kind: "error", message: getErrorMessage(e) });
     } finally {
       setRequestBusy(null);
     }
@@ -396,7 +396,7 @@ export function UserProfilePage() {
       broadcastRequestUpdate();
       await loadIncoming();
     } catch (e) {
-      setToast({ kind: "error", message: (e as Error).message });
+      setToast({ kind: "error", message: getErrorMessage(e) });
     } finally {
       setDecideBusy(null);
     }

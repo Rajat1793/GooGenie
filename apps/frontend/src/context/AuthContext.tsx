@@ -7,11 +7,13 @@
 import { useUser, useAuth as useClerkAuth } from "@clerk/react";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { getDemoToken, authApi2 } from "../api/client.ts";
+import { STORAGE_KEYS } from "../lib/storage.ts";
+import type { Role } from "../lib/roles.ts";
 
 interface AuthState {
   userId: string | null;
   tenantId: string | null;
-  role: "super_admin" | "manager_admin" | "user" | null;
+  role: Role | null;
   loading: boolean;
   token: string | null;
   // Clerk user profile
@@ -70,8 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Immediately apply any values already stored from a previous clerkSync in
     // this browser session so the UI renders correctly without any flicker.
-    const storedRole = user?.id ? sessionStorage.getItem(`googenie-role-${user.id}`) : null;
-    const storedTenant = user?.id ? sessionStorage.getItem(`googenie-tenant-${user.id}`) : null;
+    const storedRole = user?.id ? sessionStorage.getItem(STORAGE_KEYS.userRole(user.id)) : null;
+    const storedTenant = user?.id ? sessionStorage.getItem(STORAGE_KEYS.userTenant(user.id)) : null;
     if (storedRole) setDbRole(storedRole as AuthState["role"]);
     if (storedTenant) setDbTenantId(storedTenant);
 
@@ -82,15 +84,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setDbTenantId(res.user.tenantId);
         // Persist so Shell/nav renders correctly on hot-reload
         if (user?.id) {
-          sessionStorage.setItem(`googenie-role-${user.id}`, res.user.role);
-          sessionStorage.setItem(`googenie-tenant-${user.id}`, res.user.tenantId);
+          sessionStorage.setItem(STORAGE_KEYS.userRole(user.id), res.user.role);
+          sessionStorage.setItem(STORAGE_KEYS.userTenant(user.id), res.user.tenantId);
         }
       })
       .catch(() => {
         // /auth/me fails before clerkSync runs (first login, no DB row yet).
         // Fall back to the sessionStorage value or pending role from localStorage.
-        const stored = user?.id ? sessionStorage.getItem(`googenie-role-${user.id}`) : null;
-        const pending = localStorage.getItem("googenie-pending-role");
+        const stored = user?.id ? sessionStorage.getItem(STORAGE_KEYS.userRole(user.id)) : null;
+        const pending = localStorage.getItem(STORAGE_KEYS.pendingRole);
         if (!storedRole) setDbRole((stored ?? pending ?? "user") as AuthState["role"]);
       })
       .finally(() => setRoleLoading(false));
@@ -100,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Also read tenantId from sessionStorage as a synchronous fallback so the
   // first render after a page reload shows the correct tenant immediately.
   const storedTenant = (!demoToken && user?.id)
-    ? sessionStorage.getItem(`googenie-tenant-${user.id}`)
+    ? sessionStorage.getItem(STORAGE_KEYS.userTenant(user.id))
     : null;
   const tenantId = demoToken
     ? demoTenant

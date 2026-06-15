@@ -2,6 +2,7 @@
  * In dev: Vite proxies /v1 → localhost:4000 so BASE stays empty.
  * In production: VITE_API_URL points to the Render backend service URL.
  */
+import type { AiTone } from "../lib/aiTones";
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
 // Clerk token getter — set by ClerkTokenProvider below
@@ -368,7 +369,7 @@ export const aiApi = {
 
   compose: (args: {
     type: "new" | "reply";
-    tone: "professional" | "friendly" | "concise";
+    tone: AiTone;
     context: string;
     thread_snippet?: string;
     recipient_name?: string;

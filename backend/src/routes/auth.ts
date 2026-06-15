@@ -17,6 +17,7 @@ import {
 import { eq } from "drizzle-orm";
 import { createApiError } from "../security/errors.js";
 import { env } from "../security/env.js";
+import { validateBody } from "../lib/validation.js";
 import { z } from "zod";
 
 export const authRouter = Router();
@@ -28,10 +29,11 @@ const TOKEN_TTL = 24 * 60 * 60; // 24h
 // Local login for super_admin and manager_admin (hardcoded accounts in DB).
 authRouter.post("/auth/login", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const parsed = z.object({ email: z.string().email(), password: z.string().min(1) }).safeParse(req.body);
-    if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Email and password required", false, req.traceId);
-
-    const { email, password } = parsed.data;
+    const { email, password } = validateBody(
+      z.object({ email: z.string().email(), password: z.string().min(1) }),
+      req,
+      "Email and password required"
+    );
     const user = await getUserByEmail(TENANT_ID, email);
     if (!user || !user.passwordHash) {
       throw createApiError("UNAUTHORIZED", "Invalid email or password", false, req.traceId);
@@ -62,12 +64,15 @@ authRouter.post("/auth/login", async (req: Request, res: Response, next: NextFun
 authRouter.post("/auth/clerk-sync", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { userId: clerkUserId } = req.auth!;
-    const parsed = z.object({
-      email: z.string().email(),
-      displayName: z.string().min(1),
-      role: z.enum(["super_admin", "manager_admin", "user"]).optional(),
-    }).safeParse(req.body);
-    if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Email and displayName required", false, req.traceId);
+    const body = validateBody(
+      z.object({
+        email: z.string().email(),
+        displayName: z.string().min(1),
+        role: z.enum(["super_admin", "manager_admin", "user"]).optional(),
+      }),
+      req,
+      "Email and displayName required"
+    );
 
     const ROLE_TENANT: Record<string, string> = {
       super_admin:   "dev-admin",
@@ -81,9 +86,9 @@ authRouter.post("/auth/clerk-sync", requireAuth, async (req: Request, res: Respo
     let chosenRole: import("../auth/roles.js").Role;
     let tenantId: string;
 
-    if (parsed.data.role) {
+    if (body.role) {
       // Explicit role chosen on the login page — honour it.
-      chosenRole = parsed.data.role;
+      chosenRole = body.role;
       tenantId = ROLE_TENANT[chosenRole] ?? TENANT_ID;
     } else {
       // No role sent — check if the user already has a DB row.
@@ -102,8 +107,8 @@ authRouter.post("/auth/clerk-sync", requireAuth, async (req: Request, res: Respo
     const user = await upsertClerkUser({
       clerkUserId,
       tenantId,
-      email: parsed.data.email,
-      displayName: parsed.data.displayName,
+      email: body.email,
+      displayName: body.displayName,
       role: chosenRole,
     });
 
@@ -149,14 +154,17 @@ authRouter.get("/auth/bosses", requireAuth, async (req: Request, res: Response, 
 authRouter.post("/auth/select-manager", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { userId } = req.auth!;
-    const parsed = z.object({ managerId: z.string().min(1) }).safeParse(req.body);
-    if (!parsed.success) throw createApiError("VALIDATION_ERROR", "managerId required", false, req.traceId);
+    const { managerId } = validateBody(
+      z.object({ managerId: z.string().min(1) }),
+      req,
+      "managerId required"
+    );
 
     // Resolve to DB user ID (supports both Clerk userId and DB id)
     const dbUser = await getUserByClerkId(userId) ?? await getUserById(userId);
     if (!dbUser) throw createApiError("NOT_FOUND", "User not found", false, req.traceId);
 
-    await setUserManager(dbUser.id, parsed.data.managerId);
+    await setUserManager(dbUser.id, managerId);
     res.json({ success: true });
   } catch (err) { next(err); }
 });

@@ -14,6 +14,7 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { aiApi, type AgentResponse } from "../api/client";
 import { useFeatures } from "../context/FeatureContext";
+import { getErrorMessage } from "../lib/errors";
 
 export function AgentBar() {
   const [open, setOpen] = useState(false);
@@ -115,7 +116,7 @@ export function AgentBar() {
           user: q,
           reply: {
             action: "error",
-            message: (err as Error).message ?? "Agent request failed",
+            message: getErrorMessage(err, "Agent request failed"),
             suggestions: [],
             ai_available: false,
           },

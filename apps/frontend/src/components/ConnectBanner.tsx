@@ -6,6 +6,7 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { connectApi } from "../api/client.ts";
+import { getErrorMessage } from "../lib/errors.ts";
 
 export interface ConnectionStatus {
   gmail: boolean;
@@ -56,7 +57,7 @@ export function ConnectionBar({ plugins, status, loading = false, onConnected }:
       await connectApi.connectPlugin(plugin);
       onConnected(plugin);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Connection failed");
+      setErr(getErrorMessage(e, "Connection failed"));
     } finally { setConnecting(null); }
   }
 

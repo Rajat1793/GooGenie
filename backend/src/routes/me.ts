@@ -6,6 +6,7 @@ import { listAuditEvents } from "../security/audit.js";
 import { emitAuditEvent } from "../security/audit.js";
 import { createApiError } from "../security/errors.js";
 import { paginate } from "../security/pagination.js";
+import { validateBody } from "../lib/validation.js";
 import { getUserById, getUserByClerkId } from "../db/users.js";
 import { publish } from "../integrations/event-bus.js";
 import {
@@ -114,10 +115,7 @@ const createRequestSchema = z.object({
  */
 meRouter.post("/feature-requests", requireAuth, async (req: Request, res: Response) => {
   const auth = req.auth!;
-  const parsed = createRequestSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw createApiError("VALIDATION_ERROR", "Invalid feature request payload", false, req.traceId);
-  }
+  const body = validateBody(createRequestSchema, req, "Invalid feature request payload");
 
   const me = (await getUserById(auth.userId)) ?? (await getUserByClerkId(auth.userId));
   if (!me) throw createApiError("NOT_FOUND", "User not found", false, req.traceId);
@@ -129,12 +127,12 @@ meRouter.post("/feature-requests", requireAuth, async (req: Request, res: Respon
     tenantId: me.tenantId,
     requesterUserId: me.id,
     targetManagerUserId: me.managerUserId,
-    featureKey: parsed.data.feature_key,
-    reason: parsed.data.reason,
+    featureKey: body.feature_key,
+    reason: body.reason,
   });
 
   emitAuditEvent(req, "me_feature_request_created", {
-    feature_key: parsed.data.feature_key,
+    feature_key: body.feature_key,
     target_manager_user_id: me.managerUserId,
     request_id: row.id,
   });
@@ -148,7 +146,7 @@ meRouter.post("/feature-requests", requireAuth, async (req: Request, res: Respon
     kind: "feature.request.created",
     userId: managerSseId,
     requestId: row.id,
-    featureKey: parsed.data.feature_key,
+    featureKey: body.feature_key,
     requesterName: me.displayName ?? me.email,
   });
 
@@ -212,8 +210,7 @@ meRouter.post("/feature-requests/:id/decide", requireAuth, async (req: Request, 
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) throw createApiError("VALIDATION_ERROR", "Invalid request id", false, req.traceId);
 
-  const parsed = decideSchema.safeParse(req.body);
-  if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid decision payload", false, req.traceId);
+  const { decision } = validateBody(decideSchema, req, "Invalid decision payload");
 
   const me = (await getUserById(auth.userId)) ?? (await getUserByClerkId(auth.userId));
   if (!me) throw createApiError("NOT_FOUND", "User not found", false, req.traceId);
@@ -231,13 +228,13 @@ meRouter.post("/feature-requests/:id/decide", requireAuth, async (req: Request, 
   const updated = await decideFeatureRequest({
     id,
     decidedByUserId: me.id,
-    decision: parsed.data.decision,
+    decision,
   });
   if (!updated) throw createApiError("NOT_FOUND", "Request could not be updated", false, req.traceId);
 
   emitAuditEvent(req, "me_feature_request_decided", {
     feature_key: updated.featureKey,
-    decision: parsed.data.decision,
+    decision,
     request_id: updated.id,
     requester_user_id: updated.requesterUserId,
   });
@@ -251,7 +248,7 @@ meRouter.post("/feature-requests/:id/decide", requireAuth, async (req: Request, 
     userId: requesterSseId,
     requestId: updated.id,
     featureKey: updated.featureKey,
-    decision: parsed.data.decision,
+    decision,
   });
 
   res.status(200).json({ request: serialiseRequest(updated) });

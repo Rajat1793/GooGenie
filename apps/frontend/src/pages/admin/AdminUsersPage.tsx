@@ -5,8 +5,8 @@ import { PageHeader } from "../../components/PageHeader.tsx";
 import { Card } from "../../components/Card.tsx";
 import { RoleBadge } from "../../components/RoleBadge.tsx";
 import { DataState } from "../../components/DataState.tsx";
-
-const ROLES = ["super_admin", "manager_admin", "user"] as const;
+import { ROLES } from "../../lib/roles.ts";
+import { getErrorMessage } from "../../lib/errors.ts";
 
 interface EditModalProps {
   user: PolicyUser;
@@ -133,7 +133,7 @@ export function AdminUsersPage() {
       const res = await adminApi.getUsers();
       setUsers(res.users);
     } catch (e) {
-      setError((e as Error).message);
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }

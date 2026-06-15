@@ -6,6 +6,7 @@ import { managerBulkActionSchema, managerFeatureAccessSchema } from "../contract
 import { emitAuditEvent } from "../security/audit.js";
 import { createApiError } from "../security/errors.js";
 import { createRateLimitMiddleware } from "../security/rate-limit.js";
+import { validateBody } from "../lib/validation.js";
 import { getUserById, getUserByClerkId, listDirectReports, listAllRoleTenantUsers } from "../db/users.js";
 import {
   listFeatureAccessForUser,
@@ -86,8 +87,7 @@ managerRouter.get("/users/:userId/feature-access", ...guard, async (req: Request
 
 managerRouter.patch("/users/:userId/feature-access", ...guard, async (req: Request, res: Response) => {
   const auth = req.auth!;
-  const parsed = managerFeatureAccessSchema.safeParse(req.body);
-  if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid feature access payload", false, req.traceId);
+  const body = validateBody(managerFeatureAccessSchema, req, "Invalid feature access payload");
 
   const me = await resolveDbUser(auth);
   if (!me) throw createApiError("NOT_FOUND", "Manager not found", false, req.traceId);
@@ -101,14 +101,14 @@ managerRouter.patch("/users/:userId/feature-access", ...guard, async (req: Reque
   await upsertFeatureAccess({
     tenantId: target.tenantId,
     userId: target.id,
-    featureKey: parsed.data.feature_key,
-    isEnabled: parsed.data.is_enabled,
+    featureKey: body.feature_key,
+    isEnabled: body.is_enabled,
   });
 
   emitAuditEvent(req, "manager_user_feature_update", {
     target_user_id: target.id,
-    feature_key: parsed.data.feature_key,
-    is_enabled: parsed.data.is_enabled,
+    feature_key: body.feature_key,
+    is_enabled: body.is_enabled,
   });
 
   const dbToggles = await listFeatureAccessForUser(target.tenantId, target.id);
@@ -124,8 +124,7 @@ managerRouter.patch("/users/:userId/feature-access", ...guard, async (req: Reque
 
 managerRouter.post("/bulk-actions", ...guard, async (req: Request, res: Response) => {
   const auth = req.auth!;
-  const parsed = managerBulkActionSchema.safeParse(req.body);
-  if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid bulk action payload", false, req.traceId);
+  const body = validateBody(managerBulkActionSchema, req, "Invalid bulk action payload");
 
   const me = await resolveDbUser(auth);
   if (!me) throw createApiError("NOT_FOUND", "Manager not found", false, req.traceId);
@@ -133,35 +132,35 @@ managerRouter.post("/bulk-actions", ...guard, async (req: Request, res: Response
   const reports = await listDirectReports(me.id);
   const allowedIds = new Set([me.id, ...reports.map((r) => r.id)]);
 
-  const denied = parsed.data.user_ids.filter((id) => !allowedIds.has(id));
+  const denied = body.user_ids.filter((id) => !allowedIds.has(id));
   if (denied.length > 0 && auth.role !== ROLE.SUPER_ADMIN) {
     throw createApiError("FORBIDDEN", "Bulk action contains out-of-scope users", false, req.traceId);
   }
 
   const updated: Array<{ tenantId: string; userId: string; featureKey: string; isEnabled: boolean }> = [];
-  for (const userId of parsed.data.user_ids) {
+  for (const userId of body.user_ids) {
     const u = await getUserById(userId);
     if (!u) continue;
     await upsertFeatureAccess({
       tenantId: u.tenantId,
       userId: u.id,
-      featureKey: parsed.data.payload.feature_key,
-      isEnabled: parsed.data.payload.is_enabled,
+      featureKey: body.payload.feature_key,
+      isEnabled: body.payload.is_enabled,
     });
     updated.push({
       tenantId: u.tenantId,
       userId: u.id,
-      featureKey: parsed.data.payload.feature_key,
-      isEnabled: parsed.data.payload.is_enabled,
+      featureKey: body.payload.feature_key,
+      isEnabled: body.payload.is_enabled,
     });
   }
 
   emitAuditEvent(req, "manager_bulk_set_feature_access", {
-    user_ids: parsed.data.user_ids,
-    feature_key: parsed.data.payload.feature_key,
-    is_enabled: parsed.data.payload.is_enabled,
+    user_ids: body.user_ids,
+    feature_key: body.payload.feature_key,
+    is_enabled: body.payload.is_enabled,
     updated_count: updated.length,
   });
 
-  res.status(200).json({ action: parsed.data.action, updated_count: updated.length, updated });
+  res.status(200).json({ action: body.action, updated_count: updated.length, updated });
 });

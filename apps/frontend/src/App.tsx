@@ -22,6 +22,9 @@ import { InboxPage } from "./pages/InboxPage.tsx";
 import { CalendarPage } from "./pages/CalendarPage.tsx";
 import { OrgTreePage } from "./pages/OrgTreePage.tsx";
 import { ApiDocsPage } from "./pages/ApiDocsPage.tsx";
+import { STORAGE_KEYS } from "./lib/storage.ts";
+import type { Role } from "./lib/roles.ts";
+import { isRole } from "./lib/roles.ts";
 import type { ReactNode } from "react";
 
 /** Wires Clerk's getToken into the API client so all fetch calls carry the JWT */
@@ -51,7 +54,8 @@ function ClerkTokenWirer() {
     const email = user.primaryEmailAddress?.emailAddress ?? user.emailAddresses[0]?.emailAddress ?? "";
     const displayName = user.fullName ?? user.firstName ?? email.split("@")[0];
     // Read role chosen by the login tab (stored before Clerk redirected)
-    const pendingRole = localStorage.getItem("googenie-pending-role") as "super_admin" | "manager_admin" | "user" | null;
+    const rawPending = localStorage.getItem(STORAGE_KEYS.pendingRole);
+    const pendingRole: Role | null = isRole(rawPending) ? rawPending : null;
     authApi2.clerkSync(email, displayName, pendingRole ?? undefined)
       .then((r) => {
         // Persist DB role AND tenantId so AuthContext can read them without re-fetching.
@@ -59,14 +63,14 @@ function ClerkTokenWirer() {
         // immediately — without this the race condition leaves the old role visible
         // until the next page navigation.
         if (user?.id) {
-          sessionStorage.setItem(`googenie-role-${user.id}`, r.user.role);
-          sessionStorage.setItem(`googenie-tenant-${user.id}`, r.user.tenantId);
+          sessionStorage.setItem(STORAGE_KEYS.userRole(user.id), r.user.role);
+          sessionStorage.setItem(STORAGE_KEYS.userTenant(user.id), r.user.tenantId);
         }
         window.dispatchEvent(new CustomEvent("googenie:role-synced", {
           detail: { role: r.user.role, tenantId: r.user.tenantId }
         }));
         // Clear the pending role after it's been applied
-        localStorage.removeItem("googenie-pending-role");
+        localStorage.removeItem(STORAGE_KEYS.pendingRole);
         if (r.needsManager) setNeedsManager(true);
         // Warm the React Query cache so the first /inbox or /calendar nav
         // is served from cache (0 ms) — silent background refetch keeps it fresh.
@@ -91,7 +95,7 @@ function ClerkTokenWirer() {
           .catch(() => null);
       })
       .catch(() => {
-        localStorage.removeItem("googenie-pending-role");
+        localStorage.removeItem(STORAGE_KEYS.pendingRole);
       });
   }, [isSignedIn, user?.id]);
 

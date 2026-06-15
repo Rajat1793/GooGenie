@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { STORAGE_KEYS } from "../lib/storage.ts";
 
 type Theme = "light" | "dark";
 
@@ -9,7 +10,7 @@ const ThemeCtx = createContext<{ theme: Theme; toggle: () => void }>({
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem("nimbus-theme") as Theme | null;
+    const saved = localStorage.getItem(STORAGE_KEYS.theme) as Theme | null;
     return saved ?? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
   });
 
@@ -20,7 +21,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } else {
       root.classList.remove("dark");
     }
-    localStorage.setItem("nimbus-theme", theme);
+    localStorage.setItem(STORAGE_KEYS.theme, theme);
   }, [theme]);
 
   const toggle = () => setTheme((t) => (t === "dark" ? "light" : "dark"));

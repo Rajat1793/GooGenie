@@ -5,6 +5,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext.tsx";
 import { useEffect, useState } from "react";
 import { setDemoToken } from "../api/client.ts";
+import { STORAGE_KEYS } from "../lib/storage.ts";
 
 export function LoginPage() {
   const { isSignedIn, isLoaded } = useClerkAuth();
@@ -17,7 +18,7 @@ export function LoginPage() {
   if (isLoaded && isSignedIn) return <Navigate to="/" replace />;
 
   useEffect(() => {
-    localStorage.setItem("googenie-pending-role", tab);
+    localStorage.setItem(STORAGE_KEYS.pendingRole, tab);
   }, [tab]);
 
   // Fetch demo accounts from backend on mount

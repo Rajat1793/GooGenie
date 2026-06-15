@@ -7,6 +7,7 @@ import { corsair, isCorsairConfigured } from "./corsair.js";
 import { listEmailThreads, getEmailThreadById } from "../domain/email-store.js";
 import type { EmailThread } from "../domain/email-store.js";
 import { cache, TTL } from "../security/cache.js";
+import { stripHtml } from "../lib/html.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -58,10 +59,6 @@ function extractBodyFromMsg(msg: any): { text: string; html?: string } {
   const text = textPart ? decodeBody(textPart.body.data) : (htmlPart ? stripHtml(decodeBody(htmlPart.body.data)) : (msg.snippet ?? ""));
   const html = htmlPart ? decodeBody(htmlPart.body.data) : undefined;
   return { text, html };
-}
-
-function stripHtml(s: string): string {
-  return s.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

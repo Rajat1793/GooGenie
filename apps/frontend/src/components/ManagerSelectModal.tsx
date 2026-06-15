@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { authApi2 } from "../api/client.ts";
 import { useAuth } from "../context/AuthContext.tsx";
+import { getErrorMessage } from "../lib/errors.ts";
 
 interface Person {
   id: string;
@@ -44,7 +45,7 @@ export function ManagerSelectModal({ onComplete }: Props) {
       await authApi2.selectManager(selected);
       onComplete();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save");
+      setError(getErrorMessage(e, "Failed to save"));
     } finally {
       setSaving(false);
     }

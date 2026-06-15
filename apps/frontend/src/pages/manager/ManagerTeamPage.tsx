@@ -5,6 +5,7 @@ import { RoleBadge } from "../../components/RoleBadge.tsx";
 import { DataState } from "../../components/DataState.tsx";
 import { Card } from "../../components/Card.tsx";
 import { formatActivity, activityIcon } from "../../lib/formatActivity.ts";
+import { getErrorMessage } from "../../lib/errors.ts";
 
 const FEATURE_CATALOG: Array<{ key: string; label: string; icon: string }> = [
   { key: "email_read",     label: "Read Email",        icon: "inbox" },
@@ -177,7 +178,7 @@ export function ManagerTeamPage() {
       const res = await managerApi.getUsers();
       setUsers(res.users);
     } catch (e) {
-      setError((e as Error).message);
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -193,7 +194,7 @@ export function ManagerTeamPage() {
       const res = await managerApi.bulkSetFeatureAccess(ids, bulkFeature, bulkEnabled);
       setBulkMsg({ ok: true, text: `Updated ${res.updated_count} student${res.updated_count === 1 ? "" : "s"}` });
     } catch (e) {
-      setBulkMsg({ ok: false, text: (e as Error).message });
+      setBulkMsg({ ok: false, text: getErrorMessage(e) });
     } finally {
       setBulkLoading(false);
     }

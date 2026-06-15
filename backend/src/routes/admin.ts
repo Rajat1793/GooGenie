@@ -7,6 +7,7 @@ import { emitAuditEvent, listAuditEvents } from "../security/audit.js";
 import { createApiError } from "../security/errors.js";
 import { createRateLimitMiddleware } from "../security/rate-limit.js";
 import { paginate } from "../security/pagination.js";
+import { validateBody } from "../lib/validation.js";
 import { listAllRoleTenantUsers, getUserById, setUserManager } from "../db/users.js";
 import { db, schema } from "../db/client.js";
 import { eq, and } from "drizzle-orm";
@@ -41,8 +42,7 @@ adminRouter.get("/users", ...guard, async (req: Request, res: Response) => {
 // Updates role + tenant in the DB (policy-store is in-memory only for seed data)
 adminRouter.patch("/users/:userId/role", ...guard, async (req: Request, res: Response) => {
   const auth = req.auth!;
-  const parsed = adminUpdateRoleSchema.safeParse(req.body);
-  if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid role update payload", false, req.traceId);
+  const body = validateBody(adminUpdateRoleSchema, req, "Invalid role update payload");
 
   const target = await getUserById(req.params.userId);
   if (!target) throw createApiError("NOT_FOUND", "Target user not found", false, req.traceId);
@@ -52,11 +52,11 @@ adminRouter.patch("/users/:userId/role", ...guard, async (req: Request, res: Res
     manager_admin: "dev-teachers",
     user: "dev-students",
   };
-  const newTenantId = ROLE_TENANT[parsed.data.role] ?? target.tenantId;
+  const newTenantId = ROLE_TENANT[body.role] ?? target.tenantId;
 
   // Move user to the correct tenant and update role in the DB
   await db.update(schema.users)
-    .set({ role: parsed.data.role as Role, tenantId: newTenantId, updatedAt: new Date() })
+    .set({ role: body.role as Role, tenantId: newTenantId, updatedAt: new Date() })
     .where(eq(schema.users.id, target.id));
 
   // Record the role change in the DB log
@@ -65,25 +65,24 @@ adminRouter.patch("/users/:userId/role", ...guard, async (req: Request, res: Res
     changedByUserId: auth.userId.startsWith("clerk_") ? auth.userId : `clerk_${auth.userId}`,
     targetUserId: target.id,
     oldRole: target.role,
-    newRole: parsed.data.role,
-    reason: parsed.data.reason,
+    newRole: body.role,
+    reason: body.reason,
   }).catch(() => null); // non-fatal if changedByUserId not in DB yet
 
   const updated = await getUserById(target.id);
-  emitAuditEvent(req, "admin_user_role_update", { target_user_id: target.id, new_role: parsed.data.role, reason: parsed.data.reason });
+  emitAuditEvent(req, "admin_user_role_update", { target_user_id: target.id, new_role: body.role, reason: body.reason });
   res.status(200).json({ user: updated, role_changes: [] });
 });
 
 // ── PATCH /admin/users/:userId/manager ───────────────────────────────────────
 adminRouter.patch("/users/:userId/manager", ...guard, async (req: Request, res: Response) => {
-  const parsed = adminUpdateManagerSchema.safeParse(req.body);
-  if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid manager update payload", false, req.traceId);
+  const body = validateBody(adminUpdateManagerSchema, req, "Invalid manager update payload");
 
   const target = await getUserById(req.params.userId);
   if (!target) throw createApiError("NOT_FOUND", "Target user not found", false, req.traceId);
 
-  if (parsed.data.manager_user_id) {
-    await setUserManager(target.id, parsed.data.manager_user_id);
+  if (body.manager_user_id) {
+    await setUserManager(target.id, body.manager_user_id);
   } else {
     await db.update(schema.users)
       .set({ managerUserId: null, updatedAt: new Date() })
@@ -91,7 +90,7 @@ adminRouter.patch("/users/:userId/manager", ...guard, async (req: Request, res: 
   }
 
   const updated = await getUserById(target.id);
-  emitAuditEvent(req, "admin_user_manager_update", { target_user_id: target.id, manager_user_id: parsed.data.manager_user_id ?? null });
+  emitAuditEvent(req, "admin_user_manager_update", { target_user_id: target.id, manager_user_id: body.manager_user_id ?? null });
   res.status(200).json({ user: updated });
 });
 

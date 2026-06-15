@@ -1,388 +1,14 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { emailApi, aiApi, type EmailThread, type AiSummary, type AiSearchResult } from "../api/client.ts";
+import { emailApi, aiApi, type EmailThread, type AiSearchResult } from "../api/client.ts";
 import { useEmailThreads, useMarkThreadRead, useTrashThread } from "../api/hooks.ts";
 import { useClerkReady } from "../hooks/useClerkReady.ts";
 import { ConnectionBar, useConnectionStatus } from "../components/ConnectBanner.tsx";
 import { useFeatures } from "../context/FeatureContext.tsx";
 import { FeatureDisabledCard } from "../components/FeatureDisabledCard.tsx";
-
-// ── Compose modal ─────────────────────────────────────────────────────────────
-function ComposeModal({ onClose, canAiCompose }: { onClose: () => void; canAiCompose: boolean }) {
-  const [to, setTo] = useState("");
-  const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
-  const [sending, setSending] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  // AI Compose state
-  const [showAiPanel, setShowAiPanel] = useState(false);
-  const [aiTone, setAiTone] = useState<"professional" | "friendly" | "concise">("professional");
-  const [aiContext, setAiContext] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiAlts, setAiAlts] = useState<string[]>([]);
-
-  async function handleSend() {
-    if (!to.trim() || !subject.trim() || !body.trim()) { setErr("To, subject, and body are required"); return; }
-    setSending(true); setErr(null);
-    try { await emailApi.send({ to, subject, body }); onClose(); }
-    catch (e) { setErr(e instanceof Error ? e.message : "Failed to send"); }
-    finally { setSending(false); }
-  }
-
-  async function handleAiGenerate() {
-    if (!aiContext.trim() && !subject.trim()) { setErr("Add a subject or context for AI to use"); return; }
-    setAiLoading(true); setErr(null);
-    try {
-      const r = await aiApi.compose({ type: "new", tone: aiTone, context: aiContext || subject, recipient_name: to });
-      if (!r.ai_available) { setErr(r.hint ?? "AI not configured"); return; }
-      setBody(r.body);
-      if (r.subject && !subject) setSubject(r.subject);
-      setAiAlts(r.alternatives ?? []);
-      setShowAiPanel(false);
-    } catch (e) { setErr(e instanceof Error ? e.message : "AI failed"); }
-    finally { setAiLoading(false); }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}>
-      <div className="w-full max-w-2xl rounded-2xl flex flex-col" style={{ background: "var(--c-surface-container-low)", border: "1px solid var(--glass-border)", boxShadow: "var(--glass-shadow)", maxHeight: "90vh" }}>
-        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: "1px solid var(--c-outline-variant)" }}>
-          <h2 className="font-headline text-lg" style={{ color: "var(--c-on-surface)" }}>New Message</h2>
-          <div className="flex items-center gap-2">
-            {canAiCompose && (
-              <button
-                onClick={() => setShowAiPanel(!showAiPanel)}
-                className="btn-ghost text-xs flex items-center gap-1"
-                style={{ color: showAiPanel ? "var(--c-primary)" : undefined }}
-                title="AI Compose"
-              >
-                <span className="material-symbols-outlined text-base">auto_awesome</span>
-                AI Compose
-              </button>
-            )}
-            <button onClick={onClose} className="btn-ghost p-1.5"><span className="material-symbols-outlined text-xl">close</span></button>
-          </div>
-        </div>
-
-        {/* AI Compose panel */}
-        {showAiPanel && (
-          <div className="px-6 py-4" style={{ background: "color-mix(in srgb, var(--c-primary) 5%, transparent)", borderBottom: "1px solid var(--c-outline-variant)" }}>
-            <p className="text-xs font-semibold mb-3" style={{ color: "var(--c-primary)" }}>✨ AI Compose</p>
-            <div className="flex gap-2 mb-3">
-              {(["professional", "friendly", "concise"] as const).map((t) => (
-                <button key={t} onClick={() => setAiTone(t)}
-                  className="px-3 py-1 rounded-full text-xs font-semibold border transition-all capitalize"
-                  style={aiTone === t
-                    ? { background: "var(--c-primary)", color: "var(--c-on-primary)", borderColor: "var(--c-primary)" }
-                    : { background: "transparent", color: "var(--c-on-surface-variant)", borderColor: "var(--c-outline-variant)" }}>
-                  {t}
-                </button>
-              ))}
-            </div>
-            <input value={aiContext} onChange={(e) => setAiContext(e.target.value)}
-              placeholder="What's this email about? (optional — uses subject if empty)"
-              className="input-field rounded-xl text-sm mb-3" />
-            <button onClick={handleAiGenerate} disabled={aiLoading}
-              className="btn-primary text-xs disabled:opacity-50 flex items-center gap-1.5">
-              {aiLoading ? <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span> : <span className="material-symbols-outlined text-sm">auto_awesome</span>}
-              {aiLoading ? "Generating…" : "Generate"}
-            </button>
-            {aiAlts.length > 0 && (
-              <div className="mt-3 space-y-1.5">
-                <p className="text-[10px] font-semibold" style={{ color: "var(--c-on-surface-variant)" }}>ALTERNATIVES (click to use)</p>
-                {aiAlts.map((alt, i) => (
-                  <button key={i} onClick={() => setBody(alt)}
-                    className="w-full text-left text-xs px-3 py-2 rounded-xl border transition-all hover:border-primary"
-                    style={{ background: "var(--c-surface-container)", borderColor: "var(--c-outline-variant)", color: "var(--c-on-surface)" }}>
-                    {alt.slice(0, 120)}{alt.length > 120 ? "…" : ""}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {err && <div className="mx-6 mt-3 rounded-xl px-4 py-2 text-sm" style={{ background: "var(--c-error-container)", color: "var(--c-error)" }}>{err}</div>}
-        <div className="flex flex-col px-6" style={{ borderTop: "1px solid var(--c-outline-variant)" }}>
-          {[{ label: "To", value: to, set: setTo, placeholder: "recipients@example.com" }, { label: "Subject", value: subject, set: setSubject, placeholder: "Subject" }].map((f, i) => (
-            <div key={f.label} className="flex items-center gap-3 py-3" style={i > 0 ? { borderTop: "1px solid var(--c-outline-variant)" } : {}}>
-              <span className="text-xs font-semibold w-14 shrink-0" style={{ color: "var(--c-on-surface-variant)" }}>{f.label}</span>
-              <input value={f.value} onChange={(e) => f.set(e.target.value)} placeholder={f.placeholder} className="flex-1 bg-transparent text-sm outline-none" style={{ color: "var(--c-on-surface)" }} />
-            </div>
-          ))}
-        </div>
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Compose…" className="flex-1 px-6 py-4 bg-transparent text-sm outline-none resize-none min-h-[180px]" style={{ color: "var(--c-on-surface)" }} />
-        <div className="flex justify-end gap-3 px-6 py-4" style={{ borderTop: "1px solid var(--c-outline-variant)" }}>
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleSend} disabled={sending} className="btn-primary disabled:opacity-50 flex items-center gap-2">
-            {sending ? <span className="material-symbols-outlined animate-spin text-base">progress_activity</span> : <span className="material-symbols-outlined text-base">send</span>}
-            {sending ? "Sending…" : "Send"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Thread detail pane ────────────────────────────────────────────────────────
-function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, canSummarize, canAiCompose }: { thread: EmailThread; onClose: () => void; onMarkRead: (id: string) => void; onTrash: (id: string) => void; canWrite: boolean; canSummarize: boolean; canAiCompose: boolean }) {
-  const [replyBody, setReplyBody] = useState("");
-  const [sending, setSending] = useState(false);
-
-  // AI Summary state
-  const [summary, setSummary] = useState<AiSummary | null>(null);
-  const [summaryLoading, setSummaryLoading] = useState(false);
-  const [summaryErr, setSummaryErr] = useState<string | null>(null);
-
-  // AI Reply state
-  const [aiReplyTone, setAiReplyTone] = useState<"professional" | "friendly" | "concise">("professional");
-  const [aiReplyLoading, setAiReplyLoading] = useState(false);
-  // Tracks whether the textarea currently holds AI-generated text. When true,
-  // changing the tone pill will auto-regenerate; once the user manually edits
-  // the body it flips false so we don't clobber their edits.
-  const [bodyIsAiGenerated, setBodyIsAiGenerated] = useState(false);
-
-  // Reset state when the user switches threads (Fix #1)
-  useEffect(() => {
-    setSummary(null);
-    setSummaryErr(null);
-    setSummaryLoading(false);
-    setReplyBody("");
-    setBodyIsAiGenerated(false);
-  }, [thread.id]);
-
-  async function handleReply() {
-    if (!replyBody.trim()) return;
-    setSending(true);
-    try {
-      await emailApi.reply(thread.id, { to: thread.from || (thread.ownerUserId.includes("@") ? thread.ownerUserId : `${thread.ownerUserId}@example.com`), subject: thread.subject, body: replyBody });
-      setReplyBody("");
-    } finally { setSending(false); }
-  }
-
-  async function handleSummarize() {
-    setSummaryLoading(true); setSummaryErr(null);
-    try {
-      const r = await aiApi.summarizeThread(thread.id);
-      if (!r.ai_available) { setSummaryErr(r.hint ?? "AI not configured"); return; }
-      setSummary(r);
-    } catch (e) { setSummaryErr(e instanceof Error ? e.message : "Failed to summarize"); }
-    finally { setSummaryLoading(false); }
-  }
-
-  async function handleAiReply(toneOverride?: "professional" | "friendly" | "concise") {
-    const useTone = toneOverride ?? aiReplyTone;
-    setAiReplyLoading(true);
-    try {
-      const r = await aiApi.compose({ type: "reply", tone: useTone, context: thread.subject, thread_snippet: thread.snippet, recipient_name: thread.from });
-      if (r.ai_available && r.body) {
-        setReplyBody(r.body);
-        setBodyIsAiGenerated(true);
-      }
-    } catch { /* ignore */ }
-    finally { setAiReplyLoading(false); }
-  }
-
-  /**
-   * Switch tone pill. If the textarea currently holds AI-generated text,
-   * regenerate it with the new tone immediately so the user doesn't have to
-   * click "AI Reply" again. If the user has edited the body manually we just
-   * remember the new tone for the next AI Reply click.
-   */
-  function handleToneChange(t: "professional" | "friendly" | "concise") {
-    if (t === aiReplyTone) return;
-    setAiReplyTone(t);
-    if (bodyIsAiGenerated && !aiReplyLoading && canAiCompose) {
-      void handleAiReply(t);
-    }
-  }
-
-  async function handleAction(action: "archive" | "read" | "unread" | "trash") {
-    const map: Record<string, { add: string[]; remove: string[] }> = {
-      archive: { add: [],         remove: ["INBOX"] },
-      read:    { add: [],         remove: ["UNREAD"] },
-      unread:  { add: ["UNREAD"], remove: [] },
-      trash:   { add: [],         remove: [] },
-    };
-    if (action === "trash") {
-      onTrash(thread.id);
-      onClose();
-      return;
-    } else {
-      await emailApi.modifyLabels(thread.id, { add_label_ids: map[action].add, remove_label_ids: map[action].remove }).catch(() => null);
-    }
-    if (action === "read") onMarkRead(thread.id);
-    onClose();
-  }
-
-  const SENTIMENT_COLOR: Record<string, string> = {
-    positive: "var(--c-primary)",
-    urgent: "var(--c-error)",
-    negative: "var(--c-error)",
-    neutral: "var(--c-on-surface-variant)",
-  };
-
-  return (
-    <div className="flex flex-col h-full" style={{ background: "var(--c-background)" }}>
-      <div className="flex items-start justify-between px-8 py-5" style={{ borderBottom: "1px solid var(--c-outline-variant)" }}>
-        <div className="flex-1 min-w-0 pr-4">
-          <span className="section-label mb-1 block">Thread</span>
-          <h2 className="font-headline text-2xl" style={{ color: "var(--c-on-surface)" }}>{thread.subject}</h2>
-          <p className="text-xs mt-1" style={{ color: "var(--c-on-surface-variant)" }}>
-            From: {thread.from} · {new Date(thread.updatedAt).toLocaleString()}
-          </p>
-        </div>
-        <div className="flex items-center gap-1 shrink-0 flex-wrap">
-          {canSummarize && (
-            <button
-              onClick={handleSummarize}
-              disabled={summaryLoading}
-              className="btn-ghost text-xs flex items-center gap-1 disabled:opacity-50"
-              style={{ color: "var(--c-primary)" }}
-              title="Summarise with AI"
-            >
-              <span className="material-symbols-outlined text-base">{summaryLoading ? "progress_activity" : "auto_awesome"}</span>
-              {summaryLoading ? "…" : "Summarize"}
-            </button>
-          )}
-          <button onClick={() => handleAction("archive")} className="btn-ghost p-2" title="Archive"><span className="material-symbols-outlined text-xl">archive</span></button>
-          <button onClick={() => handleAction("trash")} className="btn-ghost p-2" title="Move to trash" style={{ color: "var(--c-error)" }}><span className="material-symbols-outlined text-xl">delete</span></button>
-          {thread.isUnread
-            ? <button onClick={() => handleAction("read")} className="btn-ghost p-2" title="Mark read"><span className="material-symbols-outlined text-xl">mark_email_read</span></button>
-            : <button onClick={() => handleAction("unread")} className="btn-ghost p-2" title="Mark unread"><span className="material-symbols-outlined text-xl">mark_email_unread</span></button>
-          }
-          <button onClick={onClose} className="btn-ghost p-2"><span className="material-symbols-outlined text-xl">close</span></button>
-        </div>
-      </div>
-      <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
-        {/* AI Summary card */}
-        {summaryErr && (
-          <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "var(--c-error-container)", color: "var(--c-error)" }}>{summaryErr}</div>
-        )}
-        {summary && (
-          <div className="rounded-2xl p-5 relative" style={{ background: "color-mix(in srgb, var(--c-primary) 6%, var(--c-surface-container))", border: "1px solid color-mix(in srgb, var(--c-primary) 20%, transparent)" }}>
-            <button
-              onClick={() => setSummary(null)}
-              className="absolute top-3 right-3 btn-ghost p-1 rounded-full"
-              title="Close summary"
-              aria-label="Close summary"
-              style={{ color: "var(--c-on-surface-variant)" }}
-            >
-              <span className="material-symbols-outlined text-base">close</span>
-            </button>
-            <div className="flex items-center gap-2 mb-3 pr-7">
-              <span className="material-symbols-outlined text-base" style={{ color: "var(--c-primary)" }}>auto_awesome</span>
-              <span className="text-xs font-semibold" style={{ color: "var(--c-primary)" }}>AI SUMMARY</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: "var(--c-surface-container-high)", color: SENTIMENT_COLOR[summary.sentiment] ?? "var(--c-on-surface-variant)" }}>
-                {summary.sentiment}
-              </span>
-              <span className="text-[10px] ml-auto" style={{ color: "var(--c-outline)" }}>{summary.model}</span>
-            </div>
-            <p className="text-sm mb-3" style={{ color: "var(--c-on-surface)" }}>{summary.summary}</p>
-            {summary.key_points.length > 0 && (
-              <div className="mb-2">
-                <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--c-on-surface-variant)" }}>Key Points</p>
-                <ul className="space-y-1">
-                  {summary.key_points.map((p, i) => (
-                    <li key={i} className="flex items-start gap-2 text-xs" style={{ color: "var(--c-on-surface)" }}>
-                      <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ background: "var(--c-primary)" }} />
-                      {p}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {summary.action_items.length > 0 && (
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--c-on-surface-variant)" }}>Action Items</p>
-                <ul className="space-y-1">
-                  {summary.action_items.map((a, i) => (
-                    <li key={i} className="flex items-start gap-2 text-xs" style={{ color: "var(--c-on-surface)" }}>
-                      <span className="material-symbols-outlined text-sm shrink-0" style={{ color: "var(--c-tertiary)" }}>task_alt</span>
-                      {a}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-        <div className="nimbus-card p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style={{ background: "var(--c-primary-container)", color: "var(--c-on-primary-container)" }}>
-              {(thread.from || thread.ownerUserId).charAt(0).toUpperCase()}
-            </div>
-            <div>
-              <p className="text-sm font-semibold" style={{ color: "var(--c-on-surface)" }}>{thread.from || thread.ownerUserId}</p>
-              <p className="text-xs" style={{ color: "var(--c-on-surface-variant)" }}>{new Date(thread.updatedAt).toLocaleString()}</p>
-            </div>
-          </div>
-          {thread.bodyHtml ? (
-            <iframe
-              key={thread.id}
-              title={thread.subject}
-              sandbox="allow-popups allow-popups-to-escape-sandbox"
-              referrerPolicy="no-referrer"
-              srcDoc={`<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: blob:; style-src 'unsafe-inline'; font-src https: data:; media-src https: data:;"><base target="_blank"><style>html,body{margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;color:#1f2328;padding:8px;word-wrap:break-word}img{max-width:100%;height:auto}a{color:#2563eb;word-break:break-word}table{max-width:100%}blockquote{border-left:3px solid #d0d7de;margin:0;padding-left:12px;color:#57606a}</style></head><body>${thread.bodyHtml}</body></html>`}
-              style={{ width: "100%", minHeight: "500px", border: 0, background: "white", borderRadius: 8 }}
-            />
-          ) : (
-            <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "var(--c-on-surface)" }}>{thread.snippet || "(no body)"}</p>
-          )}
-        </div>
-      </div>
-      <div className="px-8 py-4" style={{ borderTop: "1px solid var(--c-outline-variant)" }}>
-        {/* AI Reply tone selector — only shown when canAiCompose */}
-        {canAiCompose && (
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] font-semibold" style={{ color: "var(--c-on-surface-variant)" }}>TONE:</span>
-            {(["professional", "friendly", "concise"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => handleToneChange(t)}
-                disabled={aiReplyLoading}
-                title={bodyIsAiGenerated ? `Regenerate with ${t} tone` : `Set tone to ${t} for next AI Reply`}
-                className="px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-all capitalize disabled:opacity-50"
-                style={aiReplyTone === t
-                  ? { background: "var(--c-primary)", color: "var(--c-on-primary)", borderColor: "var(--c-primary)" }
-                  : { background: "transparent", color: "var(--c-on-surface-variant)", borderColor: "var(--c-outline-variant)" }}>
-                {t}
-              </button>
-            ))}
-            <button onClick={() => handleAiReply()} disabled={aiReplyLoading}
-              className="ml-auto btn-ghost text-[10px] flex items-center gap-1 disabled:opacity-50"
-              style={{ color: "var(--c-primary)" }}>
-              <span className="material-symbols-outlined text-sm">{aiReplyLoading ? "progress_activity" : "auto_awesome"}</span>
-              AI Reply
-            </button>
-          </div>
-        )}
-        <div className="flex items-end gap-3 rounded-2xl px-5 py-3" style={{ background: "var(--c-surface-container)", border: "1px solid var(--c-outline-variant)" }}>
-          <textarea
-            value={replyBody}
-            onChange={(e) => { setReplyBody(e.target.value); setBodyIsAiGenerated(false); }}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleReply(); }}}
-            placeholder={canWrite ? "Reply… (Enter to send, Shift+Enter for newline)" : "Send Email feature disabled"}
-            disabled={!canWrite}
-            rows={1}
-            className="flex-1 bg-transparent text-sm outline-none disabled:opacity-50 resize-none leading-relaxed py-1"
-            style={{ color: "var(--c-on-surface)", maxHeight: "180px", overflowY: "auto" }}
-            ref={(el) => {
-              if (el) {
-                el.style.height = "auto";
-                el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
-              }
-            }}
-          />
-          <button onClick={handleReply} disabled={sending || !replyBody.trim() || !canWrite} className="transition-all disabled:opacity-40 self-end pb-1" style={{ color: "var(--c-primary)" }}>
-            {sending ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : <span className="material-symbols-outlined">send</span>}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { getErrorMessage } from "../lib/errors.ts";
+import { ComposeModal } from "../components/email/ComposeModal.tsx";
+import { ThreadPane } from "../components/email/ThreadPane.tsx";
 
 // ── Main InboxPage ─────────────────────────────────────────────────────────────
 export function InboxPage() {
@@ -428,7 +54,7 @@ export function InboxPage() {
         setAiResults(r.results);
       }
     } catch (e) {
-      setAiSearchHint((e as Error).message);
+      setAiSearchHint(getErrorMessage(e));
       setAiResults([]);
     } finally {
       setAiSearchBusy(false);
@@ -444,7 +70,7 @@ export function InboxPage() {
       else if (r.embeddings_available === false) setAiSearchHint("Vector DB not available.");
       else setAiSearchHint(`Indexed ${r.indexed} emails (${r.skipped} already up-to-date).`);
     } catch (e) {
-      setAiSearchHint((e as Error).message);
+      setAiSearchHint(getErrorMessage(e));
     } finally {
       setAiSearchBusy(false);
     }
@@ -534,10 +160,14 @@ export function InboxPage() {
 
   // Deep-link: open a specific thread when ?thread=<id> is in the URL
   // (used by the AI assistant when it references an email).
+  // We depend on the resolved `wantThreadId` rather than the whole `searchParams`
+  // object so the effect doesn't re-fire when *other* query params change. We
+  // also keep `threads` in the dep array so a fresh thread cache will retry the
+  // local lookup before falling through to a direct fetch.
+  const wantThreadId = searchParams.get("thread");
   useEffect(() => {
-    const want = searchParams.get("thread");
-    if (!want) return;
-    const match = threads.find((t) => t.id === want);
+    if (!wantThreadId) return;
+    const match = threads.find((t) => t.id === wantThreadId);
     if (match) {
       setSelected(match);
       if (match.isUnread) markLocalRead(match.id);
@@ -553,7 +183,7 @@ export function InboxPage() {
     // the page limit, or we just haven't loaded yet). Fetch it directly so the
     // assistant's email link always works.
     let cancelled = false;
-    emailApi.getThread(want)
+    emailApi.getThread(wantThreadId)
       .then((r) => {
         if (cancelled || !r?.thread) return;
         setSelected(r.thread);
@@ -570,7 +200,7 @@ export function InboxPage() {
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, threads]);
+  }, [wantThreadId, threads]);
 
     // Feature gate — show disabled card if email_read is off (MUST be after all hooks)
     if (!hasFeature("email_read")) {

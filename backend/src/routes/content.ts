@@ -18,6 +18,7 @@ import { publish } from "../integrations/event-bus.js";
 import { emitAuditEvent } from "../security/audit.js";
 import { createApiError } from "../security/errors.js";
 import { paginate } from "../security/pagination.js";
+import { validateBody } from "../lib/validation.js";
 
 export const contentRouter = Router();
 
@@ -52,12 +53,11 @@ contentRouter.get("/email/threads/:threadId", requireAuth, requireFeature("email
 contentRouter.post("/email/messages/send", requireAuth, requireFeature("email_write"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const auth = req.auth!;
-    const parsed = sendEmailSchema.safeParse(req.body);
-    if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid send payload", false, req.traceId);
+    const body = validateBody(sendEmailSchema, req, "Invalid send payload");
 
-    const result = await sendEmail(getCorsairTenant(auth.userId), parsed.data);
+    const result = await sendEmail(getCorsairTenant(auth.userId), body);
     publish({ kind: "email.changed", userId: auth.userId, threadId: result.threadId });
-    emitAuditEvent(req, "email_message_sent", { to: parsed.data.to, message_id: result.id });
+    emitAuditEvent(req, "email_message_sent", { to: body.to, message_id: result.id });
     res.status(201).json({ message_id: result.id, thread_id: result.threadId });
   } catch (err) { next(err); }
 });
@@ -65,13 +65,12 @@ contentRouter.post("/email/messages/send", requireAuth, requireFeature("email_wr
 contentRouter.post("/email/threads/:threadId/reply", requireAuth, requireFeature("email_write"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const auth = req.auth!;
-    const parsed = replyEmailSchema.safeParse(req.body);
-    if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid reply payload", false, req.traceId);
+    const body = validateBody(replyEmailSchema, req, "Invalid reply payload");
 
     const result = await replyToThread(getCorsairTenant(auth.userId), {
       threadId: req.params.threadId,
-      ...parsed.data,
-      messageId: parsed.data.message_id
+      ...body,
+      messageId: body.message_id
     });
     publish({ kind: "email.changed", userId: auth.userId, threadId: result.threadId ?? req.params.threadId });
     emitAuditEvent(req, "email_thread_replied", { thread_id: req.params.threadId, message_id: result.id });
@@ -84,14 +83,13 @@ contentRouter.post("/email/threads/:threadId/reply", requireAuth, requireFeature
 contentRouter.patch("/email/threads/:threadId/labels", requireAuth, requireFeature("email_read"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const auth = req.auth!;
-    const parsed = modifyLabelsSchema.safeParse(req.body);
-    if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid labels payload", false, req.traceId);
+    const body = validateBody(modifyLabelsSchema, req, "Invalid labels payload");
 
     const result = await modifyThreadLabels(
       getCorsairTenant(auth.userId),
       req.params.threadId,
-      parsed.data.add_label_ids,
-      parsed.data.remove_label_ids
+      body.add_label_ids,
+      body.remove_label_ids
     );
     publish({ kind: "email.changed", userId: auth.userId, threadId: req.params.threadId });
     emitAuditEvent(req, "email_thread_labels_modified", { thread_id: req.params.threadId });
@@ -120,10 +118,9 @@ contentRouter.get("/calendar/events", requireAuth, requireFeature("calendar_read
 contentRouter.post("/calendar/events", requireAuth, requireFeature("calendar_write"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const auth = req.auth!;
-    const parsed = createCalendarEventSchema.safeParse(req.body);
-    if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid calendar event payload", false, req.traceId);
+    const body = validateBody(createCalendarEventSchema, req, "Invalid calendar event payload");
 
-    const created = await createGCalEvent({ tenantId: getCorsairTenant(auth.userId), ownerUserId: auth.userId, title: parsed.data.title, startsAt: parsed.data.starts_at, endsAt: parsed.data.ends_at, attendees: parsed.data.attendees, description: parsed.data.description, location: parsed.data.location, withMeet: parsed.data.with_meet });
+    const created = await createGCalEvent({ tenantId: getCorsairTenant(auth.userId), ownerUserId: auth.userId, title: body.title, startsAt: body.starts_at, endsAt: body.ends_at, attendees: body.attendees, description: body.description, location: body.location, withMeet: body.with_meet });
     publish({ kind: "calendar.changed", userId: auth.userId, eventId: created.id });
     emitAuditEvent(req, "calendar_event_create", { event_id: created.id });
     res.status(201).json({ event: created });
@@ -133,17 +130,16 @@ contentRouter.post("/calendar/events", requireAuth, requireFeature("calendar_wri
 contentRouter.patch("/calendar/events/:eventId", requireAuth, requireFeature("calendar_write"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const auth = req.auth!;
-    const parsed = updateCalendarEventSchema.safeParse(req.body);
-    if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid calendar event update payload", false, req.traceId);
+    const body = validateBody(updateCalendarEventSchema, req, "Invalid calendar event update payload");
 
     const updated = await updateGCalEvent({
       tenantId: getCorsairTenant(auth.userId),
       ownerUserId: auth.userId,
       eventId: req.params.eventId,
-      title: parsed.data.title,
-      startsAt: parsed.data.starts_at,
-      endsAt: parsed.data.ends_at,
-      attendees: parsed.data.attendees
+      title: body.title,
+      startsAt: body.starts_at,
+      endsAt: body.ends_at,
+      attendees: body.attendees
     });
     publish({ kind: "calendar.changed", userId: auth.userId, eventId: updated.id });
     emitAuditEvent(req, "calendar_event_update", { event_id: updated.id });
@@ -156,15 +152,14 @@ contentRouter.patch("/calendar/events/:eventId", requireAuth, requireFeature("ca
 contentRouter.post("/calendar/availability/check", requireAuth, requireFeature("calendar_read"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const auth = req.auth!;
-    const parsed = availabilityCheckSchema.safeParse(req.body);
-    if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid availability check payload", false, req.traceId);
+    const body = validateBody(availabilityCheckSchema, req, "Invalid availability check payload");
 
     const availability = await checkAvailability(getCorsairTenant(auth.userId), {
-      timeMin: parsed.data.time_min,
-      timeMax: parsed.data.time_max,
-      calendarIds: parsed.data.calendar_ids
+      timeMin: body.time_min,
+      timeMax: body.time_max,
+      calendarIds: body.calendar_ids
     });
-    emitAuditEvent(req, "calendar_availability_checked", { time_min: parsed.data.time_min, time_max: parsed.data.time_max });
+    emitAuditEvent(req, "calendar_availability_checked", { time_min: body.time_min, time_max: body.time_max });
     res.status(200).json({ availability });
   } catch (err) { next(err); }
 });
@@ -244,9 +239,8 @@ contentRouter.get("/email/drafts", requireAuth, requireFeature("email_read"), as
 contentRouter.post("/email/drafts", requireAuth, requireFeature("email_read"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const auth = req.auth!;
-    const parsed = sendEmailSchema.safeParse(req.body);
-    if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid draft payload", false, req.traceId);
-    const draft = await createDraft(getCorsairTenant(auth.userId), parsed.data);
+    const body = validateBody(sendEmailSchema, req, "Invalid draft payload");
+    const draft = await createDraft(getCorsairTenant(auth.userId), body);
     emitAuditEvent(req, "email_draft_created", { draft_id: draft.id });
     res.status(201).json({ draft_id: draft.id });
   } catch (err) { next(err); }

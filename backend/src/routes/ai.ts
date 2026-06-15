@@ -14,31 +14,18 @@ import { requireAuth } from "../auth/middleware.js";
 import { requireFeature } from "../auth/feature-gate.js";
 import { createApiError } from "../security/errors.js";
 import { emitAuditEvent } from "../security/audit.js";
+import { validateBody } from "../lib/validation.js";
 import { fetchGmailThread } from "../integrations/gmail.js";
 import { fetchGmailThreads } from "../integrations/gmail.js";
 import { getCorsairTenant } from "../integrations/corsair-tenant.js";
 import { chat, isAiAvailable, MODEL, embed } from "../integrations/openai.js";
 import { aiCache } from "../lib/cache.js";
+import { stripHtml } from "../lib/html.js";
 import { checkAvailability } from "../integrations/googlecalendar.js";
 import { searchEmbeddings, embeddingsAvailable, upsertEmbedding, isAlreadyEmbedded } from "../db/embeddings.js";
 import { getUserById, getUserByClerkId } from "../db/users.js";
 
 export const aiRouter = Router();
-
-// ── Strip HTML to plain text ──────────────────────────────────────────────────
-function stripHtml(html: string): string {
-  return html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/\s{2,}/g, " ")
-    .trim();
-}
 
 // ── POST /v1/ai/summarize-thread ──────────────────────────────────────────────
 const summarizeSchema = z.object({
@@ -52,8 +39,7 @@ aiRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const auth = req.auth!;
-      const parsed = summarizeSchema.safeParse(req.body);
-      if (!parsed.success) throw createApiError("VALIDATION_ERROR", "thread_id is required", false, req.traceId);
+      const { thread_id } = validateBody(summarizeSchema, req, "thread_id is required");
 
       if (!isAiAvailable()) {
         res.status(200).json({
@@ -64,7 +50,7 @@ aiRouter.post(
       }
 
       // Cache hit?  Same user + same thread within 10 min returns instantly
-      const cacheKey = `summary:${auth.userId}:${parsed.data.thread_id}`;
+      const cacheKey = `summary:${auth.userId}:${thread_id}`;
       const cached = aiCache.summary.get(cacheKey);
       if (cached) {
         res.status(200).json({ ...(cached as object), cached: true, ai_available: true });
@@ -73,7 +59,7 @@ aiRouter.post(
 
       // Fetch thread content via Corsair
       const tenant = getCorsairTenant(auth.userId);
-      const thread = await fetchGmailThread(tenant, parsed.data.thread_id, auth.userId);
+      const thread = await fetchGmailThread(tenant, thread_id, auth.userId);
       if (!thread) throw createApiError("NOT_FOUND", "Thread not found", false, req.traceId);
 
       const content = thread.bodyHtml ? stripHtml(thread.bodyHtml) : thread.snippet;
@@ -110,7 +96,7 @@ ${content.slice(0, 4000)}`;
         result = { summary: raw.slice(0, 500), key_points: [], action_items: [], sentiment: "neutral" };
       }
 
-      emitAuditEvent(req, "ai_summarize_thread", { thread_id: parsed.data.thread_id, model: MODEL });
+      emitAuditEvent(req, "ai_summarize_thread", { thread_id, model: MODEL });
       const payload = { ...result, model: MODEL, ai_available: true };
       aiCache.summary.set(cacheKey, payload);
       res.status(200).json({ ...payload, cached: false });
@@ -133,8 +119,7 @@ aiRouter.post(
   requireFeature("ai_compose"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const parsed = composeSchema.safeParse(req.body);
-      if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid compose payload", false, req.traceId);
+      const body = validateBody(composeSchema, req, "Invalid compose payload");
 
       if (!isAiAvailable()) {
         res.status(200).json({
@@ -144,7 +129,7 @@ aiRouter.post(
         return;
       }
 
-      const { type, tone, context, thread_snippet, recipient_name } = parsed.data;
+      const { type, tone, context, thread_snippet, recipient_name } = body;
 
       // Resolve the logged-in user's display name so the AI can sign the
       // email correctly instead of leaving "[Your Name]" placeholders. Falls
@@ -246,10 +231,7 @@ aiRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const auth = req.auth!;
-      const parsed = suggestSlotsSchema.safeParse(req.body);
-      if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid suggest-slots payload", false, req.traceId);
-
-      const { description, duration_minutes, earliest, latest } = parsed.data;
+      const { description, duration_minutes, earliest, latest } = validateBody(suggestSlotsSchema, req, "Invalid suggest-slots payload");
       const now = new Date();
       const timeMin = earliest ?? now.toISOString();
       // Default search window: next 7 days
@@ -346,8 +328,7 @@ aiRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const auth = req.auth!;
-      const parsed = searchEmailsSchema.safeParse(req.body);
-      if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid search payload", false, req.traceId);
+      const { query, limit } = validateBody(searchEmailsSchema, req, "Invalid search payload");
 
       if (!isAiAvailable()) {
         res.status(200).json({ ai_available: false, results: [], hint: "Set MISTRAL_API_KEY to enable semantic search." });
@@ -364,10 +345,10 @@ aiRouter.post(
       }
 
       // Embed the query (cache by query string — same query = same vector)
-      const cacheKey = `embed:${parsed.data.query.toLowerCase().trim()}`;
+      const cacheKey = `embed:${query.toLowerCase().trim()}`;
       let queryVec = aiCache.embed.get(cacheKey);
       if (!queryVec) {
-        const v = await embed(parsed.data.query);
+        const v = await embed(query);
         if (!v) {
           res.status(200).json({ ai_available: true, results: [], hint: "Could not embed query." });
           return;
@@ -376,8 +357,8 @@ aiRouter.post(
         aiCache.embed.set(cacheKey, queryVec);
       }
 
-      const results = await searchEmbeddings(auth.userId, queryVec, parsed.data.limit);
-      emitAuditEvent(req, "ai_search_emails", { query_len: parsed.data.query.length, result_count: results.length });
+      const results = await searchEmbeddings(auth.userId, queryVec, limit);
+      emitAuditEvent(req, "ai_search_emails", { query_len: query.length, result_count: results.length });
       res.status(200).json({ ai_available: true, embeddings_available: true, results });
     } catch (err) { next(err); }
   }
@@ -397,8 +378,7 @@ aiRouter.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const auth = req.auth!;
-      const parsed = indexEmailsSchema.safeParse(req.body);
-      if (!parsed.success) throw createApiError("VALIDATION_ERROR", "Invalid index payload", false, req.traceId);
+      const { limit } = validateBody(indexEmailsSchema, req, "Invalid index payload");
 
       if (!isAiAvailable()) {
         res.status(200).json({ ai_available: false, indexed: 0, hint: "Set OPENAI_API_KEY first." });
@@ -409,7 +389,7 @@ aiRouter.post(
         return;
       }
 
-      const threads = await fetchGmailThreads(getCorsairTenant(auth.userId), auth.userId, parsed.data.limit);
+      const threads = await fetchGmailThreads(getCorsairTenant(auth.userId), auth.userId, limit);
       let indexed = 0;
       let skipped = 0;
 
