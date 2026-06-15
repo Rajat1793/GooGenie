@@ -10,7 +10,6 @@
  *   const reply = await chat("Summarise this email…");
  */
 import OpenAI from "openai";
-import https from "node:https";
 
 export const MODEL = "mistral-small-latest";
 export const EMBEDDING_MODEL = "mistral-embed";
@@ -19,14 +18,42 @@ export const EMBEDDING_DIM = 1024;
 // Lazy singleton so we only create the client when the key is present
 let _client: OpenAI | null = null;
 
+/**
+ * Build a custom fetch that ignores TLS certificate errors. Used only when
+ * `CORPORATE_SSL_RELAX=1` is set — typically a developer machine sitting
+ * behind a corporate HTTPS-inspecting proxy (e.g. HPE) whose CA isn't in
+ * Node's trust store. Production deployments (Render, etc.) must NOT set
+ * this flag.
+ *
+ * OpenAI SDK v6 dropped the `httpAgent` / `httpsAgent` client options in
+ * favour of a custom `fetch`, so we wire it via undici (built into Node 18+).
+ */
+function makeRelaxedFetch(): typeof globalThis.fetch | undefined {
+  if (process.env.CORPORATE_SSL_RELAX !== "1") return undefined;
+  try {
+    // Use require() so missing undici doesn't crash the bundle in environments
+    // where it isn't needed.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-explicit-any
+    const undici = require("undici") as { Agent: new (opts: unknown) => unknown; fetch: typeof globalThis.fetch };
+    const dispatcher = new undici.Agent({ connect: { rejectUnauthorized: false } });
+    return ((url: RequestInfo | URL, init?: RequestInit) =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      undici.fetch(url as never, { ...(init as any), dispatcher } as never)) as typeof globalThis.fetch;
+  } catch {
+    // undici unavailable — fall back to default fetch. Developers can also
+    // export NODE_TLS_REJECT_UNAUTHORIZED=0 in their shell as a last resort.
+    return undefined;
+  }
+}
+
 function getClient(): OpenAI | null {
   if (!process.env.MISTRAL_API_KEY) return null;
   if (!_client) {
+    const relaxedFetch = makeRelaxedFetch();
     _client = new OpenAI({
       apiKey: process.env.MISTRAL_API_KEY,
       baseURL: "https://api.mistral.ai/v1",
-      httpAgent: new https.Agent({ rejectUnauthorized: false }),
-      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+      ...(relaxedFetch ? { fetch: relaxedFetch } : {}),
     });
   }
   return _client;
