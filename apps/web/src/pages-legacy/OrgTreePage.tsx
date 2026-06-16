@@ -13,7 +13,7 @@ type BossNode    = DbUser & { children: Array<TeacherNode> };
 
 const ROLE_BG:   Record<string, string> = { super_admin: "#ffdad6", manager_admin: "#cbe6ff", user: "#c6e4f7" };
 const ROLE_FG:   Record<string, string> = { super_admin: "#ba1a1a", manager_admin: "#0d4f74", user: "#466272" };
-const ROLE_LABEL: Record<string, string> = { super_admin: "Big Boss", manager_admin: "Teacher", user: "Student" };
+const ROLE_LABEL: Record<string, string> = { super_admin: "Admin", manager_admin: "Manager", user: "Member" };
 
 // ── Node card ─────────────────────────────────────────────────────────────────
 function OrgCard({

@@ -206,7 +206,7 @@ export function CalendarPage() {
       <FeatureDisabledCard
         featureKey="calendar_read"
         title="Calendar Locked"
-        description="You don't have access to the calendar yet. Request it from your teacher and they can enable it for you."
+        description="You don't have access to the calendar yet. Request it from your manager and they can enable it for you."
         icon="calendar_month"
       />
     );

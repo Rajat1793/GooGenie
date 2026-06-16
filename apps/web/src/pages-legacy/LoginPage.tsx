@@ -91,9 +91,9 @@ export function LoginPage() {
           <p className="section-label mb-2 text-center">Sign in as</p>
           <div className="grid grid-cols-3 gap-2">
             {([
-              { key: "user"          as const, label: "Student",  icon: "person" },
-              { key: "manager_admin" as const, label: "Teacher",  icon: "school" },
-              { key: "super_admin"   as const, label: "Big Boss", icon: "admin_panel_settings" },
+              { key: "user"          as const, label: "Member",  icon: "person" },
+              { key: "manager_admin" as const, label: "Manager", icon: "school" },
+              { key: "super_admin"   as const, label: "Admin",   icon: "admin_panel_settings" },
             ]).map((t) => {
               const active = tab === t.key;
               return (

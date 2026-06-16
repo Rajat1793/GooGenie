@@ -27,6 +27,10 @@ services:
         value: production
       - key: PORT
         value: 3000
+      # Required so the Next.js standalone server binds to all interfaces
+      # (default would be the pod hostname, which Render's healthcheck can't reach).
+      - key: HOSTNAME
+        value: 0.0.0.0
 
       - key: DATABASE_URL
         fromDatabase:

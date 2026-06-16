@@ -189,7 +189,7 @@ export function AdminUsersPage() {
               <div>
                 <p className="text-2xl font-headline text-ink-text">{count}</p>
                 <p className="text-xs text-on-surface-variant uppercase tracking-widest">
-                  {r === "super_admin" ? "Big Boss" : r === "manager_admin" ? "Teacher" : "Student"}
+                  {r === "super_admin" ? "Admin" : r === "manager_admin" ? "Manager" : "Member"}
                 </p>
               </div>
             </div>

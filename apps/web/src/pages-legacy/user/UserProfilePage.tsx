@@ -29,9 +29,9 @@ const FEATURE_ICONS: Record<string, string> = {
 };
 
 const ROLE_LABEL: Record<string, string> = {
-  super_admin: "Big Boss",
-  manager_admin: "Teacher",
-  user: "Student",
+  super_admin: "Admin",
+  manager_admin: "Manager",
+  user: "Member",
 };
 
 interface PendingMap {
@@ -372,7 +372,7 @@ export function UserProfilePage() {
     try {
       await meApi.createFeatureRequest(featureKey);
       const target =
-        role === "user" ? "your teacher" : role === "manager_admin" ? "the Big Boss" : "your manager";
+        role === "user" ? "your manager" : role === "manager_admin" ? "the admin" : "your manager";
       setToast({
         kind: "success",
         message: `Request sent to ${target}. You'll be notified when it's reviewed.`,
@@ -423,7 +423,7 @@ export function UserProfilePage() {
   const initials = displayName.charAt(0).toUpperCase();
 
   const requestTargetLabel =
-    role === "user" ? "your teacher" : role === "manager_admin" ? "the Big Boss" : "your manager";
+    role === "user" ? "your manager" : role === "manager_admin" ? "the admin" : "your manager";
 
   return (
     <div>

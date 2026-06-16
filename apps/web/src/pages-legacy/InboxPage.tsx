@@ -211,7 +211,7 @@ export function InboxPage() {
         <FeatureDisabledCard
           featureKey="email_read"
           title="Inbox Locked"
-          description="You don't have access to email yet. Request it from your teacher and they can enable it for you."
+          description="You don't have access to email yet. Request it from your manager and they can enable it for you."
           icon="inbox"
         />
       );
