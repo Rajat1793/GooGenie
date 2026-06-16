@@ -3,12 +3,9 @@
   "private": true,
   "packageManager": "pnpm@11.1.3",
   "scripts": {
-    "dev:backend": "pnpm --filter googenie-backend dev",
-    "check:backend": "pnpm --filter googenie-backend check",
-    "build:backend": "pnpm --filter googenie-backend build",
-    "dev:frontend": "pnpm --filter nimbus-web dev",
-    "build:frontend": "pnpm --filter nimbus-web build",
-    "typecheck:frontend": "pnpm --filter nimbus-web typecheck",
+    "dev": "pnpm --filter @googenie/web dev",
+    "build": "pnpm --filter @googenie/web build",
+    "typecheck": "pnpm --filter @googenie/web typecheck",
     "dev:web": "pnpm --filter @googenie/web dev",
     "build:web": "pnpm --filter @googenie/web build",
     "typecheck:web": "pnpm --filter @googenie/web typecheck"

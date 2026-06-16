@@ -1,24 +1,26 @@
 # GooGenie — AI Workspace
 
-Role-aware Gmail + Google Calendar workspace with RBAC, real-time notifications, and AI-assisted workflows.
+Role-aware Gmail + Google Calendar workspace with RBAC, real-time notifications, and AI-assisted workflows. Deployed at **https://googenie-web.onrender.com**.
 
 ---
 
 ## Architecture
 
 ```
-apps/frontend/     React 18 + Vite + TanStack Query + Tailwind + Clerk React
-backend/           Express + Drizzle ORM + PostgreSQL + Clerk JWT + Corsair SDK
-packages/          Shared libraries (future tRPC types, etc.)
+apps/web/           Next.js 15 (App Router) — UI + API routes (port 3000)
+apps/mobile/        Expo (React Native) — points to apps/web's API
+packages/server/    Shared server lib: middleware, auth, integrations
+packages/db/        Drizzle ORM + PostgreSQL schema + migrations
+packages/contracts/ Shared Zod schemas + OpenAPI types
 ```
 
-**Three roles / three tenants:**
+**Three roles:**
 
-| Role | Tenant | Label |
-|---|---|---|
-| `super_admin` | `dev-admin` | Big Boss |
-| `manager_admin` | `dev-teachers` | Teacher |
-| `user` | `dev-students` | Student |
+| Role | Label |
+|---|---|
+| `super_admin` | Admin |
+| `manager_admin` | Manager |
+| `user` | Member |
 
 ---
 
@@ -27,8 +29,8 @@ packages/          Shared libraries (future tRPC types, etc.)
 ### Prerequisites
 - Node 20+, pnpm 9+
 - Docker (for Postgres)
-- A [Clerk](https://clerk.com) app (free tier)
-- A Google Cloud project with Gmail + Calendar APIs enabled
+- A [Clerk](https://clerk.com) app
+- A Google Cloud project with Gmail + Calendar APIs enabled (**Web application** OAuth client)
 
 ### 1 — Start Postgres
 ```bash
@@ -40,32 +42,22 @@ docker run -d --name googenie-postgres \
 
 ### 2 — Configure environment
 ```bash
-cp backend/.env.example backend/.env
-# Fill in: DATABASE_URL, CLERK_PUBLISHABLE_KEY, CLERK_SECRET_KEY,
-#          GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, CORSAIR_KEK
-```
-
-Frontend env (single variable):
-```bash
-echo "VITE_CLERK_PUBLISHABLE_KEY=pk_test_..." > apps/frontend/.env.local
+cp apps/web/.env.example apps/web/.env.local
+# Fill in: DATABASE_URL, CLERK_*, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+#          GOOGLE_REDIRECT_URI=http://localhost:3000/api/v1/me/connect/callback,
+#          CORSAIR_KEK, MISTRAL_API_KEY (optional).
 ```
 
 ### 3 — Install & run
 ```bash
 pnpm install
-pnpm --filter googenie-backend dev   # port 4000
-pnpm --filter nimbus-web dev         # port 3000 (proxies /v1 → 4000)
+pnpm dev        # apps/web on port 3000
 ```
 
-### 4 — Authorise Google OAuth (Corsair)
-```bash
-cd backend
-npx corsair auth --plugin=gmail --tenant=dev
-npx corsair auth --plugin=googlecalendar --tenant=dev
-```
+Drizzle migrations run automatically on boot via `instrumentation.ts`.
 
-### 5 — Sign in
-Open `http://localhost:3000`, pick a role tab (Student / Teacher / Big Boss), sign in with Clerk.
+### 4 — Sign in
+Open `http://localhost:3000`, sign in with Clerk, then click **Connect** on the Inbox / Calendar pages to authorize Gmail and Google Calendar.
 
 ---
 
@@ -75,19 +67,12 @@ Open `http://localhost:3000`, pick a role tab (Student / Teacher / Big Boss), si
 |---|---|
 | Gmail inbox + compose + reply | `/inbox` |
 | Google Calendar view + create | `/calendar` |
-| Org chart (hierarchy) | `/org` |
+| Org chart | `/org` |
 | Feature-access requests + approval | `/profile` |
 | Real-time notifications (SSE + browser push + chime) | Bell icon |
-| Manager team management | `/manager` |
-| Admin user roster (cross-tenant) | `/admin` |
-
-### Feature-request flow
-```
-Student clicks "Request" on a disabled feature
-  → SSE push → Manager's bell badge lights up instantly + chime
-  → Manager approves/denies from bell or Profile page
-    → SSE push → Student's feature toggles immediately + chime + OS notification
-```
+| Manager team management | `/manager/team` |
+| Admin user roster | `/admin/users` |
+| AI agent (⌘K) — Gmail / Calendar tool calling via Mistral | Floating button |
 
 ---
 
@@ -96,9 +81,9 @@ Student clicks "Request" on a disabled feature
 | Task | Command |
 |---|---|
 | Install all | `pnpm install` |
-| Backend dev | `pnpm --filter googenie-backend dev` |
-| Frontend dev | `pnpm --filter nimbus-web dev` |
-| Typecheck all | `npx tsc --noEmit -p backend/tsconfig.json && npx tsc --noEmit -p apps/frontend/tsconfig.json` |
+| Dev server | `pnpm dev` |
+| Build | `pnpm build` |
+| Typecheck | `pnpm typecheck` |
 | Reset local DB | See below |
 
 ### Reset local DB
@@ -113,4 +98,7 @@ DELETE FROM users;
 
 ## Deployment → Render
 
-See [`backend/docs/deployment-options.md`](backend/docs/deployment-options.md) for the full step-by-step guide.
+A single Render Node web service (`googenie-web`) backed by a managed Postgres (`googenie-postgres`). See [render.yaml](render.yaml) for the full Blueprint config.
+
+Required env vars (see [apps/web/.env.example](apps/web/.env.example)):
+`DATABASE_URL`, `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `CORSAIR_KEK`, `NIMBUS_ACCESS_TOKEN_SECRET`, `NIMBUS_REFRESH_TOKEN_SECRET`, `BACKEND_URL`, `FRONTEND_URL`, `HOSTNAME=0.0.0.0` (so Next.js standalone binds to all interfaces).

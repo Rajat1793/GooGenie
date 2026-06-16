@@ -27,17 +27,13 @@ playwright-report/
 .env.local
 .env.*.local
 !.env.example
-apps/frontend/.env.local
 apps/web/.env.local
-backend/.env
 
 # ── Local databases / Corsair SQLite (Phase 8 moved to Postgres) ──────────
 *.sqlite
 *.sqlite3
 *.sqlite-journal
 *.db
-backend/corsair.db
-backend/corsair.db-*
 
 # ── Logs ──────────────────────────────────────────────────────────────────
 *.log
