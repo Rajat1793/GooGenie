@@ -3,6 +3,12 @@ packages:
   - apps/*
   - packages/*
 
+# Phase 2 — pin a single React 19 type set so two @types/react versions don't
+# leak into the dep graph and produce mismatched ReactNode errors.
+overrides:
+  '@types/react': 19.0.0
+  '@types/react-dom': 19.0.0
+
 allowBuilds:
   '@clerk/shared': false
   '@scarf/scarf': false
@@ -10,6 +16,7 @@ allowBuilds:
   better-sqlite3: true
   core-js-pure: false
   esbuild: true
+  sharp: true
   tree-sitter: false
   tree-sitter-json: false
   unrs-resolver: true
@@ -17,3 +24,5 @@ allowBuilds:
 onlyBuiltDependencies:
   - esbuild
   - unrs-resolver
+  - better-sqlite3
+  - sharp

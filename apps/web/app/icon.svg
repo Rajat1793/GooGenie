@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- GooGenie favicon — cloud-bolt mark on rounded primary-color tile.
+       32x32 viewBox, rendered crisply at 16/32/48 by Next.js. -->
+  <rect width="32" height="32" rx="7" fill="#2b6389"/>
+  <path d="M9.5 19.2c-1.93 0-3.5-1.55-3.5-3.45 0-1.78 1.36-3.25 3.11-3.43.36-2.34 2.4-4.13 4.86-4.13 2.06 0 3.84 1.27 4.55 3.07.34-.1.69-.16 1.06-.16 1.95 0 3.53 1.55 3.53 3.46 0 1.92-1.58 3.46-3.53 3.46H9.5z" fill="#cbe6ff" stroke="#cbe6ff" stroke-width="0.6" stroke-linejoin="round"/>
+  <path d="M16.6 13.4l-2.6 4.1h2.05l-1.05 3.9 3.4-4.5h-2.05l1.05-3.5z" fill="#2b6389" stroke="#2b6389" stroke-width="0.4" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,274 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── CSS Variables: Light (Elegant Pastel) ─────────────────────────── */
+:root {
+  --c-background: #f8f9fd;
+  --c-surface: #f8f9fd;
+  --c-surface-dim: #d9dadd;
+  --c-surface-container-lowest: #ffffff;
+  --c-surface-container-low: #f3f3f7;
+  --c-surface-container: #edeef1;
+  --c-surface-container-high: #e7e8eb;
+  --c-surface-container-highest: #e1e2e6;
+  --c-surface-variant: #e1e2e6;
+  --c-on-surface: #191c1e;
+  --c-on-surface-variant: #41474e;
+  --c-inverse-surface: #2e3133;
+  --c-inverse-on-surface: #f0f0f4;
+  --c-outline: #71787f;
+  --c-outline-variant: #c1c7cf;
+  --c-primary: #2b6389;
+  --c-on-primary: #ffffff;
+  --c-primary-container: #8cc0eb;
+  --c-on-primary-container: #0d4f74;
+  --c-primary-fixed: #cbe6ff;
+  --c-primary-fixed-dim: #98ccf8;
+  --c-secondary: #466272;
+  --c-on-secondary: #ffffff;
+  --c-secondary-container: #c6e4f7;
+  --c-on-secondary-container: #4a6677;
+  --c-tertiary: #835418;
+  --c-on-tertiary: #ffffff;
+  --c-tertiary-container: #ecae6a;
+  --c-on-tertiary-container: #6c4003;
+  --c-tertiary-fixed-dim: #faba75;
+  --c-error: #ba1a1a;
+  --c-on-error: #ffffff;
+  --c-error-container: #ffdad6;
+  --c-on-error-container: #93000a;
+  --c-ink-text: #2D3436;
+  --font-body: "Hanken Grotesk";
+  --font-headline: "EB Garamond";
+  --radius-sm: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --glass-bg: rgba(255,255,255,0.72);
+  --glass-blur: 12px;
+  --glass-border: rgba(43,99,137,0.1);
+  --glass-shadow: 0 4px 24px -4px rgba(43,99,137,0.08);
+  --sidebar-bg: #f3f3f7;
+  --sidebar-border: rgba(193,199,207,0.4);
+  --header-bg: rgba(248,249,253,0.9);
+}
+
+/* ─── CSS Variables: Dark (Nocturnal Elegance) ───────────────────────── */
+.dark {
+  --c-background: #111319;
+  --c-surface: #111319;
+  --c-surface-dim: #111319;
+  --c-surface-container-lowest: #0c0e14;
+  --c-surface-container-low: #191b22;
+  --c-surface-container: #1d1f26;
+  --c-surface-container-high: #282a30;
+  --c-surface-container-highest: #33343b;
+  --c-surface-variant: #33343b;
+  --c-on-surface: #e2e2ea;
+  --c-on-surface-variant: #c1c7cf;
+  --c-inverse-surface: #e2e2ea;
+  --c-inverse-on-surface: #2e3037;
+  --c-outline: #8b9199;
+  --c-outline-variant: #41474e;
+  --c-primary: #b2dbff;
+  --c-on-primary: #003450;
+  --c-primary-container: #8cc0eb;
+  --c-on-primary-container: #0d4f74;
+  --c-primary-fixed: #cbe6ff;
+  --c-primary-fixed-dim: #98ccf8;
+  --c-secondary: #edbca4;
+  --c-on-secondary: #472918;
+  --c-secondary-container: #64412e;
+  --c-on-secondary-container: #deae96;
+  --c-tertiary: #e8cbff;
+  --c-on-tertiary: #44196b;
+  --c-tertiary-container: #d5a8ff;
+  --c-on-tertiary-container: #603687;
+  --c-tertiary-fixed-dim: #deb7ff;
+  --c-error: #ffb4ab;
+  --c-on-error: #690005;
+  --c-error-container: #93000a;
+  --c-on-error-container: #ffdad6;
+  --c-ink-text: #e2e2ea;
+  --font-body: "Plus Jakarta Sans";
+  --font-headline: "Caudex";
+  --glass-bg: rgba(30,34,43,0.65);
+  --glass-blur: 20px;
+  --glass-border: rgba(255,255,255,0.05);
+  --glass-shadow: 0 0 40px -10px rgba(140,192,235,0.12);
+  --sidebar-bg: #191b22;
+  --sidebar-border: rgba(255,255,255,0.05);
+  --header-bg: rgba(17,19,25,0.9);
+}
+
+/* ─── Base ───────────────────────────────────────────────────────────── */
+@layer base {
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: var(--font-body), sans-serif;
+    background-color: var(--c-background);
+    color: var(--c-on-surface);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  .material-symbols-outlined {
+    /* Legacy class retained as a no-op so any unmigrated call-site falls
+     * back to invisible text rather than the bare ligature name. The
+     * canonical icon component is now src/components/Icon.tsx (lucide-react). */
+    display: none !important;
+  }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--c-outline-variant); border-radius: 10px; opacity: 0.4; }
+}
+
+/* ─── Components ─────────────────────────────────────────────────────── */
+@layer components {
+  .glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+  .inner-glow { box-shadow: inset 0 0 0 1px rgba(178,219,255,0.08); }
+  .sidebar { background: var(--sidebar-bg); border-right: 1px solid var(--sidebar-border); }
+  .app-header { background: var(--header-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid var(--sidebar-border); }
+  .font-headline { font-family: var(--font-headline), serif; }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold tracking-wide transition-all duration-150 shadow-sm active:scale-95;
+    background: var(--c-primary);
+    color: var(--c-on-primary);
+  }
+  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium tracking-wide transition-all duration-150 active:scale-95;
+    background: var(--c-surface-container-high);
+    color: var(--c-on-surface-variant);
+    border: 1px solid var(--c-outline-variant);
+  }
+  .btn-secondary:hover { background: var(--c-surface-container-highest); color: var(--c-on-surface); }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm transition-all duration-150;
+    color: var(--c-on-surface-variant);
+  }
+  .btn-ghost:hover { background: var(--c-surface-container-high); color: var(--c-on-surface); }
+  .nav-item {
+    @apply flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-150;
+    color: var(--c-on-surface-variant);
+  }
+  .nav-item:hover { background: var(--c-surface-container-high); color: var(--c-on-surface); }
+  .nav-item-active {
+    color: var(--c-primary);
+    font-weight: 700;
+    background: color-mix(in srgb, var(--c-primary) 12%, transparent);
+  }
+  .input-field {
+    @apply w-full rounded-xl px-4 py-2.5 text-sm outline-none transition-all;
+    background: var(--c-surface-container-lowest);
+    border: 1px solid var(--c-outline-variant);
+    color: var(--c-on-surface);
+  }
+  .input-field::placeholder { color: var(--c-outline); }
+  .input-field:focus { border-color: var(--c-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 15%, transparent); }
+  .nimbus-card {
+    @apply rounded-2xl transition-all duration-200;
+    background: var(--c-surface-container);
+    border: 1px solid var(--c-outline-variant);
+  }
+  .nimbus-card-hover:hover {
+    box-shadow: 0 4px 20px -4px color-mix(in srgb, var(--c-primary) 12%, transparent);
+    border-color: color-mix(in srgb, var(--c-primary) 25%, transparent);
+  }
+  .badge { @apply inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider; }
+  .badge-primary  { background: color-mix(in srgb, var(--c-primary) 15%, transparent); color: var(--c-primary); }
+  .badge-error    { background: color-mix(in srgb, var(--c-error) 15%, transparent); color: var(--c-error); }
+  .badge-secondary { background: color-mix(in srgb, var(--c-secondary) 12%, transparent); color: var(--c-secondary); }
+  .badge-muted    { background: var(--c-surface-container-high); color: var(--c-on-surface-variant); }
+  .ai-insight {
+    @apply flex items-center gap-3 p-4 rounded-2xl;
+    background: color-mix(in srgb, var(--c-primary) 8%, var(--c-surface-container));
+    border: 1px solid color-mix(in srgb, var(--c-primary) 20%, transparent);
+  }
+  .section-label { @apply text-xs font-semibold uppercase tracking-widest; color: var(--c-on-surface-variant); }
+  .page-title { font-family: var(--font-headline), serif; @apply text-3xl tracking-tight; color: var(--c-on-surface); }
+
+  /* ── Missing component classes used across admin / manager / profile pages ── */
+
+  /* Card hover lift */
+  .card-hover {
+    @apply transition-all duration-200;
+  }
+  .card-hover:hover {
+    box-shadow: 0 6px 24px -4px color-mix(in srgb, var(--c-primary) 14%, transparent);
+    border-color: color-mix(in srgb, var(--c-primary) 20%, transparent);
+  }
+
+  /* Avatar circle */
+  .avatar-md {
+    @apply w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0;
+    background: var(--c-primary-container);
+    color: var(--c-on-primary-container);
+  }
+
+  /* Empty / loading state centred placeholder */
+  .empty-state {
+    @apply flex flex-col items-center justify-center gap-3 py-12 text-center;
+    color: var(--c-on-surface-variant);
+  }
+
+  /* Success badge (green-ish, using primary palette) */
+  .badge-success {
+    background: color-mix(in srgb, var(--c-primary) 14%, transparent);
+    color: var(--c-primary);
+  }
+
+  /* Data table — clean striped/bordered table */
+  .data-table { @apply w-full text-sm border-collapse; }
+  .data-table thead tr {
+    border-bottom: 2px solid var(--c-outline-variant);
+  }
+  .data-table thead th {
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-widest;
+    color: var(--c-on-surface-variant);
+  }
+  .data-table tbody tr {
+    border-bottom: 1px solid var(--c-outline-variant);
+    transition: background 0.15s;
+  }
+  .data-table tbody tr:last-child { border-bottom: none; }
+  .data-table tbody tr:hover {
+    background: color-mix(in srgb, var(--c-primary) 5%, transparent);
+  }
+  .data-table td { @apply px-4 py-3 align-middle; color: var(--c-on-surface); }
+
+  /* Feature-access chip toggles used in ManagerTeamPage expand row */
+  .feature-chip-on {
+    @apply flex items-center justify-between gap-2 p-3 rounded-xl border transition-all;
+    background: color-mix(in srgb, var(--c-primary) 8%, transparent);
+    border-color: color-mix(in srgb, var(--c-primary) 25%, transparent);
+  }
+  .feature-chip-off {
+    @apply flex items-center justify-between gap-2 p-3 rounded-xl border transition-all;
+    background: var(--c-surface-container-low);
+    border-color: var(--c-outline-variant);
+    opacity: 0.75;
+  }
+}
+
+/* ─── Utilities ──────────────────────────────────────────────────────── */
+@layer utilities {
+  .text-headline { font-family: var(--font-headline), serif; }
+  .ambient-glow  { box-shadow: 0 0 40px -8px color-mix(in srgb, var(--c-primary) 20%, transparent); }
+}
+
+/* ─── GooGenie agent status fade ─────────────────────────────────────── */
+@keyframes googenie-status-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.googenie-status-fade {
+  animation: googenie-status-fade-in 350ms ease-out;
+}

@@ -79,5 +79,15 @@ export function useAuth(): AuthState {
   return ctx;
 }
 
-/** Override with your dev machine IP when testing on a physical device */
-export const API_BASE = "http://localhost:4000";
+/**
+ * Mobile API base URL (Phase 11 step 59).
+ *
+ * Migrated from Express backend (port 4000) → Next.js full-stack app on the
+ * same Render service. Mobile paths historically include the `/v1/...` prefix,
+ * so API_BASE points at `/api` and call sites stay unchanged.
+ *
+ * Override per-environment via `EXPO_PUBLIC_API_BASE` (Expo's runtime env).
+ */
+export const API_BASE =
+  (process.env.EXPO_PUBLIC_API_BASE as string | undefined) ??
+  "https://googenie-web.onrender.com/api";

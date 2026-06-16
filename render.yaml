@@ -2,72 +2,85 @@ databases:
   - name: googenie-postgres
     databaseName: googenie
     user: googenie
-    plan: free                         # upgrade to starter for prod
+    # NOTE: free plan suspends after inactivity — upgrade to Starter BEFORE
+    # production cutover (migration_plan.md Phase 11 step "Upgrade ... to Starter").
+    plan: free
 
 services:
-  # ── Backend API ────────────────────────────────────────────────────────────
+  # ── Next.js full-stack service (Phase 11) ──────────────────────────────────
+  # Replaces the previous googenie-backend (Express) + googenie-frontend (Vite)
+  # services with a single Render Node web service. Express is retired.
   - type: web
-    name: googenie-backend
+    name: googenie-web
     runtime: node
-    rootDir: backend
-    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm run build
-    startCommand: node dist/src/index.js
-    healthCheckPath: /health
-    plan: free                         # upgrade to starter for prod
+    rootDir: .
+    # Build:
+    #   1. install all workspaces (Next.js + @googenie/server + @googenie/db + @googenie/contracts)
+    #   2. run additive Drizzle migrations against the linked Postgres
+    #   3. build the Next.js standalone artifact (+ postbuild copies static + public)
+    buildCommand: pnpm install --frozen-lockfile --prod=false && pnpm --filter @googenie/db run db:migrate && pnpm --filter @googenie/web run build
+    startCommand: node apps/web/.next/standalone/apps/web/server.js
+    healthCheckPath: /api/v1/health
+    plan: free
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 4000
+        value: 3000
+
       - key: DATABASE_URL
         fromDatabase:
           name: googenie-postgres
           property: connectionString
+
+      # HMAC token secrets (legacy + demo tokens).
       # Generate: node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
       - key: NIMBUS_ACCESS_TOKEN_SECRET
         sync: false
       - key: NIMBUS_REFRESH_TOKEN_SECRET
         sync: false
-      # Clerk — from https://dashboard.clerk.com → API Keys
-      - key: CLERK_PUBLISHABLE_KEY
-        sync: false
+
+      # Clerk — server-side
       - key: CLERK_SECRET_KEY
         sync: false
-      # Corsair Google OAuth — from your Google Cloud Console
+      # Clerk — client-side (Next.js requires NEXT_PUBLIC_ prefix to expose to the browser bundle)
+      - key: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+        sync: false
+      # Legacy alias still read by /api/v1/auth/config until mobile is rebuilt
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+
+      # Google OAuth (Corsair)
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      # MUST be https://googenie-web.onrender.com/api/v1/me/connect/callback
       - key: GOOGLE_REDIRECT_URI
-        sync: false                    # e.g. https://googenie-backend.onrender.com/v1/connect/callback/gmail
-      # Corsair encryption key (32 hex chars)
-      # Generate: node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"
+        sync: false
       - key: CORSAIR_KEK
         sync: false
-      - key: CORSAIR_DB_PATH
-        value: /var/data/corsair.db    # Render ephemeral disk — see note below
-      # Optional: demo HMAC tokens for hackathon preview (skip in production)
+
+      # Self-URL — used by Corsair to build connect/redirect URIs (Phase 8 step 44)
+      - key: BACKEND_URL
+        sync: false   # e.g. https://googenie-web.onrender.com
+      - key: FRONTEND_URL
+        sync: false   # same as BACKEND_URL since they share an origin now
+
+      # Optional AI
+      - key: MISTRAL_API_KEY
+        sync: false
+
+      # Optional demo HMAC tokens (preview/staging only)
       - key: DEMO_TOKEN_SUPER_ADMIN
         sync: false
-      - key: DEMO_TOKEN_MANAGER
+      - key: DEMO_TOKEN_HITESH
+        sync: false
+      - key: DEMO_TOKEN_PIYUSH
         sync: false
       - key: DEMO_TOKEN_USER
         sync: false
 
-  # ── Frontend SPA ───────────────────────────────────────────────────────────
-  - type: web
-    name: googenie-frontend
-    runtime: static
-    buildCommand: pnpm install --frozen-lockfile && pnpm --filter nimbus-web build
-    staticPublishPath: apps/frontend/dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      # Clerk publishable key (starts with pk_live_ or pk_test_)
-      - key: VITE_CLERK_PUBLISHABLE_KEY
-        sync: false
-      # Full URL of the backend service, e.g. https://googenie-backend.onrender.com
-      - key: VITE_API_URL
-        sync: false
+      # NOTE: CORSAIR_DB_PATH and the persistent disk are intentionally removed.
+      # Corsair token storage now uses Postgres (Phase 8). See packages/db/src/client.ts
+      # and packages/server/src/integrations/corsair.ts.

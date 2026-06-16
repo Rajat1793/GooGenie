@@ -8,6 +8,15 @@
     "build:backend": "pnpm --filter googenie-backend build",
     "dev:frontend": "pnpm --filter nimbus-web dev",
     "build:frontend": "pnpm --filter nimbus-web build",
-    "typecheck:frontend": "pnpm --filter nimbus-web typecheck"
+    "typecheck:frontend": "pnpm --filter nimbus-web typecheck",
+    "dev:web": "pnpm --filter @googenie/web dev",
+    "build:web": "pnpm --filter @googenie/web build",
+    "typecheck:web": "pnpm --filter @googenie/web typecheck"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/react": "19.0.0",
+      "@types/react-dom": "19.0.0"
+    }
   }
 }
