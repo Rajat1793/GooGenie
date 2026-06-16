@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useAuth as useClerkAuth, useUser } from "@clerk/nextjs";
-import { setClerkTokenGetter, getDemoToken, authApi2, connectApi } from "../api/client";
+import { setClerkTokenGetter, getDemoToken, authApi2 } from "../api/client";
 import { prefetchUserData } from "../api/hooks";
 import { useLiveCacheStream } from "../hooks/useLiveCacheStream";
 import { STORAGE_KEYS } from "../lib/storage";
@@ -15,6 +15,9 @@ import { isRole, type Role } from "../lib/roles";
 export function ClerkTokenWirer() {
   const { getToken, isSignedIn } = useClerkAuth();
   const { user } = useUser();
+  // Prevents the clerk-sync effect from firing twice in StrictMode / on
+  // every Clerk user-object refresh — we only need to sync once per user.
+  const syncedFor = useRef<string | null>(null);
 
   // Live cache invalidation via SSE.
   useLiveCacheStream();
@@ -31,6 +34,9 @@ export function ClerkTokenWirer() {
   // Sync Clerk user to DB after sign-in. Skip for demo tokens.
   useEffect(() => {
     if (!isSignedIn || !user || getDemoToken()) return;
+    if (syncedFor.current === user.id) return;
+    syncedFor.current = user.id;
+
     const email =
       user.primaryEmailAddress?.emailAddress ??
       user.emailAddresses[0]?.emailAddress ??
@@ -56,30 +62,17 @@ export function ClerkTokenWirer() {
         );
         window.localStorage.removeItem(STORAGE_KEYS.pendingRole);
         prefetchUserData().catch(() => null);
-
-        // Auto-OAuth: redirect to Google consent if not connected. Tries
-        // both plugins in order. Each plugin gets ONE auto-redirect attempt
-        // per browser tab session — if the user dismisses Google's consent
-        // screen, the ConnectionBar banner remains so they can retry
-        // explicitly. This prevents an infinite redirect loop while still
-        // surfacing the connection requirement on every fresh sign-in.
-        connectApi
-          .status()
-          .then(({ connected }) => {
-            const order: Array<"gmail" | "googlecalendar"> = ["gmail", "googlecalendar"];
-            for (const p of order) {
-              if (connected[p]) continue;
-              const flag = `googenie-auto-connect-tried:${p}`;
-              if (window.sessionStorage.getItem(flag)) continue;
-              window.sessionStorage.setItem(flag, "1");
-              connectApi.redirectToConnect(p).catch(() => null);
-              return;
-            }
-          })
-          .catch(() => null);
+        // NOTE: We intentionally do NOT auto-redirect to Google OAuth here.
+        // The ConnectionBar shown on Inbox/Calendar already prompts users to
+        // click Connect for Gmail / Calendar. Auto-redirecting was causing
+        // an OAuth-loop where users hit the Google consent screen twice
+        // (once per plugin) on every fresh sign-in — even worse if Clerk's
+        // `user` reference re-fired the effect.
       })
       .catch(() => {
         window.localStorage.removeItem(STORAGE_KEYS.pendingRole);
+        // Allow a retry on next render if the sync failed.
+        syncedFor.current = null;
       });
   }, [isSignedIn, user]);
 
