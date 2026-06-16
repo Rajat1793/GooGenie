@@ -107,12 +107,21 @@ function handleFrame(frame: string, qc: ReturnType<typeof useQueryClient>) {
 
   switch (eventName) {
     case "email.changed":
+      // User-initiated mutation (mark read, label, trash, reply, send) from
+      // another tab/device — invalidate caches silently. No toast, no chime.
       qc.invalidateQueries({ queryKey: ["email", "threads"] });
       try {
         const parsed = JSON.parse(data) as { threadId?: string };
         if (parsed.threadId) qc.invalidateQueries({ queryKey: ["email", "thread", parsed.threadId] });
       } catch { /* ignore */ }
-      // Visible feedback so the user knows the inbox just updated from a webhook
+      break;
+    case "email.received":
+      // Webhook-driven new mail — surface a visible cue.
+      qc.invalidateQueries({ queryKey: ["email", "threads"] });
+      try {
+        const parsed = JSON.parse(data) as { threadId?: string };
+        if (parsed.threadId) qc.invalidateQueries({ queryKey: ["email", "thread", parsed.threadId] });
+      } catch { /* ignore */ }
       playChime("in");
       window.dispatchEvent(new CustomEvent("googenie:toast", {
         detail: { message: "📬 New mail just arrived", icon: "mail" },
@@ -122,6 +131,14 @@ function handleFrame(frame: string, qc: ReturnType<typeof useQueryClient>) {
       }
       break;
     case "calendar.changed":
+      // Silent invalidate for user-initiated calendar mutations.
+      qc.invalidateQueries({ queryKey: ["calendar", "events"] });
+      try {
+        const parsed = JSON.parse(data) as { eventId?: string };
+        if (parsed.eventId) qc.invalidateQueries({ queryKey: ["calendar", "event", parsed.eventId] });
+      } catch { /* ignore */ }
+      break;
+    case "calendar.received":
       qc.invalidateQueries({ queryKey: ["calendar", "events"] });
       try {
         const parsed = JSON.parse(data) as { eventId?: string };

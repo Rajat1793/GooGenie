@@ -12,15 +12,15 @@ export const POST = withApiMiddleware(async (req, { auth }) => {
 
   if (kind === "email") {
     const threadId = (body as Record<string, unknown>)?.threadId;
-    publish({ kind: "email.changed", userId, ...(threadId ? { threadId: String(threadId) } : {}) });
+    publish({ kind: "email.received", userId, ...(threadId ? { threadId: String(threadId) } : {}) });
     cache.invalidatePrefix(`threads:u_${userId}`);
-    return NextResponse.json({ ok: true, fired: "email.changed", userId });
+    return NextResponse.json({ ok: true, fired: "email.received", userId });
   }
   if (kind === "calendar") {
     const eventId = (body as Record<string, unknown>)?.eventId;
-    publish({ kind: "calendar.changed", userId, ...(eventId ? { eventId: String(eventId) } : {}) });
+    publish({ kind: "calendar.received", userId, ...(eventId ? { eventId: String(eventId) } : {}) });
     cache.invalidatePrefix(`events:u_${userId}`);
-    return NextResponse.json({ ok: true, fired: "calendar.changed", userId });
+    return NextResponse.json({ ok: true, fired: "calendar.received", userId });
   }
   return NextResponse.json({ error: "kind must be 'email' or 'calendar'" }, { status: 400 });
 });

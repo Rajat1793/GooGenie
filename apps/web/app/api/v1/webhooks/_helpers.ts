@@ -17,13 +17,18 @@ export function extractUserIdFromTenant(tenantId: string): string | null {
 export function notifyEmailChanged(tenantId: string) {
   cache.invalidatePrefix(`threads:${tenantId}`);
   const userId = extractUserIdFromTenant(tenantId);
-  if (userId) publish({ kind: "email.changed", userId });
+  // Webhooks come from Gmail Pub/Sub — these are *new mail arrivals* from
+  // outside the user's own actions, so emit the `received` variant which
+  // surfaces a "📬 New mail just arrived" toast on the client.
+  if (userId) publish({ kind: "email.received", userId });
 }
 
 export function notifyCalendarChanged(tenantId: string) {
   cache.invalidatePrefix(`events:${tenantId}`);
   const userId = extractUserIdFromTenant(tenantId);
-  if (userId) publish({ kind: "calendar.changed", userId });
+  // Same reasoning — webhook-driven calendar updates are external, not the
+  // user's own edits, so emit the `received` variant for a visible toast.
+  if (userId) publish({ kind: "calendar.received", userId });
 }
 
 export function headersToObject(h: Headers): Record<string, string | string[] | undefined> {
