@@ -271,7 +271,39 @@ export const meApi = {
       method: "POST",
       body: JSON.stringify({ decision }),
     }),
+
+  // ── Booking links (Calendly-style public booking pages) ────────────────
+  listBookingLinks: () =>
+    apiFetch<{ links: BookingLink[] }>("/v1/me/booking-links"),
+
+  createBookingLink: (body?: { title?: string; duration_minutes?: number; days_ahead?: number; business_hours?: { start: number; end: number } }) =>
+    apiFetch<BookingLink>("/v1/me/booking-links", {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    }),
+
+  updateBookingLink: (id: number, patch: { title?: string; duration_minutes?: number; days_ahead?: number; business_hours?: { start: number; end: number }; is_active?: boolean }) =>
+    apiFetch<BookingLink>(`/v1/me/booking-links/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+
+  deleteBookingLink: (id: number) =>
+    apiFetch<{ deleted: boolean }>(`/v1/me/booking-links/${id}`, { method: "DELETE" }),
 };
+
+export interface BookingLink {
+  id: number;
+  userId: string;
+  slug: string;
+  title: string;
+  durationMinutes: number;
+  daysAhead: number;
+  businessHours: { start: number; end: number };
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 // Email / Gmail
 export interface EmailThread {
@@ -286,6 +318,19 @@ export interface EmailThread {
   updatedAt: string;
   isUnread: boolean;
   labelIds: string[];
+}
+
+export interface ScheduledEmail {
+  id: number;
+  userId: string;
+  tenantId: string;
+  to: string;
+  subject: string;
+  body: string;
+  sendAt: string;
+  status: string;
+  kind: "undo" | "scheduled" | string;
+  createdAt: string;
 }
 
 export const emailApi = {
@@ -309,6 +354,23 @@ export const emailApi = {
       method: "POST",
       body: JSON.stringify(body)
     }),
+
+  /**
+   * Queue an email for later send (default 10s undo window). Returns the row
+   * so the caller can show an Undo toast and call `cancelScheduled(id)` if
+   * the user clicks Undo before the poller flushes it.
+   */
+  schedule: (body: { to: string; subject: string; body: string; delay_seconds?: number; send_at?: string }) =>
+    apiFetch<ScheduledEmail>("/v1/email/messages/schedule", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+
+  listScheduled: () =>
+    apiFetch<{ scheduled: ScheduledEmail[] }>("/v1/email/messages/scheduled"),
+
+  cancelScheduled: (id: number) =>
+    apiFetch<{ cancelled: boolean }>(`/v1/email/messages/scheduled/${id}`, { method: "DELETE" }),
 
   reply: (threadId: string, body: { to: string; subject: string; body: string; message_id?: string }) =>
     apiFetch<{ message_id?: string; thread_id?: string }>(`/v1/email/threads/${threadId}/reply`, {

@@ -8,6 +8,8 @@ import { Shell } from "../../src/components/Shell";
 import { ClerkTokenWirer } from "../../src/components/ClerkTokenWirer";
 import { KeybindingsModal } from "../../src/components/KeybindingsModal";
 import { KeybindingRouterBridge } from "../../src/components/KeybindingRouterBridge";
+import { UndoSendToast } from "../../src/components/UndoSendToast";
+import { CommandPalette } from "../../src/components/CommandPalette";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
@@ -17,7 +19,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <ClerkTokenWirer />
           <KeybindingRouterBridge />
           <Shell>{children}</Shell>
+          <CommandPalette />
           <KeybindingsModal />
+          <UndoSendToast />
         </KeybindingProvider>
       </FeatureProvider>
     </AuthProvider>

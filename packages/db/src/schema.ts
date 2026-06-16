@@ -143,3 +143,60 @@ export const featureRequests = pgTable(
     requesterIdx: index("feature_requests_requester_idx").on(table.requesterUserId)
   })
 );
+
+/**
+ * Scheduled emails — used for two flows:
+ *   - kind: 'undo'      → 10s undo-send queue (default for every Send action)
+ *   - kind: 'scheduled' → explicit "send later" picked by the user
+ * A background poller in instrumentation.ts picks rows where
+ * status='queued' AND send_at<=NOW() and flushes them via gmail.sendEmail().
+ */
+export const scheduledEmails = pgTable(
+  "scheduled_emails",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
+    userId: varchar("user_id", { length: 64 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tenantId: varchar("tenant_id", { length: 64 }).notNull(),
+    toAddr: text("to_addr").notNull(),
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    sendAt: timestamp("send_at", { withTimezone: true }).notNull(),
+    status: varchar("status", { length: 16 }).notNull().default("queued"),
+    kind: varchar("kind", { length: 16 }).notNull().default("undo"),
+    sentMessageId: text("sent_message_id"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    pollerIdx: index("scheduled_emails_poller_idx").on(table.status, table.sendAt),
+    userIdx: index("scheduled_emails_user_idx").on(table.userId, table.status, table.sendAt)
+  })
+);
+
+/**
+ * Public booking links (Calendly-style). Each user can publish one or more
+ * /book/<slug> pages that expose free slots over the next N business days.
+ */
+export const bookingLinks = pgTable(
+  "booking_links",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
+    userId: varchar("user_id", { length: 64 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    slug: varchar("slug", { length: 64 }).notNull().unique(),
+    title: text("title").notNull().default("Book a meeting"),
+    durationMinutes: bigint("duration_minutes", { mode: "number" }).notNull().default(30),
+    daysAhead: bigint("days_ahead", { mode: "number" }).notNull().default(14),
+    businessHours: jsonb("business_hours").$type<{ start: number; end: number }>().notNull().default({ start: 9, end: 18 }),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    userIdx: index("booking_links_user_idx").on(table.userId)
+  })
+);

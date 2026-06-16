@@ -91,6 +91,36 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
   }
 
   /**
+   * 1-click reply intents — generate a reply tuned to a specific intent.
+   * Re-uses /ai/compose with a richer `context` string so the model knows
+   * the user wants e.g. an accept vs decline vs follow-up question.
+   */
+  const QUICK_REPLIES: Array<{ key: string; label: string; icon: string; intent: string; tone: AiTone }> = [
+    { key: "accept",   label: "Accept",        icon: "check_circle", intent: "Politely accept and confirm. Keep it warm and concise.",                  tone: "friendly" },
+    { key: "decline",  label: "Decline",       icon: "do_not_disturb_on", intent: "Politely decline. Be respectful, brief, and offer a short reason.", tone: "professional" },
+    { key: "more-info", label: "Ask for info", icon: "help_outline", intent: "Ask the sender for the specific details I need to respond properly.",    tone: "professional" },
+    { key: "thanks",   label: "Thanks",        icon: "favorite",     intent: "Send a short, sincere thank-you reply.",                                  tone: "friendly" },
+  ];
+
+  async function handleQuickReply(intent: string, tone: AiTone) {
+    setAiReplyLoading(true);
+    try {
+      const r = await aiApi.compose({
+        type: "reply",
+        tone,
+        context: `${thread.subject}\n\nUser wants to: ${intent}`,
+        thread_snippet: thread.snippet,
+        recipient_name: thread.from,
+      });
+      if (r.ai_available && r.body) {
+        setReplyBody(r.body);
+        setBodyIsAiGenerated(true);
+      }
+    } catch { /* ignore */ }
+    finally { setAiReplyLoading(false); }
+  }
+
+  /**
    * Switch tone pill. If the textarea currently holds AI-generated text,
    * regenerate it with the new tone immediately so the user doesn't have to
    * click "AI Reply" again. If the user has edited the body manually we just
@@ -232,6 +262,29 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
         </div>
       </div>
       <div className="px-8 py-4" style={{ borderTop: "1px solid var(--c-outline-variant)" }}>
+        {/* 1-click reply intents — small Superhuman-style suggestion chips */}
+        {canAiCompose && (
+          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+            <span className="text-[10px] font-semibold" style={{ color: "var(--c-on-surface-variant)" }}>QUICK REPLIES:</span>
+            {QUICK_REPLIES.map((q) => (
+              <button
+                key={q.key}
+                onClick={() => handleQuickReply(q.intent, q.tone)}
+                disabled={aiReplyLoading}
+                className="px-2.5 py-1 rounded-full text-[11px] font-medium border flex items-center gap-1 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
+                style={{
+                  background: "var(--c-tertiary-container)",
+                  color: "var(--c-on-tertiary-container)",
+                  borderColor: "var(--c-outline-variant)",
+                }}
+                title={`AI draft: ${q.label}`}
+              >
+                <Icon name={q.icon} className="text-xs" />
+                {q.label}
+              </button>
+            ))}
+          </div>
+        )}
         {/* AI Reply tone selector — only shown when canAiCompose */}
         {canAiCompose && (
           <div className="flex items-center gap-2 mb-2">

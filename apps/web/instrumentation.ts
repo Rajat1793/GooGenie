@@ -59,7 +59,22 @@ export async function register() {
       console.warn("[instrumentation] Corsair not configured — skipping setupCorsair()");
     }
     await prewarmJwksCache();
-    console.log("[instrumentation] boot complete (migrations + corsair + jwks)");
+
+    // ── Scheduled-email poller ───────────────────────────────────────────
+    // Picks queued sends whose send_at has passed and flushes them via Gmail.
+    // 3-second tick is fine for the 10s undo-send window. Single-process —
+    // SELECT … FOR UPDATE SKIP LOCKED in claimDueScheduledEmails() keeps it
+    // safe even if multiple Render instances run later.
+    try {
+      const { startScheduledEmailPoller } = await import(
+        "@googenie/server/integrations/scheduled-email-poller"
+      );
+      startScheduledEmailPoller();
+    } catch (err) {
+      console.warn("[instrumentation] scheduled-email poller skipped:", (err as Error).message);
+    }
+
+    console.log("[instrumentation] boot complete (migrations + corsair + jwks + poller)");
   } catch (err) {
     console.error("[instrumentation] startup failed:", err);
   }

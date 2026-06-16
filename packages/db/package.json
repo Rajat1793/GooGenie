@@ -11,7 +11,9 @@
     "./client": "./src/client.ts",
     "./users": "./src/users.ts",
     "./featureRequests": "./src/featureRequests.ts",
-    "./embeddings": "./src/embeddings.ts"
+    "./embeddings": "./src/embeddings.ts",
+    "./scheduledEmails": "./src/scheduledEmails.ts",
+    "./bookingLinks": "./src/bookingLinks.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

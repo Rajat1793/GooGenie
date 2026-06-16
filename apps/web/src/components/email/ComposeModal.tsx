@@ -33,7 +33,23 @@ export function ComposeModal({ onClose, canAiCompose }: ComposeModalProps) {
   async function handleSend() {
     if (!to.trim() || !subject.trim() || !body.trim()) { setErr("To, subject, and body are required"); return; }
     setSending(true); setErr(null);
-    try { await emailApi.send({ to, subject, body }); onClose(); }
+    try {
+      // Queue with a 10s undo window. The poller in instrumentation.ts will
+      // flush it. The UndoSendToast (mounted in the app layout) listens for
+      // the custom event below and shows a countdown ring + Undo button.
+      const scheduled = await emailApi.schedule({ to, subject, body, delay_seconds: 10 });
+      window.dispatchEvent(
+        new CustomEvent("googenie:undo-send", {
+          detail: {
+            id: scheduled.id,
+            to: scheduled.to,
+            subject: scheduled.subject,
+            sendAtMs: new Date(scheduled.sendAt).getTime(),
+          },
+        }),
+      );
+      onClose();
+    }
     catch (e) { setErr(getErrorMessage(e, "Failed to send")); }
     finally { setSending(false); }
   }

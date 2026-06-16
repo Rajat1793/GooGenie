@@ -5,7 +5,7 @@
  * Extracted from CalendarPage. Self-contained: owns its state, calls
  * `calendarApi.createEvent`, then bubbles the new event back via `onCreated`.
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { calendarApi, aiApi, type CalendarEvent, type AiSlot } from "../../api/client";
 import { useFeatures } from "../../contexts/FeatureContext";
 import { getErrorMessage } from "../../lib/errors";
@@ -36,6 +36,45 @@ export function CreateEventModal({ onClose, onCreated }: CreateEventModalProps) 
   const [aiSlots, setAiSlots] = useState<AiSlot[] | null>(null);
   const [aiRationale, setAiRationale] = useState<string | null>(null);
   const [aiErr, setAiErr] = useState<string | null>(null);
+
+  // ── Live conflict detection ─────────────────────────────────────────────────
+  // Whenever the user changes date/start/end, debounce-call /availability/check
+  // and surface any existing events that overlap the picked window. Cheap UX
+  // win — saves a round-trip-from-Google scheduling mistake.
+  const [conflicts, setConflicts] = useState<Array<{ start: string; end: string }>>([]);
+  const [conflictBusy, setConflictBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!date || !startTime || !endTime) { setConflicts([]); return; }
+    const handle = setTimeout(async () => {
+      try {
+        const startsAt = new Date(`${date}T${startTime}`).toISOString();
+        const endsAt = new Date(`${date}T${endTime}`).toISOString();
+        if (new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
+          if (!cancelled) setConflicts([]);
+          return;
+        }
+        setConflictBusy(true);
+        const r = await calendarApi.checkAvailability({ time_min: startsAt, time_max: endsAt });
+        if (cancelled) return;
+        const all = r.availability.flatMap((c) => c.busy);
+        const overlapping = all.filter((b) => {
+          const bs = new Date(b.start).getTime();
+          const be = new Date(b.end).getTime();
+          const rs = new Date(startsAt).getTime();
+          const re = new Date(endsAt).getTime();
+          return bs < re && be > rs;
+        });
+        setConflicts(overlapping);
+      } catch {
+        if (!cancelled) setConflicts([]);
+      } finally {
+        if (!cancelled) setConflictBusy(false);
+      }
+    }, 450);
+    return () => { cancelled = true; clearTimeout(handle); };
+  }, [date, startTime, endTime]);
 
   async function findTime() {
     if (!aiDescription.trim()) { setAiErr("Describe the meeting first"); return; }
@@ -193,6 +232,60 @@ export function CreateEventModal({ onClose, onCreated }: CreateEventModalProps) 
               </div>
             ))}
           </div>
+          {/* Live conflict badge */}
+          {conflicts.length > 0 && (
+            <div
+              className="rounded-xl px-3 py-2 flex items-start gap-2 text-xs"
+              style={{
+                background: "color-mix(in srgb, var(--c-error) 10%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--c-error) 30%, transparent)",
+                color: "var(--c-error)",
+              }}
+            >
+              <Icon name="warning" className="text-base shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold mb-0.5">
+                  {conflicts.length === 1
+                    ? "⚠ Time conflicts with 1 existing event"
+                    : `⚠ Time conflicts with ${conflicts.length} existing events`}
+                </p>
+                <ul className="space-y-0.5 opacity-90">
+                  {conflicts.slice(0, 3).map((c, i) => (
+                    <li key={i}>
+                      {new Date(c.start).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                      {" – "}
+                      {new Date(c.end).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                    </li>
+                  ))}
+                </ul>
+                {canFindTime && (
+                  <button
+                    onClick={() => {
+                      setAiDescription(title || "this meeting");
+                      setShowFindTime(true);
+                    }}
+                    className="mt-1.5 underline text-[11px] font-medium"
+                    style={{ color: "var(--c-error)" }}
+                  >
+                    Suggest a free slot →
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          {!conflictBusy && conflicts.length === 0 && date && startTime && endTime && (
+            <div
+              className="rounded-xl px-3 py-2 flex items-center gap-2 text-xs"
+              style={{
+                background: "color-mix(in srgb, var(--c-primary) 7%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--c-primary) 20%, transparent)",
+                color: "var(--c-primary)",
+              }}
+            >
+              <Icon name="check_circle" className="text-base" />
+              You&rsquo;re free at that time.
+            </div>
+          )}
           <div>
             <label className="section-label mb-1.5 block">Attendees <span className="normal-case tracking-normal font-normal" style={{ color: "var(--c-outline)" }}>(comma-separated)</span></label>
             <input value={attendees} onChange={(e) => setAttendees(e.target.value)} placeholder="alice@example.com, bob@example.com" className="input-field" />

@@ -28,6 +28,7 @@ import { STORAGE_KEYS } from "../lib/storage";
 
 export type KeybindingAction =
   | "agent.toggle"
+  | "palette.toggle"
   | "nav.inbox"
   | "nav.calendar"
   | "nav.profile"
@@ -45,7 +46,8 @@ export interface KeybindingDef {
 }
 
 export const KEYBINDINGS: KeybindingDef[] = [
-  { id: "agent.toggle",       label: "Toggle AI Agent",        defaultCombo: "mod+k",       description: "Open or close the floating GooGenie chat" },
+  { id: "palette.toggle",     label: "Open Command Palette",   defaultCombo: "mod+k",       description: "Universal palette: Ask AI / Commands / People / Threads" },
+  { id: "agent.toggle",       label: "Toggle AI Agent (chat)", defaultCombo: "mod+j",       description: "Open or close the floating GooGenie chat drawer" },
   { id: "shortcuts.open",     label: "Open Keyboard Shortcuts", defaultCombo: "mod+/",      description: "Show this shortcuts panel" },
   { id: "nav.inbox",          label: "Go to Inbox",            defaultCombo: "g i",         description: "Two-key sequence: g then i" },
   { id: "nav.calendar",       label: "Go to Calendar",         defaultCombo: "g c",         description: "Two-key sequence: g then c" },

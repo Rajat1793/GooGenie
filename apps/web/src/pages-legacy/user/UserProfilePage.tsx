@@ -12,6 +12,7 @@ import {
 } from "../../api/client";
 import { getErrorMessage } from "../../lib/errors";import { PageHeader } from "../../components/PageHeader";
 import { Card } from "../../components/Card";
+import { BookingLinksPanel } from "../../components/BookingLinksPanel";
 import { RoleBadge } from "../../components/RoleBadge";
 import { DataState } from "../../components/DataState";
 import { formatActivity, activityIcon } from "../../lib/formatActivity";
@@ -537,6 +538,11 @@ export function UserProfilePage() {
             </div>
           </DataState>
         </Card>
+      </div>
+
+      {/* Booking links — Calendly-style public scheduler */}
+      <div className="mt-6">
+        <BookingLinksPanel />
       </div>
 
       {/* Incoming feature requests (managers + super admins) */}

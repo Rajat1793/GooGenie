@@ -3,3 +3,5 @@ export * as schemaModule from "./schema";
 export * from "./users";
 export * from "./featureRequests";
 export * from "./embeddings";
+export * from "./scheduledEmails";
+export * from "./bookingLinks";
