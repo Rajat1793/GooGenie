@@ -20,6 +20,7 @@ import { aiApi, type AgentResponse } from "../api/client";
 import { useFeatures } from "../contexts/FeatureContext";
 import { getErrorMessage } from "../lib/errors";
 import { Icon } from "../components/Icon";
+import { useKeybinding, useKeybindings, getEffectiveCombo, formatCombo } from "../contexts/KeybindingContext";
 
 export function AgentBar() {
   const [open, setOpen] = useState(false);
@@ -88,13 +89,14 @@ export function AgentBar() {
     }, 0);
   }
 
-  // Open with Cmd/Ctrl+K
+  // Toggle via the keybinding system (default ⌘K; user can rebind).
+  useKeybinding("agent.toggle", () => setOpen((o) => !o));
+  const { bindings } = useKeybindings();
+  const agentCombo = formatCombo(getEffectiveCombo(bindings, "agent.toggle"));
+
+  // Close on Escape.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setOpen((o) => !o);
-      }
       if (e.key === "Escape" && open) setOpen(false);
     };
     window.addEventListener("keydown", onKey);
@@ -178,7 +180,7 @@ export function AgentBar() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          aria-label="Open AI agent (⌘K)"
+          aria-label={`Open AI agent (${agentCombo})`}
           className="fixed bottom-6 right-6 z-[200] flex items-center gap-2 px-4 py-3 rounded-full shadow-2xl text-sm font-semibold transition-transform hover:scale-105"
           style={{
             background: "linear-gradient(135deg, var(--c-primary), var(--c-tertiary))",
@@ -191,7 +193,7 @@ export function AgentBar() {
             className="ml-1 hidden sm:inline-block px-1.5 py-0.5 text-[10px] rounded font-mono"
             style={{ background: "rgba(255,255,255,0.25)" }}
           >
-            ⌘K
+            {agentCombo}
           </kbd>
         </button>
       )}

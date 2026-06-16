@@ -62,6 +62,7 @@ import {
   Inbox,
   Info,
   Key,
+  Keyboard,
   Layers,
   Link2,
   ListChecks,
@@ -223,6 +224,7 @@ const ICON_MAP: Record<string, LucideIcon | ComponentType<SVGProps<SVGSVGElement
   login: LogIn,
   logout: LogOut,
   key: Key,
+  keyboard: Keyboard,
   // AI / sparkle
   auto_awesome: Sparkles,
   smart_toy: Sparkles,

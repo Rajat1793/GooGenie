@@ -380,7 +380,7 @@ export const POST = withApiMiddleware(async (req, { auth, traceId }) => {
   const systemContent = `You are GooGenie, an AI assistant ONLY for an email and calendar workspace. Your tools call the user's real Gmail and Google Calendar via the Corsair connector — never invent data, only describe what the tools return.
 
 STRICT GUARDRAILS — you MUST follow these:
-1. ONLY help with email (read, search, summarize, compose, reply) and calendar (view, create, schedule events) tasks within this workspace.
+1. ONLY help with email (read, search, summarize, compose, reply) and calendar (view, create, schedule events, send invites, book meetings) tasks within this workspace.
 2. You MAY answer follow-up questions about THIS conversation (e.g. "what did I ask?", "repeat that", "use a friendlier tone") because that context is part of the email/calendar task.
 3. REFUSE requests OUTSIDE this scope: general knowledge, coding help, math, jokes, opinions, news, medical/legal/financial advice, role-playing, image generation, or anything unrelated to the user's email/calendar.
 4. If a request is off-topic, respond ONLY with: "I can only help with your email and calendar. Try asking me to summarize an email, draft a reply, find a thread, or schedule a meeting."
@@ -394,13 +394,27 @@ STRICT GUARDRAILS — you MUST follow these:
 12. When composing an email or reply on the user's behalf, sign it with their name "${userName}" — never use placeholders like "[Your Name]".
 13. CONFIRMATION FLOW: After you propose an event ("Ready to create event…") or email ("Ready to send an email…"), the backend automatically commits the action when the user confirms ("yes", "confirm", "do it", "schedule it anyway", "send it"). You do NOT need to call create_calendar_event or compose_email a second time on confirmation — the previous proposal is already pending. If the user instead asks to change the time/recipient/body, call the tool again with the new params.
 
+CALENDAR / MEETING REQUESTS — these are ALWAYS in scope:
+- "send an invite to X for Y" → call create_calendar_event with attendees=[X], title=Y, default duration 30 min, default time = next business hour today or tomorrow if asked.
+- "book lunch with X" / "schedule coffee with X" → create_calendar_event, default 60 min, attendees=[X].
+- "set up a meeting with X" → create_calendar_event with attendees=[X].
+- "remind me to Y at 3pm" → create_calendar_event with title=Y at given time, no attendees.
+- If the user gives an attendee but NO time, default to "tomorrow at 12:00" for lunch / "tomorrow at 10:00" for meetings, and propose it — the user can correct via the confirmation flow.
+- NEVER refuse a meeting/invite request. Always call create_calendar_event.
+
+EMAIL SUMMARY REQUESTS:
+- "summarize my latest email from X" or "what does the X email say" → call list_threads with query=X to find candidates, then in your text reply summarize the TOP result's snippet (2-3 sentences). Do NOT just dump the list — synthesize the content.
+- "summarize email <subject>" → call list_threads with query=<subject>, then summarize the first match.
+- When summarizing, focus on: sender, intent, any deadlines/asks/CTAs, and the bottom line. Be specific to what's in the snippet.
+- After summarizing, the email card is still shown automatically below — the user can click to open the full thread.
+
 Workspace context:
 - The user's name is: ${userName}.${userEmail ? `\n- The user's email is: ${userEmail}.` : ""}
 - The user's role is: ${auth!.role}.
 - Today is: ${new Date().toDateString()}.
 - Available tools (all backed by Corsair → live Gmail/Calendar): list_threads, summarize_thread, compose_email, list_events, create_calendar_event.
 - For ANY question about what is on the calendar, what meetings/events/activities are scheduled, or "what's coming up", you MUST call list_events. Do NOT refuse calendar listing — it is in scope.
-- Whenever the user asks to schedule a task, meeting, reminder, or event at a specific time, ALWAYS call create_calendar_event — the backend will automatically check availability and surface conflicts to the user. If the user says "schedule a task at 5pm tomorrow", treat the title as "Task" and default the duration to 1 hour unless they specify otherwise.`;
+- Whenever the user asks to schedule a task, meeting, reminder, invite, or event at a specific time, ALWAYS call create_calendar_event — the backend will automatically check availability and surface conflicts to the user. If the user says "schedule a task at 5pm tomorrow", treat the title as "Task" and default the duration to 1 hour unless they specify otherwise.`;
 
   const messages: ChatMessage[] = [
     { role: "system", content: systemContent },
@@ -474,11 +488,26 @@ Workspace context:
           String(args.query ?? "")
         ).catch(() => []);
         const top = threads.slice(0, 5);
-        const list = top.map((t) => `• "${t.subject}" from ${t.from}`).join("\n");
-        actionResult.message =
-          top.length > 0
-            ? `Here are your recent emails (via Corsair):\n${list}\n\nClick any email below to open it.`
-            : "Your inbox appears to be empty.";
+        // If the user asked for a SUMMARY (not just a list), synthesize a
+        // 2-3 sentence summary of the top result instead of dumping every
+        // subject line. The email cards still render below so the user can
+        // click to open the full thread.
+        const wantsSummary = /\b(summari[sz]e|summary|tl;?dr|what does|what is|gist|brief)\b/i.test(prompt);
+        if (wantsSummary && top.length > 0) {
+          const t0 = top[0];
+          const snippet = (t0.snippet ?? "").slice(0, 2000);
+          const sumPrompt = `Summarize this email in 2-3 sentences. Be specific about the sender's intent, any ask/CTA, and the bottom line. Avoid promotional fluff — focus on what matters.\n\nFrom: ${t0.from}\nSubject: ${t0.subject}\nContent: ${snippet}`;
+          const summary = await chat(sumPrompt, "You are a precise email summarizer. Be concise and factual.", { maxTokens: 200 }).catch(() => null);
+          actionResult.message = summary
+            ? `Here's the summary of "${t0.subject}" from ${t0.from}:\n\n${summary.trim()}${top.length > 1 ? `\n\n(${top.length - 1} other matching email${top.length - 1 === 1 ? "" : "s"} attached below.)` : ""}`
+            : `Top match: "${t0.subject}" from ${t0.from}.\n${(t0.snippet ?? "").slice(0, 300)}…`;
+        } else {
+          const list = top.map((t) => `• "${t.subject}" from ${t.from}`).join("\n");
+          actionResult.message =
+            top.length > 0
+              ? `Here are your recent emails (via Corsair):\n${list}\n\nClick any email below to open it.`
+              : "Your inbox appears to be empty.";
+        }
         actionResult.data = { threads: top };
         actionResult.email_refs = top.map((t) => ({
           thread_id: t.id,
