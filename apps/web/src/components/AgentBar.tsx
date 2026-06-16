@@ -71,6 +71,7 @@ export function AgentBar() {
     if (k.includes("different time") || k === "change time") return "Change the time to ";
     if (k.includes("free slots")) return "Show me my free slots ";
     if (k.includes("attendees")) return "Add attendees: ";
+    if (k.includes("send to")) return "Send it to ";
     if (k.includes("edit body")) return "Edit the body: ";
     if (k.includes("tone")) return "Use a friendlier tone";
     return s;

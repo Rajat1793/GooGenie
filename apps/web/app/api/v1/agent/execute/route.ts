@@ -67,7 +67,7 @@ const TOOLS: ChatTool[] = [
           subject: { type: "string", description: "Email subject" },
           body: { type: "string", description: "Email body text" },
         },
-        required: ["to", "subject", "body"],
+        required: ["subject", "body"],
       },
     },
   },
@@ -261,6 +261,16 @@ async function executePendingAction(
   }
 
   if (pending.kind === "email") {
+    if (!pending.to.trim()) {
+      return {
+        action: "email_needs_recipient",
+        message: `I have the draft ready, but I still need a recipient. Reply with "send it to <email>" and I'll deliver it.`,
+        suggestions: ["Send it to "],
+        data: { action: "email_needs_recipient", draft: pending },
+        email_refs: [],
+        status_label: "Awaiting an address…",
+      };
+    }
     try {
       const sent = await sendEmail(ctx.tenantId, {
         to: pending.to,
@@ -408,6 +418,12 @@ EMAIL SUMMARY REQUESTS:
 - When summarizing, focus on: sender, intent, any deadlines/asks/CTAs, and the bottom line. Be specific to what's in the snippet.
 - After summarizing, the email card is still shown automatically below — the user can click to open the full thread.
 
+EMAIL COMPOSE / DRAFT REQUESTS — these are ALWAYS in scope:
+- "draft an email for X" / "write a happy birthday email" / "compose a thank-you note" → call compose_email with a reasonable subject, body, and to="" (empty) if no recipient was given.
+- If recipient is missing, set to="" and write the body anyway — the user will fill in the recipient at the confirmation step.
+- If the topic is vague ("happy birthday", "thank you", "congrats"), use generic warm content; the user can refine via the confirmation flow ("change tone", "edit body").
+- NEVER refuse a compose/draft request. Always call compose_email and let the user iterate.
+
 Workspace context:
 - The user's name is: ${userName}.${userEmail ? `\n- The user's email is: ${userEmail}.` : ""}
 - The user's role is: ${auth!.role}.
@@ -517,17 +533,23 @@ Workspace context:
         break;
       }
       case "compose_email": {
-        actionResult.message = `Ready to send an email to ${args.to}:\nSubject: ${args.subject}\n\n${args.body}\n\n${encodePending({
+        const toAddr = String(args.to ?? "").trim();
+        const subject = String(args.subject ?? "").trim();
+        const body = String(args.body ?? "").trim();
+        const toLine = toAddr ? `to ${toAddr}` : "(recipient TBD — tell me who to send it to)";
+        actionResult.message = `Ready to send an email ${toLine}:\nSubject: ${subject}\n\n${body}\n\n${encodePending({
           kind: "email",
-          to: String(args.to ?? ""),
-          subject: String(args.subject ?? ""),
-          body: String(args.body ?? ""),
+          to: toAddr,
+          subject,
+          body,
         })}`;
-        actionResult.suggestions = ["Confirm send", "Edit body", "Change tone"];
+        actionResult.suggestions = toAddr
+          ? ["Confirm send", "Edit body", "Change tone"]
+          : ["Send to …", "Edit body", "Change tone"];
         actionResult.data = {
-          to: args.to,
-          subject: args.subject,
-          body: args.body,
+          to: toAddr,
+          subject,
+          body,
           action: "compose_ready",
         };
         break;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "../lib/router-shim";
 import { emailApi, aiApi, type EmailThread, type AiSearchResult } from "../api/client";
 import { useEmailThreads, useMarkThreadRead, useTrashThread } from "../api/hooks";
@@ -12,6 +12,7 @@ import { getErrorMessage } from "../lib/errors";
 import { ComposeModal } from "../components/email/ComposeModal";
 import { ThreadPane } from "../components/email/ThreadPane";
 import { Icon } from "../components/Icon";
+import { useKeybinding } from "../contexts/KeybindingContext";
 
 // ── Main InboxPage ─────────────────────────────────────────────────────────────
 export function InboxPage() {
@@ -23,7 +24,17 @@ export function InboxPage() {
   const [composing, setComposing] = useState(false);
   const [search, setSearch] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
+  const searchRef = useRef<HTMLInputElement>(null);
   const canWrite = hasFeature("email_write");
+
+  // Keyboard shortcuts: "/" focuses search, "c" opens compose.
+  useKeybinding("inbox.focusSearch", () => {
+    searchRef.current?.focus();
+    searchRef.current?.select();
+  });
+  useKeybinding("inbox.compose", () => {
+    if (canWrite) setComposing(true);
+  });
   // Gmail category tabs (Primary / Social / Promotions / Updates / Forums) with
   // pseudo-categories "all" and "unread" prepended for convenience.
   const [filter, setFilter] = useState<
@@ -342,6 +353,7 @@ export function InboxPage() {
           <div className="relative">
             <Icon name={aiSearchOn ? "auto_awesome" : "search"} className="absolute left-3 top-1/2 -translate-y-1/2 text-base" style={{ color: aiSearchOn ? "var(--c-tertiary)" : "var(--c-outline)" }} />
             <input
+              ref={searchRef}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={handleSearchKey}

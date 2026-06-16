@@ -12,6 +12,7 @@ import { CreateEventModal } from "../components/calendar/CreateEventModal";
 import { EditEventModal } from "../components/calendar/EditEventModal";
 import { AvailabilityModal } from "../components/calendar/AvailabilityModal";
 import { Icon } from "../components/Icon";
+import { useKeybinding } from "../contexts/KeybindingContext";
 
 // ── MonthGrid ────────────────────────────────────────────────────────────────
 // 7-column × 6-row month grid with event chips placed on their start date.
@@ -217,6 +218,11 @@ export function CalendarPage() {
   const [filter, setFilter] = useState<"upcoming" | "today" | "all">("upcoming");
   const [search, setSearch] = useState("");
   const [serverSearch, setServerSearch] = useState("");
+
+  // Keyboard shortcut: "n" opens the new-event modal (when feature is on).
+  useKeybinding("calendar.create", () => {
+    if (hasFeature("calendar_create")) setCreating(true);
+  });
   // View mode: list (default) vs month grid (SSR-safe — read after mount)
   const [viewMode, setViewMode] = useState<"list" | "month">("list");
   useEffect(() => {
