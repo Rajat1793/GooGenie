@@ -5,6 +5,7 @@
 import { NextResponse } from "next/server";
 import { withApiMiddleware } from "@googenie/server";
 import { cancelScheduledEmail } from "@googenie/db/scheduledEmails";
+import { getUserById, getUserByClerkId } from "@googenie/db/users";
 import { paramString } from "../../../../_lib/params";
 
 export const runtime = "nodejs";
@@ -16,7 +17,11 @@ export const DELETE = withApiMiddleware(async (_req, { auth, params }) => {
   if (!Number.isFinite(id)) {
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
-  const ok = await cancelScheduledEmail(id, auth!.userId);
+  const me = (await getUserById(auth!.userId)) ?? (await getUserByClerkId(auth!.userId));
+  if (!me) {
+    return NextResponse.json({ error: "Not cancellable" }, { status: 404 });
+  }
+  const ok = await cancelScheduledEmail(id, me.id);
   if (!ok) {
     return NextResponse.json({ error: "Not cancellable (already sent or unknown)" }, { status: 404 });
   }

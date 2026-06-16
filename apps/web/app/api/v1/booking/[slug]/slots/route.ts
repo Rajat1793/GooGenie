@@ -11,6 +11,7 @@ import { withApiMiddleware } from "@googenie/server";
 import { checkAvailability } from "@googenie/server/integrations/googlecalendar";
 import { getCorsairTenant } from "@googenie/server/integrations/corsair-tenant";
 import { getBookingLinkBySlug } from "@googenie/db/bookingLinks";
+import { getUserById } from "@googenie/db/users";
 import { paramString } from "../../../_lib/params";
 
 export const runtime = "nodejs";
@@ -70,7 +71,7 @@ export const GET = withApiMiddleware(
     const endWindow = new Date(startWindow);
     endWindow.setDate(endWindow.getDate() + link.daysAhead);
 
-    const tenant = getCorsairTenant(link.userId);
+    const tenant = getCorsairTenant(((await getUserById(link.userId))?.clerkUserId) ?? link.userId);
     const fb = await checkAvailability(tenant, {
       timeMin: startWindow.toISOString(),
       timeMax: endWindow.toISOString(),

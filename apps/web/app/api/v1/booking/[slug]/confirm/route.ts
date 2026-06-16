@@ -18,6 +18,7 @@ import {
 } from "@googenie/server/integrations/googlecalendar";
 import { getCorsairTenant } from "@googenie/server/integrations/corsair-tenant";
 import { getBookingLinkBySlug } from "@googenie/db/bookingLinks";
+import { getUserById } from "@googenie/db/users";
 import { paramString } from "../../../_lib/params";
 
 export const runtime = "nodejs";
@@ -48,8 +49,11 @@ export const POST = withApiMiddleware(
     const startsAt = new Date(start);
     const endsAt = new Date(startsAt.getTime() + link.durationMinutes * 60 * 1000);
 
-    // Race-protect: re-check availability right before we book.
-    const tenant = getCorsairTenant(link.userId);
+    // Resolve the OWNER's Clerk id (or fall back to internal id) so we use
+    // the same Corsair tenant that holds their OAuth tokens.
+    const owner = await getUserById(link.userId);
+    const ownerAuthId = owner?.clerkUserId ?? link.userId;
+    const tenant = getCorsairTenant(ownerAuthId);
     const fb = await checkAvailability(tenant, {
       timeMin: startsAt.toISOString(),
       timeMax: endsAt.toISOString(),

@@ -7,10 +7,16 @@ import { z } from "zod";
 import { withApiMiddleware } from "@googenie/server";
 import { validateBody } from "@googenie/server/lib/validateNext";
 import { updateBookingLink, deleteBookingLink } from "@googenie/db/bookingLinks";
+import { getUserById, getUserByClerkId } from "@googenie/db/users";
 import { paramString } from "../../../_lib/params";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+async function resolveInternalUserId(authUserId: string): Promise<string | null> {
+  const me = (await getUserById(authUserId)) ?? (await getUserByClerkId(authUserId));
+  return me?.id ?? null;
+}
 
 const patchSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -33,7 +39,9 @@ export const PATCH = withApiMiddleware(async (req, { auth, traceId, params }) =>
     message: "Invalid booking-link patch",
   });
   if (!parsed.ok) return parsed.response;
-  const link = await updateBookingLink(id, auth!.userId, {
+  const internalId = await resolveInternalUserId(auth!.userId);
+  if (!internalId) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const link = await updateBookingLink(id, internalId, {
     title: parsed.data.title,
     durationMinutes: parsed.data.duration_minutes,
     daysAhead: parsed.data.days_ahead,
@@ -49,7 +57,9 @@ export const DELETE = withApiMiddleware(async (_req, { auth, params }) => {
   if (!Number.isFinite(id)) {
     return NextResponse.json({ error: "Invalid id" }, { status: 400 });
   }
-  const ok = await deleteBookingLink(id, auth!.userId);
+  const internalId = await resolveInternalUserId(auth!.userId);
+  if (!internalId) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const ok = await deleteBookingLink(id, internalId);
   if (!ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ deleted: true });
 });

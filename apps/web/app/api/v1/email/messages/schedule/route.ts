@@ -15,6 +15,7 @@ import { withApiMiddleware } from "@googenie/server";
 import { validateBody } from "@googenie/server/lib/validateNext";
 import { getCorsairTenant } from "@googenie/server/integrations/corsair-tenant";
 import { createScheduledEmail } from "@googenie/db/scheduledEmails";
+import { getUserById, getUserByClerkId } from "@googenie/db/users";
 import { checkFeature } from "../../../_lib/scope";
 
 export const runtime = "nodejs";
@@ -38,6 +39,11 @@ export const POST = withApiMiddleware(async (req, { auth, traceId }) => {
   if (!parsed.ok) return parsed.response;
   const { to, subject, body, delay_seconds, send_at } = parsed.data;
 
+  const me = (await getUserById(auth!.userId)) ?? (await getUserByClerkId(auth!.userId));
+  if (!me) {
+    return NextResponse.json({ error: "User not provisioned in DB yet" }, { status: 400 });
+  }
+
   const sendAt = send_at
     ? new Date(send_at)
     : new Date(Date.now() + (delay_seconds ?? 10) * 1000);
@@ -45,7 +51,8 @@ export const POST = withApiMiddleware(async (req, { auth, traceId }) => {
     !send_at && (delay_seconds === undefined || delay_seconds <= 30) ? "undo" : "scheduled";
 
   const row = await createScheduledEmail({
-    userId: auth!.userId,
+    userId: me.id,
+    // Corsair tenant uses the Clerk/auth id, not the internal user.id.
     tenantId: getCorsairTenant(auth!.userId),
     to,
     subject,
