@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export const POST = withApiMiddleware(async (req, { auth }) => {
-  const gate = await checkFeature(req, "ai_summary");
+  const gate = await checkFeature(req, "ai_task_extractor");
   if (gate) return gate;
 
   const u = (await getUserById(auth!.userId)) ?? (await getUserByClerkId(auth!.userId));

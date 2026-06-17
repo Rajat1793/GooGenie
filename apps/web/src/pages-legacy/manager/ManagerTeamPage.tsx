@@ -9,15 +9,9 @@ import { Card } from "../../components/Card";
 import { formatActivity, activityIcon } from "../../lib/formatActivity";
 import { getErrorMessage } from "../../lib/errors";
 import { Icon } from "../../components/Icon";
+import { FEATURE_CATALOG, groupedFeatures } from "../../../app/api/v1/me/_catalog";
 
-const FEATURE_CATALOG: Array<{ key: string; label: string; icon: string }> = [
-  { key: "email_read",     label: "Read Email",        icon: "inbox" },
-  { key: "email_write",    label: "Send Email",         icon: "edit" },
-  { key: "calendar_read",  label: "View Calendar",      icon: "calendar_month" },
-  { key: "calendar_write", label: "Manage Calendar",    icon: "edit_calendar" },
-  { key: "ai_summary",     label: "AI Summaries",       icon: "auto_awesome" },
-  { key: "ai_compose",     label: "AI Compose",         icon: "draw" },
-];
+const FEATURE_GROUPS = groupedFeatures();
 
 // ── Activity slide-over ───────────────────────────────────────────────────────
 function ActivityPanel({ user, onClose }: { user: PolicyUser; onClose: () => void }) {
@@ -128,29 +122,39 @@ function FeatureExpandRow({
         {loading ? (
           <p className="text-xs text-on-surface-variant">Loading…</p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
-            {FEATURE_CATALOG.map(({ key, label, icon }) => {
-              const on = toggles.get(key) ?? false;
-              const busy = mutating === key;
-              return (
-                <button
-                  key={key}
-                  onClick={() => handleToggle(key, !on)}
-                  disabled={busy}
-                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all disabled:opacity-50 cursor-pointer ${
-                    on
-                      ? "bg-primary/8 border-primary/30 text-primary"
-                      : "bg-surface-container border-outline-variant/20 text-on-surface-variant hover:border-outline-variant/50"
-                  }`}
-                >
-                  <Icon name={busy ? "progress_activity" : icon} className="text-xl" />
-                  <span className="text-[10px] font-medium text-center leading-tight">{label}</span>
-                  <span className={`text-[9px] font-semibold uppercase tracking-widest ${on ? "text-primary" : "text-outline"}`}>
-                    {on ? "ON" : "OFF"}
-                  </span>
-                </button>
-              );
-            })}
+          <div className="space-y-4">
+            {FEATURE_GROUPS.map(({ group, features }) => (
+              <div key={group}>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2 pl-1">
+                  {group}
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+                  {features.map(({ key, label, icon, description }) => {
+                    const on = toggles.get(key) ?? false;
+                    const busy = mutating === key;
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => handleToggle(key, !on)}
+                        disabled={busy}
+                        title={description ?? label}
+                        className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all disabled:opacity-50 cursor-pointer ${
+                          on
+                            ? "bg-primary/8 border-primary/30 text-primary"
+                            : "bg-surface-container border-outline-variant/20 text-on-surface-variant hover:border-outline-variant/50"
+                        }`}
+                      >
+                        <Icon name={busy ? "progress_activity" : icon} className="text-xl" />
+                        <span className="text-[10px] font-medium text-center leading-tight">{label}</span>
+                        <span className={`text-[9px] font-semibold uppercase tracking-widest ${on ? "text-primary" : "text-outline"}`}>
+                          {on ? "ON" : "OFF"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </td>
@@ -239,8 +243,12 @@ export function ManagerTeamPage() {
               onChange={(e) => setBulkFeature(e.target.value)}
               className="input-field w-44 rounded-xl"
             >
-              {FEATURE_CATALOG.map(({ key, label }) => (
-                <option key={key} value={key}>{label}</option>
+              {FEATURE_GROUPS.map(({ group, features }) => (
+                <optgroup key={group} label={group}>
+                  {features.map(({ key, label }) => (
+                    <option key={key} value={key}>{label}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>

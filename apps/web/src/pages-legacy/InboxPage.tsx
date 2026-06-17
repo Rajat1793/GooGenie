@@ -374,14 +374,16 @@ export function InboxPage() {
               )}
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setUnsubOpen(true)}
-                title="Find newsletters and unsubscribe in one click"
-                className="btn-secondary py-2 px-3 text-xs flex items-center gap-1.5"
-              >
-                <Icon name="cleaning_services" className="text-sm" />
-                Cleanup
-              </button>
+              {hasFeature("ai_unsubscribe_sweep") && (
+                <button
+                  onClick={() => setUnsubOpen(true)}
+                  title="Find newsletters and unsubscribe in one click"
+                  className="btn-secondary py-2 px-3 text-xs flex items-center gap-1.5"
+                >
+                  <Icon name="cleaning_services" className="text-sm" />
+                  Cleanup
+                </button>
+              )}
               <button
                 onClick={() => canWrite && setComposing(true)}
                 disabled={!canWrite}
@@ -397,16 +399,18 @@ export function InboxPage() {
           <div className="flex gap-1.5 mb-3 flex-wrap">
             {(
               [
-                { key: "all",          label: "All",          icon: "all_inbox" },
-                { key: "unread",       label: "Unread",       icon: "mark_email_unread" },
-                { key: "reply_needed", label: "Reply needed", icon: "hourglass" },
-                { key: "primary",      label: "Primary",      icon: "inbox" },
-                { key: "social",       label: "Social",       icon: "group" },
-                { key: "promotions",   label: "Promotions",   icon: "local_offer" },
-                { key: "updates",      label: "Updates",      icon: "info" },
-                { key: "forums",       label: "Forums",       icon: "forum" },
+                { key: "all",          label: "All",          icon: "all_inbox",         requires: null },
+                { key: "unread",       label: "Unread",       icon: "mark_email_unread", requires: null },
+                { key: "reply_needed", label: "Reply needed", icon: "hourglass",         requires: "ai_reply_needed" },
+                { key: "primary",      label: "Primary",      icon: "inbox",             requires: null },
+                { key: "social",       label: "Social",       icon: "group",             requires: null },
+                { key: "promotions",   label: "Promotions",   icon: "local_offer",       requires: null },
+                { key: "updates",      label: "Updates",      icon: "info",              requires: null },
+                { key: "forums",       label: "Forums",       icon: "forum",             requires: null },
               ] as const
-            ).map((f) => (
+            )
+              .filter((f) => f.requires === null || hasFeature(f.requires))
+              .map((f) => (
               <button
                 key={f.key}
                 onClick={() => setFilter(f.key)}
@@ -592,13 +596,13 @@ export function InboxPage() {
           <div className="flex flex-col items-center justify-center h-full gap-4 px-8 overflow-y-auto py-8" style={{ color: "var(--c-on-surface-variant)" }}>
             <div className="w-full max-w-2xl space-y-4">
               {/* Feature B5 — Daily gaps banner */}
-              <DailyGapsBanner />
+              {hasFeature("ai_daily_gaps") && <DailyGapsBanner />}
 
               {/* Feature C1 — Email-to-task extractor */}
-              <TasksPanel />
+              {hasFeature("ai_task_extractor") && <TasksPanel />}
 
               {/* Feature B4 — Follow-up tracker card */}
-              <FollowUpCard />
+              {hasFeature("ai_follow_up_tracker") && <FollowUpCard />}
 
               {/* Default empty state */}
               <div className="flex flex-col items-center justify-center gap-4 py-12">

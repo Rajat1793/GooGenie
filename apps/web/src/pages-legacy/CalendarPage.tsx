@@ -155,7 +155,7 @@ function MonthGrid({
   );
 }
 
-function EventCard({ event, onEdit, onDelete, onBrief, briefOpen, onReschedule }: { event: CalendarEvent; onEdit: (e: CalendarEvent) => void; onDelete: (id: string) => void; onBrief: (id: string) => void; briefOpen: boolean; onReschedule: (id: string) => void }) {
+function EventCard({ event, onEdit, onDelete, onBrief, briefOpen, onReschedule, canBrief, canReschedule }: { event: CalendarEvent; onEdit: (e: CalendarEvent) => void; onDelete: (id: string) => void; onBrief: (id: string) => void; briefOpen: boolean; onReschedule: (id: string) => void; canBrief: boolean; canReschedule: boolean }) {
   const start = new Date(event.startsAt);
   const end   = new Date(event.endsAt);
   const isToday = start.toDateString() === new Date().toDateString();
@@ -191,12 +191,16 @@ function EventCard({ event, onEdit, onDelete, onBrief, briefOpen, onReschedule }
       </div>
       <div className="shrink-0 self-center flex flex-col items-center gap-2">
         {isToday && <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--c-primary)" }} />}
-        <button onClick={() => onBrief(event.id)} className="btn-ghost p-1.5" title="AI brief — recent emails with attendees" style={{ color: briefOpen ? "var(--c-tertiary)" : undefined }}>
-          <Icon name="auto_awesome" className="text-base" />
-        </button>
-        <button onClick={() => onReschedule(event.id)} className="btn-ghost p-1.5" title="Smart reschedule with AI" style={{ color: "var(--c-secondary)" }}>
-          <Icon name="event_repeat" className="text-base" />
-        </button>
+        {canBrief && (
+          <button onClick={() => onBrief(event.id)} className="btn-ghost p-1.5" title="AI brief — recent emails with attendees" style={{ color: briefOpen ? "var(--c-tertiary)" : undefined }}>
+            <Icon name="auto_awesome" className="text-base" />
+          </button>
+        )}
+        {canReschedule && (
+          <button onClick={() => onReschedule(event.id)} className="btn-ghost p-1.5" title="Smart reschedule with AI" style={{ color: "var(--c-secondary)" }}>
+            <Icon name="event_repeat" className="text-base" />
+          </button>
+        )}
         <button onClick={() => onEdit(event)} className="btn-ghost p-1.5" title="Edit"><Icon name="edit" className="text-base" /></button>
         <button onClick={() => onDelete(event.id)} className="btn-ghost p-1.5" title="Delete" style={{ color: "var(--c-error)" }}><Icon name="delete" className="text-base" /></button>
       </div>
@@ -387,8 +391,10 @@ export function CalendarPage() {
                   onBrief={(id) => setBriefEventId((cur) => (cur === id ? null : id))}
                   briefOpen={briefEventId === event.id}
                   onReschedule={setReschedulingEventId}
+                  canBrief={hasFeature("ai_meeting_brief")}
+                  canReschedule={hasFeature("ai_smart_reschedule")}
                 />
-                {briefEventId === event.id && (
+                {briefEventId === event.id && hasFeature("ai_meeting_brief") && (
                   <MeetingBriefPanel eventId={event.id} onClose={() => setBriefEventId(null)} />
                 )}
               </div>
@@ -397,7 +403,7 @@ export function CalendarPage() {
         </>
       )}
       {/* Feature B2 — Reschedule modal */}
-      {reschedulingEventId && (
+      {reschedulingEventId && hasFeature("ai_smart_reschedule") && (
         <RescheduleModal
           eventId={reschedulingEventId}
           onClose={() => setReschedulingEventId(null)}

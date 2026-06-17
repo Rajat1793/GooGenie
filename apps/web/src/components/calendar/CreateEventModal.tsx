@@ -302,20 +302,22 @@ export function CreateEventModal({ onClose, onCreated }: CreateEventModalProps) 
                   </button>
                 )}
                 {/* Feature C3 — Ask AI to resolve the conflict. */}
-                <button
-                  onClick={() => void fetchAiResolution()}
-                  disabled={aiResolveBusy || !title.trim()}
-                  className="mt-1.5 ml-3 underline text-[11px] font-medium disabled:opacity-50"
-                  style={{ color: "var(--c-error)" }}
-                  title={!title.trim() ? "Enter a title first" : "Ask AI which event to keep"}
-                >
-                  {aiResolveBusy ? "Asking AI…" : "✨ Resolve with AI"}
-                </button>
+                {hasFeature("ai_conflict_resolver") && (
+                  <button
+                    onClick={() => void fetchAiResolution()}
+                    disabled={aiResolveBusy || !title.trim()}
+                    className="mt-1.5 ml-3 underline text-[11px] font-medium disabled:opacity-50"
+                    style={{ color: "var(--c-error)" }}
+                    title={!title.trim() ? "Enter a title first" : "Ask AI which event to keep"}
+                  >
+                    {aiResolveBusy ? "Asking AI…" : "✨ Resolve with AI"}
+                  </button>
+                )}
               </div>
             </div>
           )}
           {/* Feature C3 — AI conflict resolution suggestion panel. */}
-          {aiResolution?.hasConflicts && (
+          {aiResolution?.hasConflicts && hasFeature("ai_conflict_resolver") && (
             <div
               className="rounded-xl px-3 py-2.5 flex flex-col gap-2 text-xs"
               style={{

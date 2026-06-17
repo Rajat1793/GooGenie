@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 const bodySchema = z.object({ email: z.string().email() });
 
 export const POST = withApiMiddleware(async (req, { auth, traceId }) => {
-  const gate = await checkFeature(req, "email_read");
+  const gate = await checkFeature(req, "ai_ooo_detection");
   if (gate) return gate;
   const parsed = await validateBody(bodySchema, req, { traceId, message: "Invalid payload" });
   if (!parsed.ok) return parsed.response;

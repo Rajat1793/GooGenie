@@ -30,7 +30,7 @@ export const dynamic = "force-dynamic";
 const MAX_ATTENDEES_TO_SCAN = 6;
 
 export const POST = withApiMiddleware(async (req, { auth, params }) => {
-  const gate = await checkFeature(req, "calendar_read");
+  const gate = await checkFeature(req, "ai_meeting_brief");
   if (gate) return gate;
 
   const eventId = paramString(params.eventId);

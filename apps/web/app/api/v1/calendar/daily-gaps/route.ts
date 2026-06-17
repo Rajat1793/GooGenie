@@ -24,7 +24,7 @@ interface Gap {
 }
 
 export const GET = withApiMiddleware(async (req, { auth }) => {
-  const gate = await checkFeature(req, "calendar_read");
+  const gate = await checkFeature(req, "ai_daily_gaps");
   if (gate) return gate;
 
   const me = (await getUserById(auth!.userId)) ?? (await getUserByClerkId(auth!.userId));

@@ -17,6 +17,7 @@ import { Icon } from "../../components/Icon";
 import SenderProfilePanel from "../SenderProfilePanel";
 import RelatedThreadsSidebar from "../RelatedThreadsSidebar";
 import OOOBanner from "../OOOBanner";
+import { useFeatures } from "../../contexts/FeatureContext";
 
 interface ThreadPaneProps {
   thread: EmailThread;
@@ -36,6 +37,15 @@ const SENTIMENT_COLOR: Record<string, string> = {
 };
 
 export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, canSummarize, canAiCompose }: ThreadPaneProps) {
+  // Per-feature gates from FeatureContext — keeps the call-site (InboxPage)
+  // free from having to pass every new AI capability as a prop.
+  const { hasFeature } = useFeatures();
+  const canScheduleFromEmail = hasFeature("ai_schedule_from_email");
+  const canRelatedThreads = hasFeature("ai_related_threads");
+  const canSenderInsights = hasFeature("ai_sender_insights");
+  const canOOO = hasFeature("ai_ooo_detection");
+  const canPersonalize = hasFeature("ai_personalized_compose");
+
   const [replyBody, setReplyBody] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -110,7 +120,7 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
     const useTone = toneOverride ?? aiReplyTone;
     setAiReplyLoading(true);
     try {
-      const personalize = senderEmailFromThread();
+      const personalize = canPersonalize ? senderEmailFromThread() : undefined;
       const r = await aiApi.compose({
         type: "reply",
         tone: useTone,
@@ -142,7 +152,7 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
   async function handleQuickReply(intent: string, tone: AiTone) {
     setAiReplyLoading(true);
     try {
-      const personalize = senderEmailFromThread();
+      const personalize = canPersonalize ? senderEmailFromThread() : undefined;
       const r = await aiApi.compose({
         type: "reply",
         tone,
@@ -240,18 +250,22 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
           <h2 className="font-headline text-2xl" style={{ color: "var(--c-on-surface)" }}>{thread.subject}</h2>
           <p className="text-xs mt-1" style={{ color: "var(--c-on-surface-variant)" }}>
             From:{" "}
-            <button
-              onClick={() => {
-                const emailMatch = /<([^>]+)>/.exec(thread.from);
-                const email = emailMatch ? emailMatch[1] : thread.from;
-                setSenderProfile({ email });
-              }}
-              className="hover:underline font-semibold"
-              style={{ color: "var(--c-primary)" }}
-              title="View sender profile"
-            >
-              {thread.from}
-            </button>
+            {canSenderInsights ? (
+              <button
+                onClick={() => {
+                  const emailMatch = /<([^>]+)>/.exec(thread.from);
+                  const email = emailMatch ? emailMatch[1] : thread.from;
+                  setSenderProfile({ email });
+                }}
+                className="hover:underline font-semibold"
+                style={{ color: "var(--c-primary)" }}
+                title="View sender profile"
+              >
+                {thread.from}
+              </button>
+            ) : (
+              <span className="font-semibold" style={{ color: "var(--c-on-surface)" }}>{thread.from}</span>
+            )}
             {" · "}{new Date(thread.updatedAt).toLocaleString()}
           </p>
         </div>
@@ -268,7 +282,7 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
               {summaryLoading ? "…" : "Summarize"}
             </button>
           )}
-          {canAiCompose && (
+          {canAiCompose && canScheduleFromEmail && (
             <button
               onClick={handleExtractMeeting}
               disabled={scheduling.busy}
@@ -280,7 +294,7 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
               {scheduling.busy ? "Analyzing…" : "Schedule"}
             </button>
           )}
-          {canAiCompose && (
+          {canRelatedThreads && (
             <button
               onClick={() => setShowRelated(showRelated === "same_sender" ? null : "same_sender")}
               className="btn-ghost text-xs flex items-center gap-1"
@@ -291,7 +305,7 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
               Same sender
             </button>
           )}
-          {canAiCompose && (
+          {canRelatedThreads && (
             <button
               onClick={() => setShowRelated(showRelated === "same_topic" ? null : "same_topic")}
               className="btn-ghost text-xs flex items-center gap-1"
@@ -453,7 +467,7 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
           </div>
         )}
         {/* Feature A3 — Related threads sidebar */}
-        {showRelated && canAiCompose && (
+        {showRelated && canRelatedThreads && (
           <RelatedThreadsSidebar
             threadId={thread.id}
             scope={showRelated}
@@ -461,7 +475,7 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
           />
         )}
         {/* Feature A1 — Sender intelligence panel */}
-        {senderProfile && (
+        {senderProfile && canSenderInsights && (
           <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50" onClick={() => setSenderProfile(null)}>
             <div onClick={(e) => e.stopPropagation()}>
               <SenderProfilePanel email={senderProfile.email} onClose={() => setSenderProfile(null)} />
@@ -542,7 +556,7 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
           </div>
         )}
         {/* Feature A5 — OOO detection banner */}
-        {thread.from && (() => {
+        {canOOO && thread.from && (() => {
           const emailMatch = /<([^>]+)>/.exec(thread.from);
           const senderEmail = emailMatch ? emailMatch[1] : thread.from;
           return senderEmail.includes("@") ? <OOOBanner senderEmail={senderEmail} /> : null;

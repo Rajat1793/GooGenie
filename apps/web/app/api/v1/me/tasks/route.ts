@@ -19,7 +19,7 @@ async function resolveInternalUserId(authUserId: string): Promise<string | null>
 }
 
 export const GET = withApiMiddleware(async (req, { auth }) => {
-  const gate = await checkFeature(req, "email_read");
+  const gate = await checkFeature(req, "ai_task_extractor");
   if (gate) return gate;
 
   const internalId = await resolveInternalUserId(auth!.userId);

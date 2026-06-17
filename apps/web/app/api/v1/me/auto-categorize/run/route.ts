@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
 const runSchema = z.object({ limit: z.number().int().min(1).max(50).optional() });
 
 export const POST = withApiMiddleware(async (req, { auth, traceId }) => {
-  const gate = await checkFeature(req, "email_read");
+  const gate = await checkFeature(req, "ai_auto_categorize");
   if (gate) return gate;
   const parsed = await validateBody(runSchema, req, { traceId, message: "Invalid run payload" });
   if (!parsed.ok) return parsed.response;

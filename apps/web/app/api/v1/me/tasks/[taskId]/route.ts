@@ -26,7 +26,7 @@ async function resolveInternalUserId(authUserId: string): Promise<string | null>
 }
 
 export const PATCH = withApiMiddleware(async (req, { auth, params, traceId }) => {
-  const gate = await checkFeature(req, "email_read");
+  const gate = await checkFeature(req, "ai_task_extractor");
   if (gate) return gate;
 
   const taskIdStr = paramString(params.taskId);
@@ -47,7 +47,7 @@ export const PATCH = withApiMiddleware(async (req, { auth, params, traceId }) =>
 });
 
 export const DELETE = withApiMiddleware(async (req, { auth, params }) => {
-  const gate = await checkFeature(req, "email_read");
+  const gate = await checkFeature(req, "ai_task_extractor");
   if (gate) return gate;
 
   const taskIdStr = paramString(params.taskId);

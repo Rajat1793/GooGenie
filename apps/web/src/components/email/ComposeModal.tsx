@@ -10,6 +10,7 @@ import { emailApi, aiApi } from "../../api/client";
 import { AI_TONES, type AiTone } from "../../lib/aiTones";
 import { getErrorMessage } from "../../lib/errors";
 import { Icon } from "../../components/Icon";
+import { useFeatures } from "../../contexts/FeatureContext";
 
 interface ComposeModalProps {
   onClose: () => void;
@@ -17,6 +18,9 @@ interface ComposeModalProps {
 }
 
 export function ComposeModal({ onClose, canAiCompose }: ComposeModalProps) {
+  const { hasFeature } = useFeatures();
+  const canPersonalize = hasFeature("ai_personalized_compose");
+
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -64,7 +68,7 @@ export function ComposeModal({ onClose, canAiCompose }: ComposeModalProps) {
     try {
       // Feature C4 — pass recipient as personalize_for when "Match my style" is on.
       const recipientEmail = (() => {
-        if (!matchStyle) return undefined;
+        if (!matchStyle || !canPersonalize) return undefined;
         const trimmed = to.trim();
         const match = /<([^>]+)>/.exec(trimmed);
         const candidate = (match ? match[1] : trimmed.split(",")[0] ?? "").trim();
@@ -126,30 +130,32 @@ export function ComposeModal({ onClose, canAiCompose }: ComposeModalProps) {
             <input value={aiContext} onChange={(e) => setAiContext(e.target.value)}
               placeholder="What's this email about? (optional — uses subject if empty)"
               className="input-field rounded-xl text-sm mb-3" />
-            {/* Feature C4 — Match my style toggle */}
-            <label
-              className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl cursor-pointer transition-all text-xs"
-              style={{
-                background: matchStyle
-                  ? "color-mix(in srgb, var(--c-tertiary) 10%, transparent)"
-                  : "var(--c-surface-container)",
-                border: `1px solid ${matchStyle ? "color-mix(in srgb, var(--c-tertiary) 30%, transparent)" : "var(--c-outline-variant)"}`,
-                color: matchStyle ? "var(--c-tertiary)" : "var(--c-on-surface-variant)",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={matchStyle}
-                onChange={(e) => setMatchStyle(e.target.checked)}
-                className="w-3.5 h-3.5 accent-current"
-                style={{ accentColor: "var(--c-tertiary)" }}
-              />
-              <Icon name="signature" className="text-base" />
-              <span className="font-semibold">Match my style with this person</span>
-              <span className="ml-auto text-[10px]">
-                {styleApplied === true ? "✓ applied" : styleApplied === false ? "(no past samples)" : ""}
-              </span>
-            </label>
+            {/* Feature C4 — Match my style toggle (gated on ai_personalized_compose) */}
+            {canPersonalize && (
+              <label
+                className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl cursor-pointer transition-all text-xs"
+                style={{
+                  background: matchStyle
+                    ? "color-mix(in srgb, var(--c-tertiary) 10%, transparent)"
+                    : "var(--c-surface-container)",
+                  border: `1px solid ${matchStyle ? "color-mix(in srgb, var(--c-tertiary) 30%, transparent)" : "var(--c-outline-variant)"}`,
+                  color: matchStyle ? "var(--c-tertiary)" : "var(--c-on-surface-variant)",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={matchStyle}
+                  onChange={(e) => setMatchStyle(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-current"
+                  style={{ accentColor: "var(--c-tertiary)" }}
+                />
+                <Icon name="signature" className="text-base" />
+                <span className="font-semibold">Match my style with this person</span>
+                <span className="ml-auto text-[10px]">
+                  {styleApplied === true ? "✓ applied" : styleApplied === false ? "(no past samples)" : ""}
+                </span>
+              </label>
+            )}
             <button onClick={handleAiGenerate} disabled={aiLoading}
               className="btn-primary text-xs disabled:opacity-50 flex items-center gap-1.5">
               {aiLoading ? <Icon name="progress_activity" className="animate-spin text-sm" /> : <Icon name="auto_awesome" className="text-sm" />}

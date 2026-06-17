@@ -29,7 +29,7 @@ const bodySchema = z.object({
 });
 
 export const POST = withApiMiddleware(async (req, { auth, traceId }) => {
-  const gate = await checkFeature(req, "ai_summary");
+  const gate = await checkFeature(req, "ai_related_threads");
   if (gate) return gate;
 
   const parsed = await validateBody(bodySchema, req, { traceId, message: "Invalid payload" });

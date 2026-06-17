@@ -55,7 +55,7 @@ function extractSenderEmail(from: string): string {
 }
 
 export const POST = withApiMiddleware(async (req, { auth, params }) => {
-  const gate = await checkFeature(req, "ai_compose");
+  const gate = await checkFeature(req, "ai_schedule_from_email");
   if (gate) return gate;
   const threadId = paramString(params.threadId);
   if (!threadId) {

@@ -68,7 +68,7 @@ async function attemptUnsubscribe(
 }
 
 export const POST = withApiMiddleware(async (req, { auth, traceId }) => {
-  const gate = await checkFeature(req, "email_read");
+  const gate = await checkFeature(req, "ai_unsubscribe_sweep");
   if (gate) return gate;
   const parsed = await validateBody(bodySchema, req, { traceId, message: "Invalid unsubscribe payload" });
   if (!parsed.ok) return parsed.response;

@@ -21,7 +21,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export const POST = withApiMiddleware(async (req, { auth, params }) => {
-  const gate = await checkFeature(req, "calendar_read");
+  const gate = await checkFeature(req, "ai_smart_reschedule");
   if (gate) return gate;
 
   const eventId = paramString(params.eventId);

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth as useClerkAuth } from "@clerk/nextjs";
 import { useAuth } from "../../contexts/AuthContext";
+import { useFeatures } from "../../contexts/FeatureContext";
 import {
   meApi,
   type AuditEvent,
@@ -20,15 +21,13 @@ import { formatActivity, activityIcon } from "../../lib/formatActivity";
 import { broadcastRequestUpdate } from "../../hooks/useNotifications";
 import { playChime } from "../../lib/chime";
 import { Icon } from "../../components/Icon";
+import { FEATURE_CATALOG, getFeatureMeta, groupedFeatures } from "../../../app/api/v1/me/_catalog";
 
-const FEATURE_ICONS: Record<string, string> = {
-  email_read: "inbox",
-  email_write: "edit",
-  calendar_read: "calendar_month",
-  calendar_write: "edit_calendar",
-  ai_summary: "auto_awesome",
-  ai_compose: "draw",
-};
+// Backwards-compatible icon lookup — falls back to the central catalog so any
+// new feature key automatically picks up its icon without code changes here.
+const FEATURE_ICONS: Record<string, string> = Object.fromEntries(
+  FEATURE_CATALOG.map((f) => [f.key, f.icon]),
+);
 
 const ROLE_LABEL: Record<string, string> = {
   super_admin: "Admin",
@@ -91,6 +90,14 @@ function FeatureRow({
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-ink-text capitalize">{label}</p>
+        {(() => {
+          const meta = getFeatureMeta(toggle.featureKey);
+          return meta?.description ? (
+            <p className="text-[11px] text-on-surface-variant mt-0.5 truncate" title={meta.description}>
+              {meta.description}
+            </p>
+          ) : null;
+        })()}
         <p
           className={`text-xs mt-0.5 ${
             status === "enabled"
@@ -219,6 +226,7 @@ function ActivityRow({ event }: { event: AuditEvent }) {
 export function UserProfilePage() {
   const { userId, tenantId, role, fullName, email, imageUrl } = useAuth();
   const { isLoaded, isSignedIn, getToken } = useClerkAuth();
+  const { hasFeature } = useFeatures();
 
   const [features, setFeatures] = useState<FeatureToggleWithLabel[]>([]);
   const [catalog, setCatalog] = useState<FeatureCatalogEntry[]>([]);
@@ -501,17 +509,47 @@ export function UserProfilePage() {
                   <span className="font-semibold text-primary">Request</span> to ask {requestTargetLabel} for access.
                 </p>
               )}
-              {featureRows.map((f) => (
-                <FeatureRow
-                  key={f.featureKey}
-                  toggle={f}
-                  pending={pending[f.featureKey]}
-                  history={history[f.featureKey]}
-                  canRequest={canRequest}
-                  onRequest={handleRequest}
-                  busy={requestBusy === f.featureKey}
-                />
-              ))}
+              {/* Group rows by catalog `group` so 19 keys stay scannable. */}
+              {groupedFeatures().map(({ group, features }) => {
+                const groupRows = features
+                  .map((meta) => featureRows.find((r) => r.featureKey === meta.key))
+                  .filter((r): r is FeatureToggleWithLabel => Boolean(r));
+                if (groupRows.length === 0) return null;
+                return (
+                  <div key={group} className="space-y-2 pt-2 first:pt-0">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant px-1">
+                      {group}
+                    </p>
+                    {groupRows.map((f) => (
+                      <FeatureRow
+                        key={f.featureKey}
+                        toggle={f}
+                        pending={pending[f.featureKey]}
+                        history={history[f.featureKey]}
+                        canRequest={canRequest}
+                        onRequest={handleRequest}
+                        busy={requestBusy === f.featureKey}
+                      />
+                    ))}
+                  </div>
+                );
+              })}
+              {/* Render any uncategorised rows last (defensive — shouldn't happen). */}
+              {(() => {
+                const knownKeys = new Set(FEATURE_CATALOG.map((f) => f.key));
+                const uncategorised = featureRows.filter((r) => !knownKeys.has(r.featureKey));
+                return uncategorised.map((f) => (
+                  <FeatureRow
+                    key={f.featureKey}
+                    toggle={f}
+                    pending={pending[f.featureKey]}
+                    history={history[f.featureKey]}
+                    canRequest={canRequest}
+                    onRequest={handleRequest}
+                    busy={requestBusy === f.featureKey}
+                  />
+                ));
+              })()}
             </div>
           </DataState>
         </Card>
@@ -544,7 +582,7 @@ export function UserProfilePage() {
       {/* Booking links — Calendly-style public scheduler */}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <BookingLinksPanel />
-        <AutoCategorizePanel />
+        {hasFeature("ai_auto_categorize") && <AutoCategorizePanel />}
       </div>
 
       {/* Incoming feature requests (managers + super admins) */}

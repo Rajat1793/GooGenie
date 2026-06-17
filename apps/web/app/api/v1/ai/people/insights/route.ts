@@ -21,7 +21,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export const GET = withApiMiddleware(async (req, { auth }) => {
-  const gate = await checkFeature(req, "email_read");
+  const gate = await checkFeature(req, "ai_sender_insights");
   if (gate) return gate;
 
   const url = new URL(req.url);
