@@ -22,6 +22,7 @@
     "./integrations/event-bus": "./src/integrations/event-bus.ts",
     "./integrations/webhooks": "./src/integrations/webhooks.ts",
     "./integrations/scheduled-email-poller": "./src/integrations/scheduled-email-poller.ts",
+    "./integrations/auto-categorize": "./src/integrations/auto-categorize.ts",
     "./security/env": "./src/security/env.ts",
     "./security/errors": "./src/security/errors.ts",
     "./security/audit": "./src/security/audit.ts",

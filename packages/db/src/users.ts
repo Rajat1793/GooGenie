@@ -18,6 +18,7 @@ export interface DbUser {
   isActive: boolean;
   clerkUserId: string | null;
   passwordHash: string | null;
+  settings?: Record<string, unknown> | null;
 }
 
 // ── Upsert Clerk user ──────────────────────────────────────────────────────────
@@ -173,4 +174,32 @@ export async function getPasswordHash(userId: string): Promise<string | null> {
   const row = await db.select({ passwordHash: schema.users.passwordHash })
     .from(schema.users).where(eq(schema.users.id, userId)).limit(1);
   return row[0]?.passwordHash ?? null;
+}
+
+/**
+ * Patch a single key on the user's JSON settings bag.
+ * Used by Feature A4 (auto-categorize toggle) and future per-user prefs.
+ */
+export async function updateUserSetting<T>(userId: string, key: string, value: T): Promise<Record<string, unknown>> {
+  const [row] = await db
+    .select({ settings: schema.users.settings })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .limit(1);
+  const current = (row?.settings as Record<string, unknown> | null) ?? {};
+  const next = { ...current, [key]: value };
+  await db
+    .update(schema.users)
+    .set({ settings: next, updatedAt: new Date() })
+    .where(eq(schema.users.id, userId));
+  return next;
+}
+
+export async function getUserSettings(userId: string): Promise<Record<string, unknown>> {
+  const [row] = await db
+    .select({ settings: schema.users.settings })
+    .from(schema.users)
+    .where(eq(schema.users.id, userId))
+    .limit(1);
+  return (row?.settings as Record<string, unknown> | null) ?? {};
 }

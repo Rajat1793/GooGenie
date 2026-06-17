@@ -463,3 +463,426 @@ export async function deleteDraft(tenantId: string, draftId: string): Promise<vo
   await (tenant as any).gmail.api.drafts.delete({ id: draftId });
   cache.delete(`drafts:${tenantId}`);
 }
+
+// ── Reply-needed query (Feature A2) ──────────────────────────────────────────
+//
+// "Threads waiting on me" = threads where the most recent message is from
+// someone other than me, AND I haven't sent a reply after that message.
+// Implemented with two cheap Corsair DB queries — no Gmail API calls.
+
+export interface ReplyNeededThread {
+  threadId: string;
+  subject: string;
+  from: string;
+  snippet: string;
+  lastInboundAt: string;
+  daysWaiting: number;
+  /** Heuristic urgency: 0..3 (0 = none, 3 = "ASAP / today") */
+  urgency: number;
+  labelIds: string[];
+}
+
+const URGENCY_PATTERNS: Array<{ re: RegExp; weight: number }> = [
+  { re: /\b(asap|urgent|immediately|right now|today)\b/i, weight: 3 },
+  { re: /\b(by\s+(eod|cob|tomorrow|friday|monday|tuesday|wednesday|thursday|saturday|sunday))\b/i, weight: 2 },
+  { re: /\b(deadline|due\s+(today|tomorrow|this\s+week))\b/i, weight: 2 },
+  { re: /\?/, weight: 1 },
+  { re: /\b(please\s+confirm|need\s+your\s+(approval|sign\s*-?\s*off))\b/i, weight: 2 },
+];
+
+function scoreUrgency(text: string): number {
+  let score = 0;
+  for (const { re, weight } of URGENCY_PATTERNS) {
+    if (re.test(text)) score = Math.max(score, weight);
+  }
+  return Math.min(3, score);
+}
+
+/**
+ * Returns threads where the last message is FROM someone else and the user
+ * has not sent a reply after it. Uses Corsair's local `gmail.db.messages`
+ * — does NOT hit the Gmail API.
+ *
+ * `userEmail` should be the signed-in user's primary email so we can tell
+ * "from me" vs "from them" without parsing the `From` header heuristically.
+ */
+export async function fetchReplyNeededThreads(
+  tenantId: string,
+  userId: string,
+  userEmail: string | null,
+  limit = 50,
+): Promise<ReplyNeededThread[]> {
+  if (!isCorsairConfigured()) return [];
+  try {
+    const tenant = corsair.withTenant(tenantId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const t = tenant as any;
+
+    // Get the most recent ~200 messages; group by thread, find tails.
+    const recent = await t.gmail.db.messages.search({
+      data: {},
+      orderBy: { internalDate: "desc" },
+      limit: 400,
+    }).catch(() => [] as unknown[]);
+
+    if (!Array.isArray(recent) || recent.length === 0) return [];
+
+    type Msg = { threadId?: string; from?: string; to?: string; subject?: string; snippet?: string; body?: string; internalDate?: string | number; labelIds?: string[] };
+    const byThread = new Map<string, Msg[]>();
+    for (const raw of recent as Msg[]) {
+      if (!raw.threadId) continue;
+      const arr = byThread.get(raw.threadId);
+      if (arr) arr.push(raw);
+      else byThread.set(raw.threadId, [raw]);
+    }
+
+    const lowerMyEmail = userEmail?.toLowerCase() ?? "";
+    const isFromMe = (m: Msg): boolean => {
+      const from = (m.from ?? "").toLowerCase();
+      return lowerMyEmail.length > 0 && from.includes(lowerMyEmail);
+    };
+
+    const out: ReplyNeededThread[] = [];
+    for (const [threadId, msgs] of byThread) {
+      if (msgs.length === 0) continue;
+      const sorted = msgs.sort(
+        (a, b) => Number(b.internalDate ?? 0) - Number(a.internalDate ?? 0),
+      );
+      const last = sorted[0];
+      // Skip if last message is from me — nothing waiting.
+      if (isFromMe(last)) continue;
+      // Skip if any of my replies AFTER this last inbound exist (shouldn't
+      // happen given last is "the most recent" by date, but defensive).
+      const lastDate = Number(last.internalDate ?? 0);
+      const repliedAfter = sorted.some(
+        (m) => isFromMe(m) && Number(m.internalDate ?? 0) > lastDate,
+      );
+      if (repliedAfter) continue;
+
+      // Skip system labels we'd never reply to.
+      const labels = last.labelIds ?? [];
+      if (labels.includes("SPAM") || labels.includes("TRASH") || labels.includes("DRAFT")) continue;
+      // Skip promotions / social / forums / updates — usually no-reply.
+      if (
+        labels.includes("CATEGORY_PROMOTIONS") ||
+        labels.includes("CATEGORY_SOCIAL") ||
+        labels.includes("CATEGORY_FORUMS")
+      ) continue;
+
+      const lastDateMs = lastDate || Date.now();
+      const daysWaiting = Math.max(0, Math.floor((Date.now() - lastDateMs) / (24 * 3600 * 1000)));
+      const urgencyText = `${last.subject ?? ""} ${last.snippet ?? ""} ${typeof last.body === "string" ? last.body.slice(0, 1000) : ""}`;
+
+      out.push({
+        threadId,
+        subject: last.subject || "(no subject)",
+        from: last.from || "unknown",
+        snippet: (last.snippet ?? "").slice(0, 200),
+        lastInboundAt: new Date(lastDateMs).toISOString(),
+        daysWaiting,
+        urgency: scoreUrgency(urgencyText),
+        labelIds: labels,
+      });
+    }
+
+    // Rank: urgency desc → daysWaiting desc → recency desc.
+    out.sort((a, b) => {
+      if (b.urgency !== a.urgency) return b.urgency - a.urgency;
+      if (b.daysWaiting !== a.daysWaiting) return b.daysWaiting - a.daysWaiting;
+      return new Date(b.lastInboundAt).getTime() - new Date(a.lastInboundAt).getTime();
+    });
+
+    return out.slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+// ── Newsletter / List-Unsubscribe scan (Feature C2) ──────────────────────────
+//
+// Scans Corsair's local message cache for messages with a List-Unsubscribe
+// header. Groups by sender. Surfaces the ones the user has never opened.
+
+export interface NewsletterSender {
+  email: string;
+  displayName: string;
+  totalMessages: number;
+  unreadMessages: number;
+  /** Most recent message id (lets caller invoke the unsubscribe URL). */
+  latestMessageId: string;
+  latestThreadId: string;
+  latestDate: string;
+  /** Parsed List-Unsubscribe URLs: at most one https + one mailto. */
+  unsubscribeUrls: string[];
+  /** Did Gmail's auto-One-Click List-Unsubscribe-Post field appear? */
+  oneClick: boolean;
+}
+
+function parseListUnsubscribe(headerVal: string): { urls: string[]; mailto?: string } {
+  // Format: "<https://…>, <mailto:unsubscribe@x>"
+  const urls: string[] = [];
+  let mailto: string | undefined;
+  const matches = headerVal.match(/<([^>]+)>/g) ?? [];
+  for (const m of matches) {
+    const inner = m.slice(1, -1).trim();
+    if (inner.toLowerCase().startsWith("mailto:")) mailto = inner;
+    else if (/^https?:\/\//i.test(inner)) urls.push(inner);
+  }
+  return { urls, mailto };
+}
+
+function extractEmailAddress(from: string): string {
+  const match = /<([^>]+)>/.exec(from);
+  return (match ? match[1] : from).trim().toLowerCase();
+}
+
+function extractDisplayName(from: string): string {
+  const match = /^(.*?)\s*<[^>]+>\s*$/.exec(from);
+  return (match ? match[1] : from).replace(/^"|"$/g, "").trim();
+}
+
+export async function fetchNewsletterSenders(
+  tenantId: string,
+  limit = 30,
+): Promise<NewsletterSender[]> {
+  if (!isCorsairConfigured()) return [];
+  try {
+    const tenant = corsair.withTenant(tenantId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const t = tenant as any;
+    // Pull a generous window — most newsletters land in the last few weeks.
+    const recent = await t.gmail.db.messages.search({
+      data: {},
+      orderBy: { internalDate: "desc" },
+      limit: 1000,
+    }).catch(() => [] as unknown[]);
+    if (!Array.isArray(recent) || recent.length === 0) return [];
+
+    type Msg = {
+      id?: string;
+      threadId?: string;
+      from?: string;
+      subject?: string;
+      internalDate?: string | number;
+      labelIds?: string[];
+      headers?: Array<{ name?: string; value?: string }>;
+      // Some Corsair builds flatten headers onto top-level fields.
+      listUnsubscribe?: string;
+      listUnsubscribePost?: string;
+    };
+
+    const senders = new Map<string, NewsletterSender>();
+    for (const raw of recent as Msg[]) {
+      const headersArr: Array<{ name?: string; value?: string }> = Array.isArray(raw.headers) ? raw.headers : [];
+      const listUnsub =
+        raw.listUnsubscribe ?? getHeader(headersArr, "list-unsubscribe");
+      if (!listUnsub) continue;
+      const fromRaw = raw.from ?? "";
+      const email = extractEmailAddress(fromRaw);
+      if (!email) continue;
+      const oneClick = !!(raw.listUnsubscribePost ?? getHeader(headersArr, "list-unsubscribe-post"));
+      const { urls, mailto } = parseListUnsubscribe(listUnsub);
+      const allUrls = [...urls, ...(mailto ? [mailto] : [])];
+      if (allUrls.length === 0) continue;
+
+      const labels = raw.labelIds ?? [];
+      const isUnread = labels.includes("UNREAD");
+      const dateMs = Number(raw.internalDate ?? 0);
+
+      const existing = senders.get(email);
+      if (existing) {
+        existing.totalMessages += 1;
+        if (isUnread) existing.unreadMessages += 1;
+        if (dateMs > new Date(existing.latestDate).getTime()) {
+          existing.latestDate = new Date(dateMs || Date.now()).toISOString();
+          if (raw.id) existing.latestMessageId = raw.id;
+          if (raw.threadId) existing.latestThreadId = raw.threadId;
+          existing.unsubscribeUrls = allUrls;
+          existing.oneClick = oneClick;
+        }
+      } else {
+        senders.set(email, {
+          email,
+          displayName: extractDisplayName(fromRaw) || email,
+          totalMessages: 1,
+          unreadMessages: isUnread ? 1 : 0,
+          latestMessageId: raw.id ?? "",
+          latestThreadId: raw.threadId ?? "",
+          latestDate: new Date(dateMs || Date.now()).toISOString(),
+          unsubscribeUrls: allUrls,
+          oneClick,
+        });
+      }
+    }
+
+    // Rank: senders with the highest unread-rate first, then total volume.
+    const ranked = [...senders.values()].sort((a, b) => {
+      const unreadRateA = a.unreadMessages / Math.max(1, a.totalMessages);
+      const unreadRateB = b.unreadMessages / Math.max(1, b.totalMessages);
+      if (unreadRateB !== unreadRateA) return unreadRateB - unreadRateA;
+      return b.totalMessages - a.totalMessages;
+    });
+    return ranked.slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+// ── Per-sender message slice (Feature B1 — Meeting brief) ────────────────────
+//
+// Returns the user's recent threads with a given email address (in either the
+// From or To header). Entirely local DB query.
+
+export interface SenderThreadSlice {
+  threadId: string;
+  subject: string;
+  from: string;
+  snippet: string;
+  date: string;
+  direction: "inbound" | "outbound" | "unknown";
+}
+
+export async function fetchThreadsWithEmail(
+  tenantId: string,
+  email: string,
+  myEmail: string | null,
+  limit = 5,
+): Promise<SenderThreadSlice[]> {
+  if (!isCorsairConfigured() || !email) return [];
+  try {
+    const tenant = corsair.withTenant(tenantId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const t = tenant as any;
+    const rows = await t.gmail.db.messages.search({
+      data: {
+        OR: [
+          { from: { contains: email } },
+          { to: { contains: email } },
+        ],
+      },
+      orderBy: { internalDate: "desc" },
+      limit: 50,
+    }).catch(() => [] as unknown[]);
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+
+    type Msg = { id?: string; threadId?: string; from?: string; to?: string; subject?: string; snippet?: string; internalDate?: string | number };
+    const lowerMyEmail = myEmail?.toLowerCase() ?? "";
+    const seen = new Set<string>();
+    const out: SenderThreadSlice[] = [];
+    for (const r of rows as Msg[]) {
+      if (!r.threadId || seen.has(r.threadId)) continue;
+      seen.add(r.threadId);
+      const fromLower = (r.from ?? "").toLowerCase();
+      const direction: SenderThreadSlice["direction"] =
+        lowerMyEmail && fromLower.includes(lowerMyEmail)
+          ? "outbound"
+          : fromLower.includes(email.toLowerCase())
+          ? "inbound"
+          : "unknown";
+      out.push({
+        threadId: r.threadId,
+        subject: r.subject || "(no subject)",
+        from: r.from || "unknown",
+        snippet: (r.snippet ?? "").slice(0, 240),
+        date: new Date(Number(r.internalDate ?? 0) || Date.now()).toISOString(),
+        direction,
+      });
+      if (out.length >= limit) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+// ── Recent unread inbox messages from local DB (Feature A4) ──────────────────
+//
+// Returns the N most-recent unread INBOX messages from Corsair's local cache,
+// minus anything already labeled by a previous auto-categorize pass.
+
+export interface UnreadInboxMessage {
+  id: string;
+  threadId: string;
+  subject: string;
+  from: string;
+  snippet: string;
+  internalDate: number;
+}
+
+export async function fetchRecentUnreadInbox(
+  tenantId: string,
+  limit = 20,
+): Promise<UnreadInboxMessage[]> {
+  if (!isCorsairConfigured()) return [];
+  try {
+    const tenant = corsair.withTenant(tenantId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const t = tenant as any;
+    const rows = await t.gmail.db.messages.search({
+      data: {},
+      orderBy: { internalDate: "desc" },
+      limit: limit * 4, // overfetch, then filter client-side
+    }).catch(() => [] as unknown[]);
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+    type Row = { id?: string; threadId?: string; from?: string; subject?: string; snippet?: string; internalDate?: string | number; labelIds?: string[] };
+    const out: UnreadInboxMessage[] = [];
+    for (const r of rows as Row[]) {
+      const labels = r.labelIds ?? [];
+      if (!labels.includes("INBOX")) continue;
+      if (!labels.includes("UNREAD")) continue;
+      // Skip if already auto-labelled (any GooGenie/* label).
+      if (labels.some((l) => l.startsWith("Googenie/"))) continue;
+      if (!r.id || !r.threadId) continue;
+      out.push({
+        id: r.id,
+        threadId: r.threadId,
+        subject: r.subject || "(no subject)",
+        from: r.from || "unknown",
+        snippet: (r.snippet ?? "").slice(0, 400),
+        internalDate: Number(r.internalDate ?? 0) || Date.now(),
+      });
+      if (out.length >= limit) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+// ── Ensure a Gmail label exists, returning its id (Feature A4) ───────────────
+
+const labelCache = new Map<string, string>(); // key = `${tenantId}:${name}` → labelId
+
+export async function ensureGmailLabel(
+  tenantId: string,
+  name: string,
+): Promise<string | null> {
+  const cacheKey = `${tenantId}:${name}`;
+  const hit = labelCache.get(cacheKey);
+  if (hit) return hit;
+  try {
+    const tenant = corsair.withTenant(tenantId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const t = tenant as any;
+    const existing = await t.gmail.api.labels.getMany().catch(() => null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const list: Array<{ id?: string; name?: string }> = existing?.labels ?? [];
+    const found = list.find((l) => l.name === name);
+    if (found?.id) {
+      labelCache.set(cacheKey, found.id);
+      return found.id;
+    }
+    const created = await t.gmail.api.labels.create({
+      name,
+      labelListVisibility: "labelShow",
+      messageListVisibility: "show",
+    }).catch(() => null);
+    if (created?.id) {
+      labelCache.set(cacheKey, created.id);
+      return created.id;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

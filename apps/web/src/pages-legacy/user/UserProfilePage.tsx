@@ -13,6 +13,7 @@ import {
 import { getErrorMessage } from "../../lib/errors";import { PageHeader } from "../../components/PageHeader";
 import { Card } from "../../components/Card";
 import { BookingLinksPanel } from "../../components/BookingLinksPanel";
+import { AutoCategorizePanel } from "../../components/AutoCategorizePanel";
 import { RoleBadge } from "../../components/RoleBadge";
 import { DataState } from "../../components/DataState";
 import { formatActivity, activityIcon } from "../../lib/formatActivity";
@@ -541,8 +542,9 @@ export function UserProfilePage() {
       </div>
 
       {/* Booking links — Calendly-style public scheduler */}
-      <div className="mt-6">
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <BookingLinksPanel />
+        <AutoCategorizePanel />
       </div>
 
       {/* Incoming feature requests (managers + super admins) */}

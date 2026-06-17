@@ -30,7 +30,8 @@ export async function runStartupMigrations(): Promise<void> {
     await client.query(`
       ALTER TABLE users
         ADD COLUMN IF NOT EXISTS clerk_user_id VARCHAR(128),
-        ADD COLUMN IF NOT EXISTS password_hash TEXT;
+        ADD COLUMN IF NOT EXISTS password_hash TEXT,
+        ADD COLUMN IF NOT EXISTS settings JSONB NOT NULL DEFAULT '{}'::jsonb;
 
       CREATE INDEX IF NOT EXISTS users_clerk_user_id_idx ON users(clerk_user_id);
 

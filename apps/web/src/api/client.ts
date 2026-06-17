@@ -71,7 +71,7 @@ async function resolveToken(): Promise<string | null> {
   return null;
 }
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   // Gate on auth readiness — but only for endpoints that need it. The race
   // window is short (a few ms in practice) so the timeout exists purely as a
   // safety net.
@@ -333,6 +333,17 @@ export interface ScheduledEmail {
   createdAt: string;
 }
 
+export interface ReplyNeededThread {
+  threadId: string;
+  subject: string;
+  from: string;
+  snippet: string;
+  lastInboundAt: string;
+  daysWaiting: number;
+  urgency: number;
+  labelIds: string[];
+}
+
 export const emailApi = {
   listThreads: (params?: { userId?: string; cursor?: string; limit?: number; q?: string }) => {
     const qs = new URLSearchParams();
@@ -371,6 +382,10 @@ export const emailApi = {
 
   cancelScheduled: (id: number) =>
     apiFetch<{ cancelled: boolean }>(`/v1/email/messages/scheduled/${id}`, { method: "DELETE" }),
+
+  // Feature A2 — "Threads waiting on me" filtered view.
+  replyNeeded: (limit = 50) =>
+    apiFetch<{ threads: ReplyNeededThread[] }>(`/v1/email/reply-needed?limit=${limit}`),
 
   reply: (threadId: string, body: { to: string; subject: string; body: string; message_id?: string }) =>
     apiFetch<{ message_id?: string; thread_id?: string }>(`/v1/email/threads/${threadId}/reply`, {
@@ -544,7 +559,51 @@ export const aiApi = {
       method: "POST",
       body: JSON.stringify({ prompt, history }),
     }),
+
+  // ── Feature B3 — Schedule from email ─────────────────────────────────
+  extractMeeting: (threadId: string) =>
+    apiFetch<ExtractMeetingResponse>(
+      `/v1/ai/threads/${encodeURIComponent(threadId)}/extract-meeting`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+  scheduleFromEmail: (threadId: string, body: { start: string; end: string; title?: string; reply_body?: string; with_meet?: boolean }) =>
+    apiFetch<{ event: unknown; reply: unknown; warning?: string }>(
+      `/v1/ai/threads/${encodeURIComponent(threadId)}/schedule-from-email`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+
+  // ── Feature B1 — Meeting brief ───────────────────────────────────────
+  meetingBrief: (eventId: string) =>
+    apiFetch<MeetingBriefResponse>(
+      `/v1/ai/meetings/${encodeURIComponent(eventId)}/brief`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
 };
+
+export interface ExtractMeetingResponse {
+  ai_available: boolean;
+  scheduling: boolean;
+  duration_minutes?: number;
+  candidates?: Array<{ start: string; end: string; label: string }>;
+  free_slots?: Array<{ start: string; end: string; label: string; duration_minutes: number }>;
+  draft_reply?: string | null;
+  thread?: { id: string; subject: string; from: string; sender_email: string };
+  hint?: string;
+  model?: string;
+}
+
+export interface MeetingBriefResponse {
+  ai_available: boolean;
+  event: { id: string; title: string; starts_at: string; ends_at: string; attendees: string[] } | null;
+  attendees: Array<{
+    email: string;
+    recent_threads: Array<{ thread_id: string; subject: string; date: string; direction: string; snippet: string }>;
+  }>;
+  related_threads: Array<{ thread_id: string; subject: string; from: string; snippet: string; similarity?: number }>;
+  brief: string | null;
+  hint?: string;
+  model?: string;
+}
 
 export interface AgentResponse {
   action: string;

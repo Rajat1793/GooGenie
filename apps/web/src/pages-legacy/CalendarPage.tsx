@@ -13,6 +13,7 @@ import { EditEventModal } from "../components/calendar/EditEventModal";
 import { AvailabilityModal } from "../components/calendar/AvailabilityModal";
 import { Icon } from "../components/Icon";
 import { useKeybinding } from "../contexts/KeybindingContext";
+import { MeetingBriefPanel } from "../components/calendar/MeetingBriefPanel";
 
 // ── MonthGrid ────────────────────────────────────────────────────────────────
 // 7-column × 6-row month grid with event chips placed on their start date.
@@ -153,7 +154,7 @@ function MonthGrid({
   );
 }
 
-function EventCard({ event, onEdit, onDelete }: { event: CalendarEvent; onEdit: (e: CalendarEvent) => void; onDelete: (id: string) => void }) {
+function EventCard({ event, onEdit, onDelete, onBrief, briefOpen }: { event: CalendarEvent; onEdit: (e: CalendarEvent) => void; onDelete: (id: string) => void; onBrief: (id: string) => void; briefOpen: boolean }) {
   const start = new Date(event.startsAt);
   const end   = new Date(event.endsAt);
   const isToday = start.toDateString() === new Date().toDateString();
@@ -189,6 +190,9 @@ function EventCard({ event, onEdit, onDelete }: { event: CalendarEvent; onEdit: 
       </div>
       <div className="shrink-0 self-center flex flex-col items-center gap-2">
         {isToday && <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: "var(--c-primary)" }} />}
+        <button onClick={() => onBrief(event.id)} className="btn-ghost p-1.5" title="AI brief — recent emails with attendees" style={{ color: briefOpen ? "var(--c-tertiary)" : undefined }}>
+          <Icon name="auto_awesome" className="text-base" />
+        </button>
         <button onClick={() => onEdit(event)} className="btn-ghost p-1.5" title="Edit"><Icon name="edit" className="text-base" /></button>
         <button onClick={() => onDelete(event.id)} className="btn-ghost p-1.5" title="Delete" style={{ color: "var(--c-error)" }}><Icon name="delete" className="text-base" /></button>
       </div>
@@ -214,6 +218,8 @@ export function CalendarPage() {
   }
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
+  // Feature B1 — which event currently has its meeting-brief panel expanded.
+  const [briefEventId, setBriefEventId] = useState<string | null>(null);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [filter, setFilter] = useState<"upcoming" | "today" | "all">("upcoming");
   const [search, setSearch] = useState("");
@@ -366,7 +372,20 @@ export function CalendarPage() {
             </div>
           )}
           <div className="space-y-3">
-            {filtered.map((event) => <EventCard key={event.id} event={event} onEdit={setEditing} onDelete={handleDelete} />)}
+            {filtered.map((event) => (
+              <div key={event.id} className="space-y-3">
+                <EventCard
+                  event={event}
+                  onEdit={setEditing}
+                  onDelete={handleDelete}
+                  onBrief={(id) => setBriefEventId((cur) => (cur === id ? null : id))}
+                  briefOpen={briefEventId === event.id}
+                />
+                {briefEventId === event.id && (
+                  <MeetingBriefPanel eventId={event.id} onClose={() => setBriefEventId(null)} />
+                )}
+              </div>
+            ))}
           </div>
         </>
       )}

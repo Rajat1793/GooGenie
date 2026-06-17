@@ -235,6 +235,7 @@ const ICON_MAP: Record<string, LucideIcon | ComponentType<SVGProps<SVGSVGElement
   // AI / sparkle
   auto_awesome: Sparkles,
   smart_toy: Sparkles,
+  cleaning_services: Sparkles,
   bolt: Zap,
   // Pricing / marketing
   rocket_launch: Rocket,

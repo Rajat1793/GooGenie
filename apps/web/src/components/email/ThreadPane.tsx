@@ -49,6 +49,15 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
   // the body it flips false so we don't clobber their edits.
   const [bodyIsAiGenerated, setBodyIsAiGenerated] = useState(false);
 
+  // ── Feature B3 — Schedule from email ────────────────────────────────────
+  const [scheduling, setScheduling] = useState<{
+    busy: boolean;
+    err: string | null;
+    extracted: import("../../api/client").ExtractMeetingResponse | null;
+    committingIdx: number | null;
+    committedEventId: string | null;
+  }>({ busy: false, err: null, extracted: null, committingIdx: null, committedEventId: null });
+
   // Reset state when the user switches threads
   useEffect(() => {
     setSummary(null);
@@ -56,6 +65,7 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
     setSummaryLoading(false);
     setReplyBody("");
     setBodyIsAiGenerated(false);
+    setScheduling({ busy: false, err: null, extracted: null, committingIdx: null, committedEventId: null });
   }, [thread.id]);
 
   async function handleReply() {
@@ -120,6 +130,47 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
     finally { setAiReplyLoading(false); }
   }
 
+  // Feature B3 — Find proposed times in this email + check availability.
+  async function handleExtractMeeting() {
+    setScheduling((s) => ({ ...s, busy: true, err: null, extracted: null, committedEventId: null }));
+    try {
+      const r = await aiApi.extractMeeting(thread.id);
+      if (!r.ai_available) {
+        setScheduling((s) => ({ ...s, busy: false, err: r.hint ?? "AI not configured" }));
+        return;
+      }
+      setScheduling((s) => ({ ...s, busy: false, extracted: r }));
+    } catch (e) {
+      setScheduling((s) => ({ ...s, busy: false, err: getErrorMessage(e, "Couldn't analyze thread") }));
+    }
+  }
+
+  // Feature B3 — Commit a slot: create the event + send the reply.
+  async function handleScheduleSlot(idx: number) {
+    const ex = scheduling.extracted;
+    const slot = ex?.free_slots?.[idx];
+    if (!slot) return;
+    setScheduling((s) => ({ ...s, committingIdx: idx, err: null }));
+    try {
+      const res = await aiApi.scheduleFromEmail(thread.id, {
+        start: slot.start,
+        end: slot.end,
+        title: thread.subject,
+        reply_body: ex?.draft_reply ?? undefined,
+        with_meet: true,
+      });
+      const eventId = ((res.event as { id?: string } | null) ?? {}).id ?? "ok";
+      setScheduling((s) => ({ ...s, committingIdx: null, committedEventId: eventId }));
+      window.dispatchEvent(
+        new CustomEvent("googenie:toast", {
+          detail: { message: `📅 Meeting booked + reply sent`, icon: "calendar_today" },
+        }),
+      );
+    } catch (e) {
+      setScheduling((s) => ({ ...s, committingIdx: null, err: getErrorMessage(e, "Failed to schedule") }));
+    }
+  }
+
   /**
    * Switch tone pill. If the textarea currently holds AI-generated text,
    * regenerate it with the new tone immediately so the user doesn't have to
@@ -175,6 +226,18 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
               {summaryLoading ? "…" : "Summarize"}
             </button>
           )}
+          {canAiCompose && (
+            <button
+              onClick={handleExtractMeeting}
+              disabled={scheduling.busy}
+              className="btn-ghost text-xs flex items-center gap-1 disabled:opacity-50"
+              style={{ color: "var(--c-tertiary)" }}
+              title="Find proposed times and offer to schedule"
+            >
+              <Icon name={scheduling.busy ? "progress_activity" : "calendar_today"} className="text-base" />
+              {scheduling.busy ? "Analyzing…" : "Schedule"}
+            </button>
+          )}
           <button onClick={() => handleAction("archive")} className="btn-ghost p-2" title="Archive"><Icon name="archive" className="text-xl" /></button>
           <button onClick={() => handleAction("trash")} className="btn-ghost p-2" title="Move to trash" style={{ color: "var(--c-error)" }}><Icon name="delete" className="text-xl" /></button>
           {thread.isUnread
@@ -185,6 +248,94 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
         </div>
       </div>
       <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
+        {/* Feature B3 — Schedule-from-email result card */}
+        {scheduling.err && (
+          <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "var(--c-error-container)", color: "var(--c-error)" }}>
+            {scheduling.err}
+          </div>
+        )}
+        {scheduling.extracted && (
+          <div
+            className="rounded-2xl p-5 relative"
+            style={{
+              background: "color-mix(in srgb, var(--c-tertiary) 6%, var(--c-surface-container))",
+              border: "1px solid color-mix(in srgb, var(--c-tertiary) 25%, transparent)",
+            }}
+          >
+            <button
+              onClick={() => setScheduling((s) => ({ ...s, extracted: null, err: null, committedEventId: null }))}
+              className="absolute top-3 right-3 btn-ghost p-1 rounded-full"
+              title="Close"
+              style={{ color: "var(--c-on-surface-variant)" }}
+            >
+              <Icon name="close" className="text-base" />
+            </button>
+            <div className="flex items-center gap-2 mb-3 pr-7">
+              <Icon name="calendar_today" className="text-base" style={{ color: "var(--c-tertiary)" }} />
+              <span className="text-xs font-semibold" style={{ color: "var(--c-tertiary)" }}>SCHEDULE FROM EMAIL</span>
+            </div>
+            {!scheduling.extracted.scheduling ? (
+              <p className="text-sm" style={{ color: "var(--c-on-surface-variant)" }}>
+                I don&rsquo;t see any meeting proposals in this thread.
+              </p>
+            ) : scheduling.committedEventId ? (
+              <p className="text-sm font-medium" style={{ color: "var(--c-tertiary)" }}>
+                ✅ Booked. Reply sent and calendar event created.
+              </p>
+            ) : (
+              <>
+                {scheduling.extracted.free_slots && scheduling.extracted.free_slots.length > 0 ? (
+                  <>
+                    <p className="text-xs mb-2" style={{ color: "var(--c-on-surface-variant)" }}>
+                      Open slots from {scheduling.extracted.thread?.sender_email}. Click one to confirm + reply.
+                    </p>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {scheduling.extracted.free_slots.map((s, idx) => {
+                        const isBusy = scheduling.committingIdx === idx;
+                        const start = new Date(s.start);
+                        const end = new Date(s.end);
+                        return (
+                          <button
+                            key={s.start}
+                            onClick={() => void handleScheduleSlot(idx)}
+                            disabled={scheduling.committingIdx !== null}
+                            className="px-3 py-2 rounded-xl text-xs font-medium border transition flex flex-col items-start gap-0.5 disabled:opacity-50 hover:scale-105"
+                            style={{
+                              background: "var(--c-surface-container-high)",
+                              borderColor: "var(--c-outline-variant)",
+                              color: "var(--c-on-surface)",
+                              minWidth: 160,
+                            }}
+                          >
+                            <span className="font-semibold">
+                              {start.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+                            </span>
+                            <span style={{ color: "var(--c-on-surface-variant)" }}>
+                              {start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                              {" – "}
+                              {end.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                              {isBusy && " ✓"}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm mb-3" style={{ color: "var(--c-on-surface-variant)" }}>
+                    Found proposed times, but you&rsquo;re busy at all of them. Use the Calendar &ldquo;Find a Time&rdquo; tool to suggest alternatives.
+                  </p>
+                )}
+                {scheduling.extracted.draft_reply && (
+                  <div className="text-[11px] italic px-3 py-2 rounded-lg" style={{ background: "var(--c-surface-container-lowest)", color: "var(--c-on-surface-variant)" }}>
+                    <span className="font-semibold uppercase tracking-wide block mb-1">DRAFT REPLY</span>
+                    {scheduling.extracted.draft_reply}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
         {/* AI Summary card */}
         {summaryErr && (
           <div className="rounded-xl px-4 py-3 text-sm" style={{ background: "var(--c-error-container)", color: "var(--c-error)" }}>{summaryErr}</div>

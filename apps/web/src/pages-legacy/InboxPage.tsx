@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "../lib/router-shim";
-import { emailApi, aiApi, type EmailThread, type AiSearchResult } from "../api/client";
+import { emailApi, aiApi, type EmailThread, type AiSearchResult, type ReplyNeededThread } from "../api/client";
 import { useEmailThreads, useMarkThreadRead, useTrashThread } from "../api/hooks";
 import { useClerkReady } from "../hooks/useClerkReady";
 import { ConnectionBar, useConnectionStatus } from "../components/ConnectBanner";
@@ -13,6 +13,7 @@ import { ComposeModal } from "../components/email/ComposeModal";
 import { ThreadPane } from "../components/email/ThreadPane";
 import { Icon } from "../components/Icon";
 import { useKeybinding } from "../contexts/KeybindingContext";
+import { UnsubscribeSweepModal } from "../components/UnsubscribeSweepModal";
 
 // ── Main InboxPage ─────────────────────────────────────────────────────────────
 export function InboxPage() {
@@ -26,6 +27,8 @@ export function InboxPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const searchRef = useRef<HTMLInputElement>(null);
   const canWrite = hasFeature("email_write");
+  // Feature C2 — unsubscribe sweep modal toggle.
+  const [unsubOpen, setUnsubOpen] = useState(false);
 
   // Keyboard shortcuts: "/" focuses search, "c" opens compose.
   useKeybinding("inbox.focusSearch", () => {
@@ -36,9 +39,10 @@ export function InboxPage() {
     if (canWrite) setComposing(true);
   });
   // Gmail category tabs (Primary / Social / Promotions / Updates / Forums) with
-  // pseudo-categories "all" and "unread" prepended for convenience.
+  // pseudo-categories "all" and "unread" prepended for convenience, plus the
+  // AI-driven "Reply Needed" view (Feature A2) backed by Corsair's local DB.
   const [filter, setFilter] = useState<
-    "all" | "unread" | "primary" | "social" | "promotions" | "updates" | "forums"
+    "all" | "unread" | "reply_needed" | "primary" | "social" | "promotions" | "updates" | "forums"
   >("all");
   const [serverSearch, setServerSearch] = useState(""); // debounced server search
 
@@ -48,6 +52,31 @@ export function InboxPage() {
   const [aiResults, setAiResults] = useState<AiSearchResult[] | null>(null);
   const [aiSearchBusy, setAiSearchBusy] = useState(false);
   const [aiSearchHint, setAiSearchHint] = useState<string | null>(null);
+
+  // ── Feature A2 — Reply-needed view ───────────────────────────────────────
+  const [replyNeeded, setReplyNeeded] = useState<ReplyNeededThread[]>([]);
+  const [replyNeededLoading, setReplyNeededLoading] = useState(false);
+  useEffect(() => {
+    if (filter !== "reply_needed") return;
+    let cancelled = false;
+    setReplyNeededLoading(true);
+    emailApi
+      .replyNeeded(50)
+      .then((r) => { if (!cancelled) setReplyNeeded(r.threads); })
+      .catch(() => { if (!cancelled) setReplyNeeded([]); })
+      .finally(() => { if (!cancelled) setReplyNeededLoading(false); });
+    return () => { cancelled = true; };
+  }, [filter]);
+  // Keep a small cached count so other tabs can show the badge without a fetch.
+  useEffect(() => {
+    let cancelled = false;
+    emailApi
+      .replyNeeded(50)
+      .then((r) => { if (!cancelled) setReplyNeeded(r.threads); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function runAiSearch(q: string) {
     if (!q.trim()) { setAiResults(null); setAiSearchHint(null); return; }
@@ -241,6 +270,7 @@ export function InboxPage() {
   const CATEGORY_LABEL: Record<typeof filter, string | null> = {
     all: null,
     unread: null,
+    reply_needed: null,
     primary: "CATEGORY_PERSONAL",
     social: "CATEGORY_SOCIAL",
     promotions: "CATEGORY_PROMOTIONS",
@@ -287,9 +317,37 @@ export function InboxPage() {
       })
     : [];
 
-  const displayList: Array<EmailThread & { similarity?: number }> = aiSearchOn && aiResults
-    ? aiOrdered
-    : filtered;
+  // Reply-needed override: pull thread metadata from the dedicated API
+  // (Corsair's local DB tells us "last message is from them, no reply").
+  // Falls back to subject/from from the API row so we render the list even
+  // before the regular /threads list has loaded.
+  const replyOrdered: Array<EmailThread & { similarity?: number; urgency?: number; daysWaiting?: number }> =
+    filter === "reply_needed"
+      ? replyNeeded.map((r) => {
+          const existing = threads.find((t) => t.id === r.threadId);
+          if (existing) return { ...existing, urgency: r.urgency, daysWaiting: r.daysWaiting };
+          return {
+            id: r.threadId,
+            tenantId: "",
+            ownerUserId: "",
+            subject: r.subject,
+            snippet: r.snippet,
+            from: r.from,
+            updatedAt: r.lastInboundAt,
+            isUnread: r.labelIds.includes("UNREAD"),
+            labelIds: r.labelIds,
+            urgency: r.urgency,
+            daysWaiting: r.daysWaiting,
+          };
+        })
+      : [];
+
+  const displayList: Array<EmailThread & { similarity?: number; urgency?: number; daysWaiting?: number }> =
+    filter === "reply_needed"
+      ? replyOrdered
+      : aiSearchOn && aiResults
+      ? aiOrdered
+      : filtered;
 
   const unreadCount = threads.filter((t) => t.isUnread).length;
 
@@ -312,27 +370,38 @@ export function InboxPage() {
                 <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold" style={{ background: "var(--c-primary)", color: "var(--c-on-primary)" }}>{unreadCount}</span>
               )}
             </div>
-            <button
-              onClick={() => canWrite && setComposing(true)}
-              disabled={!canWrite}
-              title={canWrite ? undefined : "Send Email feature is disabled — request access in Profile"}
-              className="btn-primary py-2 px-4 text-xs disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Icon name={canWrite ? "edit" : "lock"} className="text-sm" />
-              Compose
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setUnsubOpen(true)}
+                title="Find newsletters and unsubscribe in one click"
+                className="btn-secondary py-2 px-3 text-xs flex items-center gap-1.5"
+              >
+                <Icon name="cleaning_services" className="text-sm" />
+                Cleanup
+              </button>
+              <button
+                onClick={() => canWrite && setComposing(true)}
+                disabled={!canWrite}
+                title={canWrite ? undefined : "Send Email feature is disabled — request access in Profile"}
+                className="btn-primary py-2 px-4 text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Icon name={canWrite ? "edit" : "lock"} className="text-sm" />
+                Compose
+              </button>
+            </div>
           </div>
           {/* Filter tabs — Gmail-style category tabs */}
           <div className="flex gap-1.5 mb-3 flex-wrap">
             {(
               [
-                { key: "all",        label: "All",        icon: "all_inbox" },
-                { key: "unread",     label: "Unread",     icon: "mark_email_unread" },
-                { key: "primary",    label: "Primary",    icon: "inbox" },
-                { key: "social",     label: "Social",     icon: "group" },
-                { key: "promotions", label: "Promotions", icon: "local_offer" },
-                { key: "updates",    label: "Updates",    icon: "info" },
-                { key: "forums",     label: "Forums",     icon: "forum" },
+                { key: "all",          label: "All",          icon: "all_inbox" },
+                { key: "unread",       label: "Unread",       icon: "mark_email_unread" },
+                { key: "reply_needed", label: "Reply needed", icon: "hourglass" },
+                { key: "primary",      label: "Primary",      icon: "inbox" },
+                { key: "social",       label: "Social",       icon: "group" },
+                { key: "promotions",   label: "Promotions",   icon: "local_offer" },
+                { key: "updates",      label: "Updates",      icon: "info" },
+                { key: "forums",       label: "Forums",       icon: "forum" },
               ] as const
             ).map((f) => (
               <button
@@ -345,7 +414,11 @@ export function InboxPage() {
                   : { background: "transparent", color: "var(--c-on-surface-variant)", border: "1px solid var(--c-outline-variant)" }}
               >
                 <Icon name={f.icon} className="text-[14px]" />
-                {f.key === "unread" && unreadCount > 0 ? `${f.label} (${unreadCount})` : f.label}
+                {f.key === "unread" && unreadCount > 0
+                  ? `${f.label} (${unreadCount})`
+                  : f.key === "reply_needed" && replyNeeded.length > 0
+                    ? `${f.label} (${replyNeeded.length})`
+                    : f.label}
               </button>
             ))}
           </div>
@@ -437,6 +510,8 @@ export function InboxPage() {
           {displayList.map((thread) => {
             const isActive = selected?.id === thread.id;
             const sim = thread.similarity;
+            const urgency = thread.urgency;
+            const daysWaiting = thread.daysWaiting;
             return (
               <button key={thread.id} onClick={() => openThread(thread)}
                 className="w-full text-left p-4 rounded-xl transition-all duration-150 relative overflow-hidden"
@@ -459,6 +534,27 @@ export function InboxPage() {
                         {Math.round(sim * 100)}%
                       </span>
                     )}
+                    {urgency !== undefined && urgency >= 2 && (
+                      <span
+                        className="px-1 rounded text-[9px] font-bold uppercase"
+                        style={{
+                          background: urgency === 3 ? "var(--c-error-container)" : "color-mix(in srgb, var(--c-error) 12%, transparent)",
+                          color: "var(--c-error)",
+                        }}
+                        title={urgency === 3 ? "Urgent" : "High priority"}
+                      >
+                        {urgency === 3 ? "URGENT" : "PRIORITY"}
+                      </span>
+                    )}
+                    {daysWaiting !== undefined && daysWaiting >= 1 && (
+                      <span
+                        className="px-1 rounded text-[9px] font-bold"
+                        style={{ background: "var(--c-surface-container-high)", color: "var(--c-on-surface-variant)" }}
+                        title={`Waiting ${daysWaiting} day${daysWaiting === 1 ? "" : "s"}`}
+                      >
+                        {daysWaiting}d
+                      </span>
+                    )}
                     {new Date(thread.updatedAt).toLocaleDateString()}
                   </span>
                 </div>
@@ -469,6 +565,11 @@ export function InboxPage() {
               </button>
             );
           })}
+          {filter === "reply_needed" && !replyNeededLoading && replyOrdered.length === 0 && (
+            <div className="text-center py-8 text-xs italic" style={{ color: "var(--c-on-surface-variant)" }}>
+              🎉 Inbox zero on replies — nothing waiting on you.
+            </div>
+          )}
         </div>
       </div>
 
@@ -494,6 +595,7 @@ export function InboxPage() {
       </div>
 
       {composing && <ComposeModal onClose={() => { setComposing(false); refetch(); }} canAiCompose={canWrite && hasFeature("ai_compose")} />}
+      {unsubOpen && <UnsubscribeSweepModal onClose={() => setUnsubOpen(false)} />}
     </div>
   );
 }

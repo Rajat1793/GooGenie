@@ -34,6 +34,8 @@ export const users = pgTable(
     clerkUserId: varchar("clerk_user_id", { length: 128 }),
     /** bcrypt hash — only set for admin/manager local-login accounts */
     passwordHash: text("password_hash"),
+    /** Per-user JSON settings bag (toggles like { autoCategorize: true }). */
+    settings: jsonb("settings").$type<Record<string, unknown>>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
