@@ -449,58 +449,68 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ── Product suite (4 cards) ────────────────────────────────────── */}
+      {/* ── Product suite (4 cards) ──────────────────────────────────────
+       * Layout mirrors the Inbox / Calendar deep-dive sections below:
+       *   heading text in a sticky left column, content cards on the right.
+       * Keeps a consistent rhythm down the page instead of breaking it with
+       * a centered hero between two split sections. */}
       <section className="max-w-7xl mx-auto px-6 py-24 md:py-32">
-        <div className="text-center mb-16">
-          <SectionHead
-            eyebrow="The Suite"
-            title="One workspace. Four superpowers."
-            subtitle="GooGenie groups every capability into four product surfaces — the moment you sign in, your inbox already knows what matters." p={p}
-          />
-          {/* Center the SectionHead */}
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          {[
-            { icon: "inbox", label: "Inbox", desc: "Triage, sender insights, OOO detection, newsletter cleanup", href: "#inbox", color: "#4F46E5" },
-            { icon: "event_available", label: "Calendar", desc: "AI briefs, smart reschedule, schedule-from-email, gap finder", href: "#calendar", color: "#0EA5E9" },
-            { icon: "auto_awesome", label: "AI Tools", desc: "Task extractor, inline commands, daily digest, schedule send", href: "#productivity", color: "#F59E0B" },
-            { icon: "shield_person", label: "Team Controls", desc: "RBAC, feature requests, audit log, manager grants", href: "#tiers", color: "#10B981" },
-          ].map((card) => (
-            <a
-              key={card.label}
-              href={card.href}
-              className="rounded-2xl p-6 flex flex-col gap-4 transition-transform hover:-translate-y-1"
-              style={{
-                background: p.card,
-                border: `1px solid ${p.border}`,
-                boxShadow: theme === "dark" ? "0 1px 3px rgba(0,0,0,0.4)" : "0 1px 3px rgba(15,17,21,0.04)",
-              }}
-            >
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
-                style={{ background: `${card.color}22`, color: card.color }}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-14 items-start">
+          <div className="lg:sticky lg:top-24">
+            <SectionHead
+              eyebrow="The Suite"
+              title="One workspace. Four superpowers."
+              subtitle="GooGenie groups every capability into four product surfaces — the moment you sign in, your inbox already knows what matters." p={p}
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {[
+              { icon: "inbox", label: "Inbox", desc: "Triage, sender insights, OOO detection, newsletter cleanup", href: "#inbox", color: "#4F46E5" },
+              { icon: "event_available", label: "Calendar", desc: "AI briefs, smart reschedule, schedule-from-email, gap finder", href: "#calendar", color: "#0EA5E9" },
+              { icon: "auto_awesome", label: "AI Tools", desc: "Task extractor, inline commands, daily digest, schedule send", href: "#productivity", color: "#F59E0B" },
+              { icon: "shield_person", label: "Team Controls", desc: "RBAC, feature requests, audit log, manager grants", href: "#tiers", color: "#10B981" },
+            ].map((card) => (
+              <a
+                key={card.label}
+                href={card.href}
+                className="rounded-2xl p-6 flex flex-col gap-4 transition-transform hover:-translate-y-1"
+                style={{
+                  background: p.card,
+                  border: `1px solid ${p.border}`,
+                  boxShadow: theme === "dark" ? "0 1px 3px rgba(0,0,0,0.4)" : "0 1px 3px rgba(15,17,21,0.04)",
+                }}
               >
-                <Icon name={card.icon} className="text-[24px]" />
-              </div>
-              <div>
-                <h3 className="text-[22px] font-semibold tracking-tight mb-1.5" style={{ fontFamily: FONT_DISPLAY, color: p.ink }}>
-                  {card.label}
-                </h3>
-                <p className="text-[14px] leading-snug" style={{ color: p.muted }}>
-                  {card.desc}
-                </p>
-              </div>
-              <span className="flex items-center gap-1 text-[13px] font-semibold mt-auto" style={{ color: p.ink }}>
-                Explore <Icon name="arrow_forward" className="text-[16px]" />
-              </span>
-            </a>
-          ))}
+                <div
+                  className="w-12 h-12 rounded-xl flex items-center justify-center"
+                  style={{ background: `${card.color}22`, color: card.color }}
+                >
+                  <Icon name={card.icon} className="text-[24px]" />
+                </div>
+                <div>
+                  <h3 className="text-[22px] font-semibold tracking-tight mb-1.5" style={{ fontFamily: FONT_DISPLAY, color: p.ink }}>
+                    {card.label}
+                  </h3>
+                  <p className="text-[14px] leading-snug" style={{ color: p.muted }}>
+                    {card.desc}
+                  </p>
+                </div>
+                <span className="flex items-center gap-1 text-[13px] font-semibold mt-auto" style={{ color: p.ink }}>
+                  Explore <Icon name="arrow_forward" className="text-[16px]" />
+                </span>
+              </a>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* ── INBOX deep dive ────────────────────────────────────────────── */}
       <section id="inbox" className="py-24 md:py-32" style={{ background: p.surfaceAlt }}>
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-2 gap-14 items-start">
+          <ul className="divide-y" style={{ background: p.card, borderRadius: "1rem", border: `1px solid ${p.border}`, padding: "0 1.25rem" }}>
+            {inboxFeatures.map((f) => (
+              <FeatureLine key={f.key} f={f} p={p} />
+            ))}
+          </ul>
           <div className="lg:sticky lg:top-24">
             <SectionHead
               eyebrow="Inbox"
@@ -521,23 +531,16 @@ export function LandingPage() {
               </span>
             </div>
           </div>
-          <ul className="divide-y" style={{ background: p.card, borderRadius: "1rem", border: `1px solid ${p.border}`, padding: "0 1.25rem" }}>
-            {inboxFeatures.map((f) => (
-              <FeatureLine key={f.key} f={f} p={p} />
-            ))}
-          </ul>
         </div>
       </section>
 
-      {/* ── CALENDAR deep dive ─────────────────────────────────────────── */}
+      {/* ── CALENDAR deep dive ─────────────────────────────────────────
+       * Text-left / content-right, matching Inbox. The right column includes
+       * a compact calendar preview above the feature list so the section is
+       * taller than the sticky copy and the sticky behavior has room to work. */}
       <section id="calendar" className="py-24 md:py-32">
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-2 gap-14 items-start">
-          <ul className="lg:order-2 divide-y" style={{ background: p.card, borderRadius: "1rem", border: `1px solid ${p.border}`, padding: "0 1.25rem" }}>
-            {calendarFeatures.map((f) => (
-              <FeatureLine key={f.key} f={f} p={p} />
-            ))}
-          </ul>
-          <div className="lg:order-1 lg:sticky lg:top-24">
+          <div className="lg:sticky lg:top-24">
             <SectionHead
               eyebrow="Calendar"
               title="Meetings that schedule themselves."
@@ -557,18 +560,93 @@ export function LandingPage() {
               </span>
             </div>
           </div>
+          <div className="flex flex-col gap-5">
+            <div
+              className="rounded-2xl p-5"
+              style={{ background: p.card, border: `1px solid ${p.border}` }}
+            >
+              <div className="flex items-center justify-between gap-4 mb-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: p.accent }}>
+                    Calendar preview
+                  </p>
+                  <p className="text-[13px] mt-1" style={{ color: p.muted }}>
+                    A quick glance at the scheduling context this section handles.
+                  </p>
+                </div>
+                <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: p.muted }}>
+                  Today
+                </span>
+              </div>
+              <div className="space-y-3">
+                {[
+                  { time: "9:00", title: "1:1 with Maya", note: "Needs a new slot" },
+                  { time: "11:30", title: "Client review", note: "Brief + travel gap" },
+                  { time: "3:00", title: "Team sync", note: "Auto-reschedule ready" },
+                ].map((item) => (
+                  <div key={item.time} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ background: p.surfaceAlt }}>
+                    <div className="w-12 shrink-0 text-[12px] font-semibold" style={{ color: p.ink }}>
+                      {item.time}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[13px] font-semibold leading-tight" style={{ color: p.ink }}>
+                        {item.title}
+                      </p>
+                      <p className="text-[12px] leading-tight" style={{ color: p.muted }}>
+                        {item.note}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <ul className="divide-y" style={{ background: p.card, borderRadius: "1rem", border: `1px solid ${p.border}`, padding: "0 1.25rem" }}>
+              {calendarFeatures.map((f) => (
+                <FeatureLine key={f.key} f={f} p={p} />
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 
-      {/* ── AI PRODUCTIVITY deep dive ──────────────────────────────────── */}
-      <section id="productivity" className="py-24 md:py-32" style={{ background: p.dark, color: p.darkInk }}>
+      {/* ── AI PRODUCTIVITY deep dive ──────────────────────────────────
+       * Theme-aware section (no forced dark band) so light and dark modes
+       * stay visually consistent. The /improve demo card lives in the RIGHT
+       * column so the left column stays short enough for sticky to work. */}
+      <section id="productivity" className="py-24 md:py-32" style={{ background: p.surfaceAlt }}>
         <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-2 gap-14 items-start">
+          {/* Left column: demo mock + feature list */}
+          <div className="flex flex-col gap-6">
+            {/* Mock /improve command — always dark terminal-style for readability
+             * (looks like a real code editor in both themes). */}
+            <div
+              className="rounded-xl p-5 font-mono text-[13px] leading-relaxed"
+              style={{ background: p.dark, border: `1px solid ${p.border}`, color: "rgba(255,255,255,0.85)" }}
+            >
+              <p style={{ color: "rgba(255,255,255,0.45)" }}>compose</p>
+              <p className="mt-2">hey can u send me the file thx</p>
+              <p className="mt-1" style={{ color: p.accent }}>/improve <span style={{ color: "rgba(255,255,255,0.4)" }}>↹</span></p>
+              <p className="mt-3 px-3 py-2 rounded-md" style={{ background: "rgba(233,75,53,0.18)", color: "#F2EFE7" }}>
+                Hi — could you please share the file at your earliest convenience? Thank you!
+              </p>
+            </div>
+
+            {/* Feature list — theme-aware card */}
+            <ul
+              className="divide-y"
+              style={{ background: p.card, borderRadius: "1rem", border: `1px solid ${p.border}`, padding: "0 1.25rem" }}
+            >
+              {productivityFeatures.map((f) => (
+                <FeatureLine key={f.key} f={f} p={p} />
+              ))}
+            </ul>
+          </div>
+
           <div className="lg:sticky lg:top-24">
             <SectionHead
               eyebrow="AI Productivity"
               title="Type / for instant magic."
-              subtitle="Inline slash commands rewrite your draft in place. The Task Extractor mines every inbox sweep for action items. Schedule Send queues an email for the perfect moment. Daily Digest gives you a warm one-paragraph briefing every morning."
-              dark p={p}
+              subtitle="Inline slash commands rewrite your draft in place. The Task Extractor mines every inbox sweep for action items. Schedule Send queues an email for the perfect moment. Daily Digest gives you a warm one-paragraph briefing every morning." p={p}
             />
             <div className="flex items-center gap-3 mt-8">
               <Link
@@ -579,56 +657,10 @@ export function LandingPage() {
                 Activate AI Tools
                 <Icon name="arrow_forward" className="text-[16px]" />
               </Link>
-              <span className="text-[12px] font-semibold uppercase tracking-widest" style={{ color: "rgba(242,239,231,0.6)" }}>
+              <span className="text-[12px] font-semibold uppercase tracking-widest" style={{ color: p.accent }}>
                 3 premium · 2 included
               </span>
             </div>
-
-            {/* Mock /improve command */}
-            <div
-              className="mt-10 rounded-xl p-5 font-mono text-[13px] leading-relaxed"
-              style={{ background: p.darkPanel, border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.85)" }}
-            >
-              <p style={{ color: "rgba(255,255,255,0.45)" }}>compose</p>
-              <p className="mt-2">hey can u send me the file thx</p>
-              <p className="mt-1" style={{ color: p.accent }}>/improve <span style={{ color: "rgba(255,255,255,0.4)" }}>↹</span></p>
-              <p className="mt-3 px-3 py-2 rounded-md" style={{ background: "rgba(233,75,53,0.1)", color: p.darkInk }}>
-                Hi — could you please share the file at your earliest convenience? Thank you!
-              </p>
-            </div>
-          </div>
-
-          {/* Card list, dark variant */}
-          <div
-            className="divide-y"
-            style={{ background: p.darkPanel, borderRadius: "1rem", border: "1px solid rgba(255,255,255,0.08)", padding: "0 1.25rem" }}
-          >
-            {productivityFeatures.map((f) => (
-              <li key={f.key} className="flex items-start gap-3 py-3 list-none">
-                <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-                  style={{
-                    background: f.tier === "addon" ? "rgba(233,75,53,0.15)" : "rgba(255,255,255,0.06)",
-                    color: f.tier === "addon" ? p.accent : p.darkInk,
-                  }}
-                >
-                  <Icon name={f.icon} className="text-[18px]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-[14px]" style={{ color: p.darkInk }}>{f.label}</span>
-                    {f.tier === "addon" ? (
-                      <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full" style={{ background: p.accent, color: "white" }}>Premium</span>
-                    ) : (
-                      <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.08)", color: p.darkInk }}>Included</span>
-                    )}
-                  </div>
-                  {f.description && (
-                    <p className="text-[13px] leading-snug mt-0.5" style={{ color: "rgba(242,239,231,0.65)" }}>{f.description}</p>
-                  )}
-                </div>
-              </li>
-            ))}
           </div>
         </div>
       </section>
@@ -753,8 +785,11 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ── Manifesto ──────────────────────────────────────────────────── */}
-      <section className="py-24 md:py-32" style={{ background: p.ink, color: p.darkInk }}>
+      {/* ── Manifesto ──────────────────────────────────────────────────
+       * Theme-aware: in light mode it renders on the cream surfaceAlt with
+       * ink text; in dark mode it renders on the dark surfaceAlt with cream
+       * text. Same statement, same hierarchy, consistent across both themes. */}
+      <section className="py-24 md:py-32" style={{ background: p.surfaceAlt, color: p.ink }}>
         <div className="max-w-4xl mx-auto px-6 text-center">
           <p
             className="text-[11px] font-semibold uppercase tracking-[0.2em] mb-6"
@@ -764,28 +799,28 @@ export function LandingPage() {
           </p>
           <h2
             className="text-[36px] md:text-[56px] leading-[1.1] tracking-tight font-semibold mb-8"
-            style={{ fontFamily: FONT_DISPLAY }}
+            style={{ fontFamily: FONT_DISPLAY, color: p.ink }}
           >
             AI that earns its keep — and never spends your tokens without permission.
           </h2>
-          <p className="text-[18px] leading-[1.65] max-w-2xl mx-auto" style={{ color: "rgba(242,239,231,0.75)" }}>
+          <p className="text-[18px] leading-[1.65] max-w-2xl mx-auto" style={{ color: p.muted }}>
             We split GooGenie into two halves on purpose. The local half — triage,
             insights, follow-ups, gap-finding — is yours forever, no token meter.
             The AI half — drafts, briefs, classifiers, digests — is gated by a
             simple manager-approval flow. Your team controls what fires. You stay
             in the loop. Your bill stays sane.
           </p>
-          <div className="mt-12 flex flex-wrap items-center justify-center gap-3 text-[13px]">
-            <span className="px-4 py-2 rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
+          <div className="mt-12 flex flex-wrap items-center justify-center gap-3 text-[13px]" style={{ color: p.ink }}>
+            <span className="px-4 py-2 rounded-full" style={{ background: p.card, border: `1px solid ${p.border}` }}>
               ✓ {basicCount} features free
             </span>
-            <span className="px-4 py-2 rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
+            <span className="px-4 py-2 rounded-full" style={{ background: p.card, border: `1px solid ${p.border}` }}>
               ✓ Per-user feature requests
             </span>
-            <span className="px-4 py-2 rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
+            <span className="px-4 py-2 rounded-full" style={{ background: p.card, border: `1px solid ${p.border}` }}>
               ✓ Full audit trail
             </span>
-            <span className="px-4 py-2 rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
+            <span className="px-4 py-2 rounded-full" style={{ background: p.card, border: `1px solid ${p.border}` }}>
               ✓ Tenant-scoped OAuth (KEK-encrypted)
             </span>
           </div>
