@@ -3,7 +3,7 @@
  * "send later" feature. The poller in apps/web/instrumentation.ts picks
  * `queued` rows whose `send_at <= now()` and flushes them via Gmail.
  */
-import { eq, and, lt, asc, sql } from "drizzle-orm";
+import { eq, and, lt, asc, sql, inArray } from "drizzle-orm";
 import { db } from "./client";
 import { scheduledEmails } from "./schema";
 
@@ -72,7 +72,7 @@ export async function listUserScheduledEmails(
     .where(
       and(
         eq(scheduledEmails.userId, userId),
-        sql`${scheduledEmails.status} = ANY(${statuses})`,
+        inArray(scheduledEmails.status, statuses),
       ),
     )
     .orderBy(asc(scheduledEmails.sendAt));

@@ -15,6 +15,8 @@ import { getErrorMessage } from "../../lib/errors";import { PageHeader } from ".
 import { Card } from "../../components/Card";
 import { BookingLinksPanel } from "../../components/BookingLinksPanel";
 import { AutoCategorizePanel } from "../../components/AutoCategorizePanel";
+import { ScheduledEmailsPanel } from "../../components/ScheduledEmailsPanel";
+import { DigestPanel } from "../../components/DigestPanel";
 import { RoleBadge } from "../../components/RoleBadge";
 import { DataState } from "../../components/DataState";
 import { formatActivity, activityIcon } from "../../lib/formatActivity";
@@ -490,6 +492,13 @@ export function UserProfilePage() {
         </div>
       )}
 
+      {/* Feature: daily_digest — "what's on my plate" widget */}
+      {hasFeature("daily_digest") && (
+        <div className="mb-6">
+          <DigestPanel />
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Feature access */}
         <Card
@@ -583,6 +592,7 @@ export function UserProfilePage() {
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <BookingLinksPanel />
         {hasFeature("ai_auto_categorize") && <AutoCategorizePanel />}
+        {hasFeature("schedule_send") && <ScheduledEmailsPanel />}
       </div>
 
       {/* Incoming feature requests (managers + super admins) */}

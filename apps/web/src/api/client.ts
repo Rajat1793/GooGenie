@@ -651,7 +651,32 @@ export const aiApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  // ── Feature: daily_digest — "What's on my plate" ──────────────────────
+  digest: () => apiFetch<DigestResponse>("/v1/me/digest"),
 };
+
+export interface DigestResponse {
+  ai_available: boolean;
+  generated_at: string;
+  summary: string | null;
+  reply_needed: ReplyNeededThread[];
+  upcoming_meetings: Array<{
+    id: string;
+    title: string;
+    starts_at: string;
+    ends_at: string;
+    attendees: string[];
+  }>;
+  tasks: TaskRecord[];
+  pending_requests: Array<{
+    id: number;
+    feature_key: string;
+    requester_user_id: string;
+    created_at: string;
+  }>;
+  model?: string;
+}
 
 export interface ExtractMeetingResponse {
   ai_available: boolean;

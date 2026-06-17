@@ -17,6 +17,8 @@ import { UnsubscribeSweepModal } from "../components/UnsubscribeSweepModal";
 import DailyGapsBanner from "../components/DailyGapsBanner";
 import FollowUpCard from "../components/FollowUpCard";
 import TasksPanel from "../components/TasksPanel";
+import { DigestPanel } from "../components/DigestPanel";
+import { STORAGE_KEYS } from "../lib/storage";
 
 // ── Main InboxPage ─────────────────────────────────────────────────────────────
 export function InboxPage() {
@@ -30,8 +32,27 @@ export function InboxPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const searchRef = useRef<HTMLInputElement>(null);
   const canWrite = hasFeature("email_write");
+  const canSplitView = hasFeature("split_inbox_view");
   // Feature C2 — unsubscribe sweep modal toggle.
   const [unsubOpen, setUnsubOpen] = useState(false);
+
+  // Layout: "split" (default) shows list + reading pane side-by-side; "stacked"
+  // hides the right pane until a thread is selected, then renders it modal-style.
+  // Persisted in localStorage so the user's preference survives reloads.
+  const [layout, setLayout] = useState<"split" | "stacked">("split");
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem(STORAGE_KEYS.inboxLayout) as "split" | "stacked" | null;
+    if (saved === "split" || saved === "stacked") setLayout(saved);
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(STORAGE_KEYS.inboxLayout, layout);
+  }, [layout]);
+
+  // Focused-but-not-yet-opened index for j/k navigation. The user can step
+  // through the list with j/k and press Enter to open the focused thread.
+  const [focusedIdx, setFocusedIdx] = useState<number>(-1);
 
   // Keyboard shortcuts: "/" focuses search, "c" opens compose.
   useKeybinding("inbox.focusSearch", () => {
@@ -354,10 +375,47 @@ export function InboxPage() {
 
   const unreadCount = threads.filter((t) => t.isUnread).length;
 
+  // j/k navigation + Enter to open + Shift+S to toggle layout.
+  // Note: these are declared AFTER displayList/setSelected so they can read
+  // the latest state via closures captured each render.
+  useKeybinding("inbox.nextThread", () => {
+    if (displayList.length === 0) return;
+    setFocusedIdx((cur) => {
+      const next = Math.min((cur < 0 ? -1 : cur) + 1, displayList.length - 1);
+      const t = displayList[next];
+      if (t) openThread(t);
+      return next;
+    });
+  });
+  useKeybinding("inbox.prevThread", () => {
+    if (displayList.length === 0) return;
+    setFocusedIdx((cur) => {
+      const next = Math.max((cur < 0 ? displayList.length : cur) - 1, 0);
+      const t = displayList[next];
+      if (t) openThread(t);
+      return next;
+    });
+  });
+  useKeybinding("inbox.openThread", () => {
+    if (focusedIdx >= 0 && focusedIdx < displayList.length) {
+      openThread(displayList[focusedIdx]);
+    } else if (displayList[0]) {
+      setFocusedIdx(0);
+      openThread(displayList[0]);
+    }
+  });
+  useKeybinding("inbox.toggleLayout", () => {
+    if (!canSplitView) return;
+    setLayout((cur) => (cur === "split" ? "stacked" : "split"));
+  });
+
   return (
     <div className="flex h-[calc(100vh-112px)] -mx-8 -my-8 overflow-hidden">
       {/* ── Thread list ── */}
-      <div className="w-[380px] flex flex-col shrink-0" style={{ background: "var(--c-surface-container-low)", borderRight: "1px solid var(--c-outline-variant)" }}>
+      <div
+        className={`flex flex-col shrink-0 ${layout === "stacked" ? "flex-1" : "w-[380px]"}`}
+        style={{ background: "var(--c-surface-container-low)", borderRight: "1px solid var(--c-outline-variant)" }}
+      >
         <div className="px-6 pt-4 pb-3">
           {/* Always-visible connection bar */}
           <ConnectionBar
@@ -374,6 +432,16 @@ export function InboxPage() {
               )}
             </div>
             <div className="flex items-center gap-2">
+              {canSplitView && (
+                <button
+                  onClick={() => setLayout((cur) => (cur === "split" ? "stacked" : "split"))}
+                  title={`Switch to ${layout === "split" ? "stacked" : "split"} layout (Shift+S)`}
+                  className="btn-ghost py-2 px-2 text-xs flex items-center"
+                  aria-label="Toggle inbox layout"
+                >
+                  <Icon name={layout === "split" ? "splitscreen" : "view_agenda"} className="text-base" />
+                </button>
+              )}
               {hasFeature("ai_unsubscribe_sweep") && (
                 <button
                   onClick={() => setUnsubOpen(true)}
@@ -514,15 +582,22 @@ export function InboxPage() {
               )}
             </div>
           )}
-          {displayList.map((thread) => {
+          {displayList.map((thread, idx) => {
             const isActive = selected?.id === thread.id;
+            const isFocused = focusedIdx === idx && !isActive;
             const sim = thread.similarity;
             const urgency = thread.urgency;
             const daysWaiting = thread.daysWaiting;
             return (
-              <button key={thread.id} onClick={() => openThread(thread)}
+              <button key={thread.id} onClick={() => { setFocusedIdx(idx); openThread(thread); }}
                 className="w-full text-left p-4 rounded-xl transition-all duration-150 relative overflow-hidden"
-                style={isActive ? { background: "var(--c-surface-container-high)", borderLeft: "3px solid var(--c-primary)", paddingLeft: "13px" } : { borderLeft: "3px solid transparent" }}>
+                style={
+                  isActive
+                    ? { background: "var(--c-surface-container-high)", borderLeft: "3px solid var(--c-primary)", paddingLeft: "13px" }
+                    : isFocused
+                    ? { background: "color-mix(in srgb, var(--c-primary) 5%, transparent)", borderLeft: "3px solid color-mix(in srgb, var(--c-primary) 40%, transparent)", paddingLeft: "13px" }
+                    : { borderLeft: "3px solid transparent" }
+                }>
                 {/* Unread dot */}
                 {thread.isUnread && (
                   <div className="absolute top-4 right-3 w-2 h-2 rounded-full" style={{ background: "var(--c-primary)" }} />
@@ -581,39 +656,72 @@ export function InboxPage() {
       </div>
 
       {/* ── Thread detail ── */}
-      <div className="flex-1 overflow-hidden">
-        {selected ? (
-          <ThreadPane
-            thread={selected}
-            onClose={() => setSelected(null)}
-            onMarkRead={markLocalRead}
-            onTrash={(id) => trashMut.mutate(id)}
-            canWrite={canWrite}
-            canSummarize={hasFeature("ai_summary")}
-            canAiCompose={canWrite && hasFeature("ai_compose")}
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-4 px-8 overflow-y-auto py-8" style={{ color: "var(--c-on-surface-variant)" }}>
-            <div className="w-full max-w-2xl space-y-4">
-              {/* Feature B5 — Daily gaps banner */}
-              {hasFeature("ai_daily_gaps") && <DailyGapsBanner />}
+      {/* In SPLIT layout: always show the right pane (selected thread or empty
+          state with digest panels). In STACKED layout: only show the right pane
+          when a thread is selected, and overlay it across the full window. */}
+      {layout === "split" ? (
+        <div className="flex-1 overflow-hidden">
+          {selected ? (
+            <ThreadPane
+              thread={selected}
+              onClose={() => setSelected(null)}
+              onMarkRead={markLocalRead}
+              onTrash={(id) => trashMut.mutate(id)}
+              canWrite={canWrite}
+              canSummarize={hasFeature("ai_summary")}
+              canAiCompose={canWrite && hasFeature("ai_compose")}
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full gap-4 px-8 overflow-y-auto py-8" style={{ color: "var(--c-on-surface-variant)" }}>
+              <div className="w-full max-w-2xl space-y-4">
+                {/* Feature: daily_digest — "what's on my plate" */}
+                {hasFeature("daily_digest") && <DigestPanel />}
 
-              {/* Feature C1 — Email-to-task extractor */}
-              {hasFeature("ai_task_extractor") && <TasksPanel />}
+                {/* Feature B5 — Daily gaps banner */}
+                {hasFeature("ai_daily_gaps") && <DailyGapsBanner />}
 
-              {/* Feature B4 — Follow-up tracker card */}
-              {hasFeature("ai_follow_up_tracker") && <FollowUpCard />}
+                {/* Feature C1 — Email-to-task extractor */}
+                {hasFeature("ai_task_extractor") && <TasksPanel />}
 
-              {/* Default empty state */}
-              <div className="flex flex-col items-center justify-center gap-4 py-12">
-                <Icon name="inbox" className="text-6xl" style={{ opacity: 0.3 }} />
-                <p className="font-headline text-2xl" style={{ color: "var(--c-on-surface-variant)" }}>Select a conversation</p>
-                <p className="text-sm">Click any thread to read it</p>
+                {/* Feature B4 — Follow-up tracker card */}
+                {hasFeature("ai_follow_up_tracker") && <FollowUpCard />}
+
+                {/* Default empty state */}
+                <div className="flex flex-col items-center justify-center gap-4 py-12">
+                  <Icon name="inbox" className="text-6xl" style={{ opacity: 0.3 }} />
+                  <p className="font-headline text-2xl" style={{ color: "var(--c-on-surface-variant)" }}>Select a conversation</p>
+                  <p className="text-sm">Click any thread to read it</p>
+                </div>
               </div>
             </div>
+          )}
+        </div>
+      ) : (
+        // Stacked layout: thread pane overlays the list when one is open.
+        selected && (
+          <div
+            className="fixed inset-0 z-40 flex"
+            style={{ background: "rgba(0,0,0,0.4)", backdropFilter: "blur(2px)" }}
+            onClick={() => setSelected(null)}
+          >
+            <div
+              className="ml-auto h-full w-full max-w-3xl flex flex-col shadow-2xl"
+              style={{ background: "var(--c-background)", borderLeft: "1px solid var(--c-outline-variant)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <ThreadPane
+                thread={selected}
+                onClose={() => setSelected(null)}
+                onMarkRead={markLocalRead}
+                onTrash={(id) => trashMut.mutate(id)}
+                canWrite={canWrite}
+                canSummarize={hasFeature("ai_summary")}
+                canAiCompose={canWrite && hasFeature("ai_compose")}
+              />
+            </div>
           </div>
-        )}
-      </div>
+        )
+      )}
 
       {composing && <ComposeModal onClose={() => { setComposing(false); refetch(); }} canAiCompose={canWrite && hasFeature("ai_compose")} />}
       {unsubOpen && <UnsubscribeSweepModal onClose={() => setUnsubOpen(false)} />}

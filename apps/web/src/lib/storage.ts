@@ -18,6 +18,8 @@ export const STORAGE_KEYS = {
   theme: "nimbus-theme",
   /** Calendar view mode: "list" | "month". */
   calendarView: "googenie-calendar-view",
+  /** Inbox layout: "split" | "stacked". */
+  inboxLayout: "googenie-inbox-layout",
   /** User-customised keyboard shortcuts (JSON map of action → key combo). */
   keybindings: "googenie-keybindings",
 } as const;

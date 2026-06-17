@@ -35,6 +35,10 @@ export type KeybindingAction =
   | "nav.org"
   | "inbox.focusSearch"
   | "inbox.compose"
+  | "inbox.nextThread"
+  | "inbox.prevThread"
+  | "inbox.openThread"
+  | "inbox.toggleLayout"
   | "calendar.create"
   | "shortcuts.open";
 
@@ -55,6 +59,10 @@ export const KEYBINDINGS: KeybindingDef[] = [
   { id: "nav.org",            label: "Go to Org Tree",         defaultCombo: "g o" },
   { id: "inbox.focusSearch",  label: "Focus Inbox Search",     defaultCombo: "/" },
   { id: "inbox.compose",      label: "Compose Email",          defaultCombo: "c" },
+  { id: "inbox.nextThread",   label: "Inbox: Next thread",     defaultCombo: "j",       description: "Vim-style: select next thread in the list" },
+  { id: "inbox.prevThread",   label: "Inbox: Previous thread", defaultCombo: "k",       description: "Vim-style: select previous thread in the list" },
+  { id: "inbox.openThread",   label: "Inbox: Open thread",     defaultCombo: "enter",   description: "Open the focused thread in the reading pane" },
+  { id: "inbox.toggleLayout", label: "Inbox: Toggle Split/Stacked", defaultCombo: "shift+s", description: "Switch between split-pane and stacked inbox layout" },
   { id: "calendar.create",    label: "New Calendar Event",     defaultCombo: "n" },
 ];
 
