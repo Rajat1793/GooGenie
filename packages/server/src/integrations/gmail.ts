@@ -1079,3 +1079,70 @@ export async function checkSenderOOO(
     return { isOOO: false, returnDate: null, autoReplySnippet: null };
   }
 }
+
+// ── Feature C4: Compose from past style ──────────────────────────────────────
+
+export interface SentMessageSample {
+  subject: string;
+  snippet: string;
+  body: string;
+  date: string;
+}
+
+/**
+ * Fetch the user's last N messages SENT TO a specific recipient. Used as
+ * style examples for personalized composition (Feature C4).
+ *
+ * Filters Corsair's local cache for messages where:
+ *   - `to` includes the recipient
+ *   - `from` includes the user's own email (or the message has SENT label)
+ */
+export async function fetchSentMessagesTo(
+  tenantId: string,
+  recipientEmail: string,
+  myEmail: string | null,
+  limit = 5,
+): Promise<SentMessageSample[]> {
+  if (!isCorsairConfigured() || !recipientEmail) return [];
+  try {
+    const tenant = corsair.withTenant(tenantId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const t = tenant as any;
+    const rows = await t.gmail.db.messages.search({
+      data: { to: { contains: recipientEmail } },
+      orderBy: { internalDate: "desc" },
+      limit: limit * 4,
+    }).catch(() => [] as unknown[]);
+    if (!Array.isArray(rows) || rows.length === 0) return [];
+
+    type Row = {
+      from?: string;
+      to?: string;
+      subject?: string;
+      snippet?: string;
+      body?: string;
+      internalDate?: string | number;
+      labelIds?: string[];
+    };
+    const lowerMe = myEmail?.toLowerCase() ?? "";
+    const out: SentMessageSample[] = [];
+    for (const r of rows as Row[]) {
+      const labels = r.labelIds ?? [];
+      const fromMe =
+        (lowerMe.length > 0 && (r.from ?? "").toLowerCase().includes(lowerMe)) ||
+        labels.includes("SENT");
+      if (!fromMe) continue;
+      const body = typeof r.body === "string" ? r.body : "";
+      out.push({
+        subject: r.subject || "(no subject)",
+        snippet: (r.snippet ?? "").slice(0, 280),
+        body: stripHtml(body).slice(0, 1500),
+        date: new Date(Number(r.internalDate ?? 0) || Date.now()).toISOString(),
+      });
+      if (out.length >= limit) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}

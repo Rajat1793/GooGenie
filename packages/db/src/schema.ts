@@ -202,3 +202,35 @@ export const bookingLinks = pgTable(
     userIdx: index("booking_links_user_idx").on(table.userId)
   })
 );
+
+/**
+ * AI-extracted tasks (Feature C1 — Email-to-task extractor).
+ *
+ * Daily cron scans recent email via Corsair's local cache, asks Mistral to
+ * extract action items, and writes rows here. The "what's on my plate"
+ * widget queries by user_id WHERE status='open'.
+ */
+export const tasks = pgTable(
+  "tasks",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
+    userId: varchar("user_id", { length: 64 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tenantId: varchar("tenant_id", { length: 64 }).notNull(),
+    threadId: varchar("thread_id", { length: 128 }).notNull(),
+    title: text("title").notNull(),
+    senderEmail: text("sender_email"),
+    /** ISO-8601 string deadline (null when not specified). */
+    deadline: timestamp("deadline", { withTimezone: true }),
+    priority: varchar("priority", { length: 8 }).notNull().default("normal"), // low | normal | high
+    status: varchar("status", { length: 16 }).notNull().default("open"), // open | done | dismissed
+    snippet: text("snippet"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    userIdx: index("tasks_user_idx").on(table.userId, table.status, table.deadline),
+    threadIdx: index("tasks_thread_idx").on(table.userId, table.threadId)
+  })
+);

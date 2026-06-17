@@ -3,6 +3,8 @@ import { z } from "zod";
 import { withApiMiddleware } from "@googenie/server";
 import { validateBody } from "@googenie/server/lib/validateNext";
 import { chat, isAiAvailable, MODEL } from "@googenie/server/integrations/openai";
+import { fetchSentMessagesTo } from "@googenie/server/integrations/gmail";
+import { getCorsairTenant } from "@googenie/server/integrations/corsair-tenant";
 import { getUserById, getUserByClerkId } from "@googenie/db/users";
 import { checkFeature } from "../../_lib/scope";
 
@@ -15,6 +17,8 @@ const composeSchema = z.object({
   context: z.string().max(1000),
   thread_snippet: z.string().max(2000).optional(),
   recipient_name: z.string().max(100).optional(),
+  /** Feature C4 — when set, fetches the user's last messages to this address as style examples. */
+  personalize_for: z.string().email().optional(),
 });
 
 export const POST = withApiMiddleware(async (req, { auth, traceId }) => {
@@ -22,7 +26,7 @@ export const POST = withApiMiddleware(async (req, { auth, traceId }) => {
   if (gate) return gate;
   const parsed = await validateBody(composeSchema, req, { traceId, message: "Invalid compose payload" });
   if (!parsed.ok) return parsed.response;
-  const { type, tone, context, thread_snippet, recipient_name } = parsed.data;
+  const { type, tone, context, thread_snippet, recipient_name, personalize_for } = parsed.data;
 
   if (!isAiAvailable()) {
     return NextResponse.json({ ai_available: false, hint: "Set MISTRAL_API_KEY to enable AI compose." });
@@ -31,6 +35,24 @@ export const POST = withApiMiddleware(async (req, { auth, traceId }) => {
   const dbUser = (await getUserById(auth!.userId)) ?? (await getUserByClerkId(auth!.userId));
   const senderName =
     dbUser?.displayName?.trim() || (dbUser?.email ? dbUser.email.split("@")[0] : null) || null;
+
+  // ── Feature C4: pull style examples from past sent messages to this recipient ──
+  let styleSection = "";
+  let personalizationApplied = false;
+  if (personalize_for) {
+    const tenant = getCorsairTenant(auth!.userId);
+    const samples = await fetchSentMessagesTo(tenant, personalize_for, dbUser?.email ?? null, 5);
+    if (samples.length > 0) {
+      personalizationApplied = true;
+      styleSection = `
+
+The user has previously sent these emails to ${personalize_for}. Match their writing style — greeting/sign-off conventions, sentence length, formality, and any signature quirks:
+---
+${samples.map((s, i) => `Example ${i + 1} (${s.subject}):\n${s.body.slice(0, 500)}`).join("\n\n")}
+---
+`;
+    }
+  }
 
   const toneInstructions: Record<string, string> = {
     professional: "formal, polished, business-appropriate language",
@@ -52,7 +74,7 @@ ${recipient_name ? `To: ${recipient_name}` : ""}`;
   const prompt = `${basePrompt}
 
 Use ${toneInstructions[tone]}.
-
+${styleSection}
 ${senderName
   ? `Sign the email "${senderName}" — DO NOT use placeholders like "[Your Name]", "[Sender Name]", or "[Name]". Use the real name "${senderName}" exactly.`
   : `If the email needs a signature, just use "Best regards" with no name placeholder. NEVER write "[Your Name]" or any bracketed placeholder.`}
@@ -89,5 +111,5 @@ Respond with ONLY valid JSON matching this exact shape:
   result.body = scrub(result.body)!;
   result.alternatives = (result.alternatives ?? []).map((a) => scrub(a)!).filter(Boolean);
 
-  return NextResponse.json({ ...result, model: MODEL, ai_available: true });
+  return NextResponse.json({ ...result, model: MODEL, ai_available: true, personalized: personalizationApplied });
 });

@@ -13,7 +13,8 @@
     "./featureRequests": "./src/featureRequests.ts",
     "./embeddings": "./src/embeddings.ts",
     "./scheduledEmails": "./src/scheduledEmails.ts",
-    "./bookingLinks": "./src/bookingLinks.ts"
+    "./bookingLinks": "./src/bookingLinks.ts",
+    "./tasks": "./src/tasks.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

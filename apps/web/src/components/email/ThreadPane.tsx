@@ -98,11 +98,27 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
     finally { setSummaryLoading(false); }
   }
 
+  // Feature C4 — pull recipient's email from "From" header for style personalization.
+  function senderEmailFromThread(): string | undefined {
+    const raw = thread.from ?? "";
+    const m = /<([^>]+)>/.exec(raw);
+    const candidate = (m ? m[1] : raw.split(",")[0] ?? "").trim();
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate) ? candidate : undefined;
+  }
+
   async function handleAiReply(toneOverride?: AiTone) {
     const useTone = toneOverride ?? aiReplyTone;
     setAiReplyLoading(true);
     try {
-      const r = await aiApi.compose({ type: "reply", tone: useTone, context: thread.subject, thread_snippet: thread.snippet, recipient_name: thread.from });
+      const personalize = senderEmailFromThread();
+      const r = await aiApi.compose({
+        type: "reply",
+        tone: useTone,
+        context: thread.subject,
+        thread_snippet: thread.snippet,
+        recipient_name: thread.from,
+        ...(personalize ? { personalize_for: personalize } : {}),
+      });
       if (r.ai_available && r.body) {
         setReplyBody(r.body);
         setBodyIsAiGenerated(true);
@@ -126,12 +142,14 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
   async function handleQuickReply(intent: string, tone: AiTone) {
     setAiReplyLoading(true);
     try {
+      const personalize = senderEmailFromThread();
       const r = await aiApi.compose({
         type: "reply",
         tone,
         context: `${thread.subject}\n\nUser wants to: ${intent}`,
         thread_snippet: thread.snippet,
         recipient_name: thread.from,
+        ...(personalize ? { personalize_for: personalize } : {}),
       });
       if (r.ai_available && r.body) {
         setReplyBody(r.body);

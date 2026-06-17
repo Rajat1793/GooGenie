@@ -44,6 +44,10 @@ export function CreateEventModal({ onClose, onCreated }: CreateEventModalProps) 
   const [conflicts, setConflicts] = useState<Array<{ start: string; end: string }>>([]);
   const [conflictBusy, setConflictBusy] = useState(false);
 
+  // ── Feature C3 — AI conflict resolver ────────────────────────────────────
+  const [aiResolution, setAiResolution] = useState<import("../../api/client").ConflictResolutionResponse | null>(null);
+  const [aiResolveBusy, setAiResolveBusy] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     if (!date || !startTime || !endTime) { setConflicts([]); return; }
@@ -67,6 +71,8 @@ export function CreateEventModal({ onClose, onCreated }: CreateEventModalProps) 
           return bs < re && be > rs;
         });
         setConflicts(overlapping);
+        // Reset AI resolution whenever conflicts change.
+        setAiResolution(null);
       } catch {
         if (!cancelled) setConflicts([]);
       } finally {
@@ -75,6 +81,31 @@ export function CreateEventModal({ onClose, onCreated }: CreateEventModalProps) 
     }, 450);
     return () => { cancelled = true; clearTimeout(handle); };
   }, [date, startTime, endTime]);
+
+  // Feature C3 — fetch AI resolution suggestion on demand.
+  async function fetchAiResolution() {
+    if (!date || !startTime || !endTime || !title.trim()) return;
+    setAiResolveBusy(true);
+    try {
+      const startsAt = new Date(`${date}T${startTime}`).toISOString();
+      const endsAt = new Date(`${date}T${endTime}`).toISOString();
+      const attendeeList = attendees
+        .split(",")
+        .map((a) => a.trim())
+        .filter(Boolean);
+      const r = await aiApi.checkConflicts({
+        starts_at: startsAt,
+        ends_at: endsAt,
+        title,
+        attendees: attendeeList,
+      });
+      setAiResolution(r);
+    } catch (e) {
+      console.error("AI conflict resolver error:", e);
+    } finally {
+      setAiResolveBusy(false);
+    }
+  }
 
   async function findTime() {
     if (!aiDescription.trim()) { setAiErr("Describe the meeting first"); return; }
@@ -270,6 +301,65 @@ export function CreateEventModal({ onClose, onCreated }: CreateEventModalProps) 
                     Suggest a free slot →
                   </button>
                 )}
+                {/* Feature C3 — Ask AI to resolve the conflict. */}
+                <button
+                  onClick={() => void fetchAiResolution()}
+                  disabled={aiResolveBusy || !title.trim()}
+                  className="mt-1.5 ml-3 underline text-[11px] font-medium disabled:opacity-50"
+                  style={{ color: "var(--c-error)" }}
+                  title={!title.trim() ? "Enter a title first" : "Ask AI which event to keep"}
+                >
+                  {aiResolveBusy ? "Asking AI…" : "✨ Resolve with AI"}
+                </button>
+              </div>
+            </div>
+          )}
+          {/* Feature C3 — AI conflict resolution suggestion panel. */}
+          {aiResolution?.hasConflicts && (
+            <div
+              className="rounded-xl px-3 py-2.5 flex flex-col gap-2 text-xs"
+              style={{
+                background: "color-mix(in srgb, var(--c-tertiary) 8%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--c-tertiary) 25%, transparent)",
+              }}
+            >
+              <div className="flex items-start gap-2">
+                <Icon name="auto_awesome" className="text-base shrink-0 mt-0.5" style={{ color: "var(--c-tertiary)" }} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold mb-1" style={{ color: "var(--c-tertiary)" }}>
+                    AI Suggestion
+                  </p>
+                  {aiResolution.summary && (
+                    <p className="mb-1.5" style={{ color: "var(--c-on-surface)" }}>
+                      {aiResolution.summary}
+                    </p>
+                  )}
+                  {aiResolution.newEventYields ? (
+                    <p style={{ color: "var(--c-on-surface-variant)" }}>
+                      Recommendation: <strong>keep the existing event</strong> and pick a different time for &ldquo;{title}&rdquo;.
+                    </p>
+                  ) : aiResolution.suggestedToMove ? (
+                    <p style={{ color: "var(--c-on-surface-variant)" }}>
+                      Recommendation: <strong>move the existing event</strong>{" "}
+                      ({aiResolution.conflicts.find((c) => c.id === aiResolution.suggestedToMove?.eventId)?.title ?? "conflict"}){" "}
+                      and keep your new one.
+                    </p>
+                  ) : null}
+                  {aiResolution.draftReply && (
+                    <div
+                      className="mt-2 italic px-2 py-1.5 rounded text-[11px]"
+                      style={{
+                        background: "var(--c-surface-container-lowest)",
+                        color: "var(--c-on-surface-variant)",
+                      }}
+                    >
+                      <span className="font-semibold uppercase tracking-wide block mb-0.5 not-italic">
+                        DRAFT REPLY TO ATTENDEES
+                      </span>
+                      {aiResolution.draftReply}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}

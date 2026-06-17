@@ -24,6 +24,8 @@
     "./integrations/scheduled-email-poller": "./src/integrations/scheduled-email-poller.ts",
     "./integrations/auto-categorize": "./src/integrations/auto-categorize.ts",
     "./integrations/follow-up-tracker": "./src/integrations/follow-up-tracker.ts",
+    "./integrations/task-extractor": "./src/integrations/task-extractor.ts",
+    "./integrations/conflict-resolver": "./src/integrations/conflict-resolver.ts",
     "./security/env": "./src/security/env.ts",
     "./security/errors": "./src/security/errors.ts",
     "./security/audit": "./src/security/audit.ts",

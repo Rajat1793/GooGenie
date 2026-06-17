@@ -510,6 +510,8 @@ export interface AiCompose {
   model?: string;
   ai_available: boolean;
   hint?: string;
+  /** Feature C4 — true when style examples were applied. */
+  personalized?: boolean;
 }
 
 export const aiApi = {
@@ -525,6 +527,8 @@ export const aiApi = {
     context: string;
     thread_snippet?: string;
     recipient_name?: string;
+    /** Feature C4 — when set, fetches user's last messages to this email as style examples. */
+    personalize_for?: string;
   }) =>
     apiFetch<AiCompose>("/v1/ai/compose", {
       method: "POST",
@@ -617,6 +621,36 @@ export const aiApi = {
       reply_needed_count: number;
       reply_needed_threads: unknown[];
     }>("/v1/calendar/daily-gaps"),
+
+  // ── Feature C1 — Email-to-task extractor ──────────────────────────────
+  listTasks: () => apiFetch<{ tasks: TaskRecord[] }>("/v1/me/tasks"),
+
+  extractTasks: () =>
+    apiFetch<ExtractTasksResponse>("/v1/me/tasks/extract", {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  updateTask: (taskId: number, status: "open" | "done" | "dismissed") =>
+    apiFetch<{ task: TaskRecord }>(`/v1/me/tasks/${taskId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+
+  deleteTask: (taskId: number) =>
+    apiFetch<{ ok: boolean }>(`/v1/me/tasks/${taskId}`, { method: "DELETE" }),
+
+  // ── Feature C3 — AI calendar conflict resolver ───────────────────────
+  checkConflicts: (body: {
+    starts_at: string;
+    ends_at: string;
+    title: string;
+    attendees?: string[];
+  }) =>
+    apiFetch<ConflictResolutionResponse>("/v1/calendar/check-conflicts", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
 
 export interface ExtractMeetingResponse {
@@ -692,6 +726,46 @@ export interface FollowUpRecord {
   sentAt: string;
   followUpAt: string;
   status: "pending" | "replied" | "expired";
+}
+
+// ── Feature C1: Email-to-task extractor ──────────────────────────────────────
+export interface TaskRecord {
+  id: number;
+  userId: string;
+  tenantId: string;
+  threadId: string;
+  title: string;
+  senderEmail: string | null;
+  deadline: string | null;
+  priority: "low" | "normal" | "high" | string;
+  status: "open" | "done" | "dismissed" | string;
+  snippet: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExtractTasksResponse {
+  scanned: number;
+  created: number;
+  skipped: number;
+  tasks: TaskRecord[];
+}
+
+// ── Feature C3: AI calendar conflict resolver ────────────────────────────────
+export interface ConflictResolutionResponse {
+  hasConflicts: boolean;
+  conflicts: Array<{
+    id: string;
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    attendees: string[];
+  }>;
+  suggestedToMove: { eventId: string; reason: string } | null;
+  newEventYields: boolean;
+  summary: string | null;
+  draftReply: string | null;
+  ai_available: boolean;
 }
 
 export interface AgentResponse {

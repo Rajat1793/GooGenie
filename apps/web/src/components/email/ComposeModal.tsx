@@ -29,6 +29,9 @@ export function ComposeModal({ onClose, canAiCompose }: ComposeModalProps) {
   const [aiContext, setAiContext] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiAlts, setAiAlts] = useState<string[]>([]);
+  // Feature C4 — match the user's historical writing style with this recipient.
+  const [matchStyle, setMatchStyle] = useState(false);
+  const [styleApplied, setStyleApplied] = useState<boolean | null>(null);
 
   async function handleSend() {
     if (!to.trim() || !subject.trim() || !body.trim()) { setErr("To, subject, and body are required"); return; }
@@ -57,12 +60,28 @@ export function ComposeModal({ onClose, canAiCompose }: ComposeModalProps) {
   async function handleAiGenerate() {
     if (!aiContext.trim() && !subject.trim()) { setErr("Add a subject or context for AI to use"); return; }
     setAiLoading(true); setErr(null);
+    setStyleApplied(null);
     try {
-      const r = await aiApi.compose({ type: "new", tone: aiTone, context: aiContext || subject, recipient_name: to });
+      // Feature C4 — pass recipient as personalize_for when "Match my style" is on.
+      const recipientEmail = (() => {
+        if (!matchStyle) return undefined;
+        const trimmed = to.trim();
+        const match = /<([^>]+)>/.exec(trimmed);
+        const candidate = (match ? match[1] : trimmed.split(",")[0] ?? "").trim();
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate) ? candidate : undefined;
+      })();
+      const r = await aiApi.compose({
+        type: "new",
+        tone: aiTone,
+        context: aiContext || subject,
+        recipient_name: to,
+        ...(recipientEmail ? { personalize_for: recipientEmail } : {}),
+      });
       if (!r.ai_available) { setErr(r.hint ?? "AI not configured"); return; }
       setBody(r.body);
       if (r.subject && !subject) setSubject(r.subject);
       setAiAlts(r.alternatives ?? []);
+      setStyleApplied(matchStyle ? Boolean(r.personalized) : null);
       setShowAiPanel(false);
     } catch (e) { setErr(getErrorMessage(e, "AI failed")); }
     finally { setAiLoading(false); }
@@ -107,6 +126,30 @@ export function ComposeModal({ onClose, canAiCompose }: ComposeModalProps) {
             <input value={aiContext} onChange={(e) => setAiContext(e.target.value)}
               placeholder="What's this email about? (optional — uses subject if empty)"
               className="input-field rounded-xl text-sm mb-3" />
+            {/* Feature C4 — Match my style toggle */}
+            <label
+              className="flex items-center gap-2 mb-3 px-3 py-2 rounded-xl cursor-pointer transition-all text-xs"
+              style={{
+                background: matchStyle
+                  ? "color-mix(in srgb, var(--c-tertiary) 10%, transparent)"
+                  : "var(--c-surface-container)",
+                border: `1px solid ${matchStyle ? "color-mix(in srgb, var(--c-tertiary) 30%, transparent)" : "var(--c-outline-variant)"}`,
+                color: matchStyle ? "var(--c-tertiary)" : "var(--c-on-surface-variant)",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={matchStyle}
+                onChange={(e) => setMatchStyle(e.target.checked)}
+                className="w-3.5 h-3.5 accent-current"
+                style={{ accentColor: "var(--c-tertiary)" }}
+              />
+              <Icon name="signature" className="text-base" />
+              <span className="font-semibold">Match my style with this person</span>
+              <span className="ml-auto text-[10px]">
+                {styleApplied === true ? "✓ applied" : styleApplied === false ? "(no past samples)" : ""}
+              </span>
+            </label>
             <button onClick={handleAiGenerate} disabled={aiLoading}
               className="btn-primary text-xs disabled:opacity-50 flex items-center gap-1.5">
               {aiLoading ? <Icon name="progress_activity" className="animate-spin text-sm" /> : <Icon name="auto_awesome" className="text-sm" />}
