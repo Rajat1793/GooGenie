@@ -886,3 +886,196 @@ export async function ensureGmailLabel(
     return null;
   }
 }
+
+// ── Feature A1: Sender Intelligence Dashboard ────────────────────────────────
+
+export interface SenderStats {
+  email: string;
+  displayName: string;
+  totalThreads: number;
+  lastContactDate: string | null;
+  awaitingMyReply: number;
+  /** Avg hours from their message → my reply. */
+  avgMyResponseHours: number | null;
+  /** Avg hours from my message → their reply. */
+  avgTheirResponseHours: number | null;
+  recentThreads: Array<{ threadId: string; subject: string; date: string; direction: "inbound" | "outbound" }>;
+}
+
+/**
+ * Compute sender intelligence stats from Corsair's local message cache.
+ * Parses direction per message by matching from/to against myEmail.
+ */
+export async function fetchSenderStats(
+  tenantId: string,
+  senderEmail: string,
+  myEmail: string | null,
+  limit = 20,
+): Promise<SenderStats | null> {
+  if (!isCorsairConfigured() || !senderEmail) return null;
+  try {
+    const tenant = corsair.withTenant(tenantId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const t = tenant as any;
+    const rows = await t.gmail.db.messages.search({
+      data: {
+        OR: [
+          { from: { contains: senderEmail } },
+          { to: { contains: senderEmail } },
+        ],
+      },
+      orderBy: { internalDate: "desc" },
+      limit: 200,
+    }).catch(() => [] as unknown[]);
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+
+    type Msg = { id?: string; threadId?: string; from?: string; to?: string; subject?: string; internalDate?: string | number };
+    const lowerMyEmail = myEmail?.toLowerCase() ?? "";
+    const lowerSender = senderEmail.toLowerCase();
+
+    // Group by thread, track direction per message.
+    const byThread = new Map<string, Msg[]>();
+    for (const r of rows as Msg[]) {
+      if (!r.threadId) continue;
+      const arr = byThread.get(r.threadId);
+      if (arr) arr.push(r);
+      else byThread.set(r.threadId, [r]);
+    }
+
+    const isFromMe = (m: Msg): boolean => {
+      const from = (m.from ?? "").toLowerCase();
+      return lowerMyEmail.length > 0 && from.includes(lowerMyEmail);
+    };
+    const isFromSender = (m: Msg): boolean => {
+      const from = (m.from ?? "").toLowerCase();
+      return from.includes(lowerSender);
+    };
+
+    let awaitingMyReply = 0;
+    const recentThreads: SenderStats["recentThreads"] = [];
+    const myResponseTimes: number[] = [];
+    const theirResponseTimes: number[] = [];
+    let lastContactMs = 0;
+
+    for (const [threadId, msgs] of byThread) {
+      const sorted = msgs.sort((a, b) => Number(b.internalDate ?? 0) - Number(a.internalDate ?? 0));
+      const latest = sorted[0];
+      const latestMs = Number(latest.internalDate ?? 0);
+      if (latestMs > lastContactMs) lastContactMs = latestMs;
+
+      // Awaiting my reply = last message is from sender.
+      if (isFromSender(latest) && !isFromMe(latest)) awaitingMyReply++;
+
+      // Recent threads for display.
+      if (recentThreads.length < limit) {
+        const direction = isFromMe(latest) ? "outbound" : isFromSender(latest) ? "inbound" : "inbound";
+        recentThreads.push({
+          threadId,
+          subject: latest.subject || "(no subject)",
+          date: new Date(latestMs || Date.now()).toISOString(),
+          direction,
+        });
+      }
+
+      // Response time calculation: find pairs of (their msg → my msg) or vice versa.
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const current = sorted[i];
+        const next = sorted[i + 1];
+        const currMs = Number(current.internalDate ?? 0);
+        const nextMs = Number(next.internalDate ?? 0);
+        if (currMs === 0 || nextMs === 0) continue;
+        const gapHours = Math.abs(currMs - nextMs) / (1000 * 3600);
+        if (gapHours > 24 * 7) continue; // ignore week+ gaps
+        if (isFromMe(current) && isFromSender(next)) {
+          // They replied to me.
+          theirResponseTimes.push(gapHours);
+        } else if (isFromSender(current) && isFromMe(next)) {
+          // I replied to them.
+          myResponseTimes.push(gapHours);
+        }
+      }
+    }
+
+    const avg = (arr: number[]) => (arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
+    const displayName = rows.find((r) => isFromSender(r as Msg))?.from ?? senderEmail;
+
+    return {
+      email: senderEmail,
+      displayName: extractDisplayName(displayName),
+      totalThreads: byThread.size,
+      lastContactDate: lastContactMs > 0 ? new Date(lastContactMs).toISOString() : null,
+      awaitingMyReply,
+      avgMyResponseHours: avg(myResponseTimes),
+      avgTheirResponseHours: avg(theirResponseTimes),
+      recentThreads,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ── Feature A5: OOO detection ─────────────────────────────────────────────────
+
+export interface OOOInfo {
+  isOOO: boolean;
+  returnDate: string | null;
+  autoReplySnippet: string | null;
+}
+
+/**
+ * Check if the most recent message from a sender was an auto-reply (OOO).
+ * Scans Auto-Submitted / Precedence headers + snippet keywords.
+ */
+export async function checkSenderOOO(
+  tenantId: string,
+  senderEmail: string,
+  limit = 5,
+): Promise<OOOInfo> {
+  if (!isCorsairConfigured()) return { isOOO: false, returnDate: null, autoReplySnippet: null };
+  try {
+    const tenant = corsair.withTenant(tenantId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const t = tenant as any;
+    const rows = await t.gmail.db.messages.search({
+      data: { from: { contains: senderEmail } },
+      orderBy: { internalDate: "desc" },
+      limit,
+    }).catch(() => [] as unknown[]);
+    if (!Array.isArray(rows) || rows.length === 0) return { isOOO: false, returnDate: null, autoReplySnippet: null };
+
+    type Msg = { headers?: Array<{ name?: string; value?: string }>; subject?: string; snippet?: string; body?: string };
+    for (const raw of rows as Msg[]) {
+      const headers = Array.isArray(raw.headers) ? raw.headers : [];
+      const autoSubmitted = getHeader(headers, "auto-submitted");
+      const precedence = getHeader(headers, "precedence");
+      const subject = (raw.subject ?? "").toLowerCase();
+      const snippet = (raw.snippet ?? "").toLowerCase();
+      const body = (typeof raw.body === "string" ? raw.body : "").toLowerCase();
+      const blob = `${subject} ${snippet} ${body}`;
+
+      // Positive signals: auto-submitted, precedence=auto-reply, or OOO keywords.
+      if (autoSubmitted.toLowerCase().includes("auto-replied") || precedence.toLowerCase().includes("auto-reply")) {
+        // Try to extract return date from body.
+        const returnMatch = /return(?:ing)?\s+(?:on|after)?\s+(\w+\s+\d{1,2}(?:,?\s+\d{4})?)/i.exec(blob);
+        const returnDate = returnMatch ? returnMatch[1] : null;
+        return {
+          isOOO: true,
+          returnDate,
+          autoReplySnippet: (raw.snippet ?? "").slice(0, 200),
+        };
+      }
+      if (/\b(out of (?:the )?office|away from|on vacation|on leave|unavailable)\b/i.test(blob)) {
+        const returnMatch = /(?:return|back)\s+(?:on|after)?\s+(\w+\s+\d{1,2}(?:,?\s+\d{4})?)/i.exec(blob);
+        const returnDate = returnMatch ? returnMatch[1] : null;
+        return {
+          isOOO: true,
+          returnDate,
+          autoReplySnippet: (raw.snippet ?? "").slice(0, 200),
+        };
+      }
+    }
+    return { isOOO: false, returnDate: null, autoReplySnippet: null };
+  } catch {
+    return { isOOO: false, returnDate: null, autoReplySnippet: null };
+  }
+}

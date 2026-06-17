@@ -14,6 +14,8 @@ import { ThreadPane } from "../components/email/ThreadPane";
 import { Icon } from "../components/Icon";
 import { useKeybinding } from "../contexts/KeybindingContext";
 import { UnsubscribeSweepModal } from "../components/UnsubscribeSweepModal";
+import DailyGapsBanner from "../components/DailyGapsBanner";
+import FollowUpCard from "../components/FollowUpCard";
 
 // ── Main InboxPage ─────────────────────────────────────────────────────────────
 export function InboxPage() {
@@ -586,10 +588,21 @@ export function InboxPage() {
             canAiCompose={canWrite && hasFeature("ai_compose")}
           />
         ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-4" style={{ color: "var(--c-on-surface-variant)" }}>
-            <Icon name="inbox" className="text-6xl" style={{ opacity: 0.3 }} />
-            <p className="font-headline text-2xl" style={{ color: "var(--c-on-surface-variant)" }}>Select a conversation</p>
-            <p className="text-sm">Click any thread to read it</p>
+          <div className="flex flex-col items-center justify-center h-full gap-4 px-8" style={{ color: "var(--c-on-surface-variant)" }}>
+            <div className="w-full max-w-2xl space-y-4">
+              {/* Feature B5 — Daily gaps banner */}
+              <DailyGapsBanner />
+              
+              {/* Feature B4 — Follow-up tracker card */}
+              <FollowUpCard />
+              
+              {/* Default empty state */}
+              <div className="flex flex-col items-center justify-center gap-4 py-12">
+                <Icon name="inbox" className="text-6xl" style={{ opacity: 0.3 }} />
+                <p className="font-headline text-2xl" style={{ color: "var(--c-on-surface-variant)" }}>Select a conversation</p>
+                <p className="text-sm">Click any thread to read it</p>
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -14,6 +14,7 @@ import { AvailabilityModal } from "../components/calendar/AvailabilityModal";
 import { Icon } from "../components/Icon";
 import { useKeybinding } from "../contexts/KeybindingContext";
 import { MeetingBriefPanel } from "../components/calendar/MeetingBriefPanel";
+import RescheduleModal from "../components/calendar/RescheduleModal";
 
 // ── MonthGrid ────────────────────────────────────────────────────────────────
 // 7-column × 6-row month grid with event chips placed on their start date.
@@ -154,7 +155,7 @@ function MonthGrid({
   );
 }
 
-function EventCard({ event, onEdit, onDelete, onBrief, briefOpen }: { event: CalendarEvent; onEdit: (e: CalendarEvent) => void; onDelete: (id: string) => void; onBrief: (id: string) => void; briefOpen: boolean }) {
+function EventCard({ event, onEdit, onDelete, onBrief, briefOpen, onReschedule }: { event: CalendarEvent; onEdit: (e: CalendarEvent) => void; onDelete: (id: string) => void; onBrief: (id: string) => void; briefOpen: boolean; onReschedule: (id: string) => void }) {
   const start = new Date(event.startsAt);
   const end   = new Date(event.endsAt);
   const isToday = start.toDateString() === new Date().toDateString();
@@ -193,6 +194,9 @@ function EventCard({ event, onEdit, onDelete, onBrief, briefOpen }: { event: Cal
         <button onClick={() => onBrief(event.id)} className="btn-ghost p-1.5" title="AI brief — recent emails with attendees" style={{ color: briefOpen ? "var(--c-tertiary)" : undefined }}>
           <Icon name="auto_awesome" className="text-base" />
         </button>
+        <button onClick={() => onReschedule(event.id)} className="btn-ghost p-1.5" title="Smart reschedule with AI" style={{ color: "var(--c-secondary)" }}>
+          <Icon name="event_repeat" className="text-base" />
+        </button>
         <button onClick={() => onEdit(event)} className="btn-ghost p-1.5" title="Edit"><Icon name="edit" className="text-base" /></button>
         <button onClick={() => onDelete(event.id)} className="btn-ghost p-1.5" title="Delete" style={{ color: "var(--c-error)" }}><Icon name="delete" className="text-base" /></button>
       </div>
@@ -220,6 +224,8 @@ export function CalendarPage() {
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   // Feature B1 — which event currently has its meeting-brief panel expanded.
   const [briefEventId, setBriefEventId] = useState<string | null>(null);
+  // Feature B2 — which event is being rescheduled.
+  const [reschedulingEventId, setReschedulingEventId] = useState<string | null>(null);
   const [checkingAvailability, setCheckingAvailability] = useState(false);
   const [filter, setFilter] = useState<"upcoming" | "today" | "all">("upcoming");
   const [search, setSearch] = useState("");
@@ -380,6 +386,7 @@ export function CalendarPage() {
                   onDelete={handleDelete}
                   onBrief={(id) => setBriefEventId((cur) => (cur === id ? null : id))}
                   briefOpen={briefEventId === event.id}
+                  onReschedule={setReschedulingEventId}
                 />
                 {briefEventId === event.id && (
                   <MeetingBriefPanel eventId={event.id} onClose={() => setBriefEventId(null)} />
@@ -388,6 +395,17 @@ export function CalendarPage() {
             ))}
           </div>
         </>
+      )}
+      {/* Feature B2 — Reschedule modal */}
+      {reschedulingEventId && (
+        <RescheduleModal
+          eventId={reschedulingEventId}
+          onClose={() => setReschedulingEventId(null)}
+          onConfirm={() => {
+            setReschedulingEventId(null);
+            refetch();
+          }}
+        />
       )}
 
       {/* Month view */}

@@ -14,6 +14,9 @@ import { emailApi, aiApi, type EmailThread, type AiSummary } from "../../api/cli
 import { AI_TONES, type AiTone } from "../../lib/aiTones";
 import { getErrorMessage } from "../../lib/errors";
 import { Icon } from "../../components/Icon";
+import SenderProfilePanel from "../SenderProfilePanel";
+import RelatedThreadsSidebar from "../RelatedThreadsSidebar";
+import OOOBanner from "../OOOBanner";
 
 interface ThreadPaneProps {
   thread: EmailThread;
@@ -58,6 +61,12 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
     committedEventId: string | null;
   }>({ busy: false, err: null, extracted: null, committingIdx: null, committedEventId: null });
 
+  // ── Feature A1 — Sender Intelligence ─────────────────────────────────────
+  const [senderProfile, setSenderProfile] = useState<{ email: string } | null>(null);
+
+  // ── Feature A3 — Conversation memory ─────────────────────────────────────
+  const [showRelated, setShowRelated] = useState<"same_sender" | "same_topic" | null>(null);
+
   // Reset state when the user switches threads
   useEffect(() => {
     setSummary(null);
@@ -66,6 +75,8 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
     setReplyBody("");
     setBodyIsAiGenerated(false);
     setScheduling({ busy: false, err: null, extracted: null, committingIdx: null, committedEventId: null });
+    setSenderProfile(null);
+    setShowRelated(null);
   }, [thread.id]);
 
   async function handleReply() {
@@ -210,7 +221,20 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
           <span className="section-label mb-1 block">Thread</span>
           <h2 className="font-headline text-2xl" style={{ color: "var(--c-on-surface)" }}>{thread.subject}</h2>
           <p className="text-xs mt-1" style={{ color: "var(--c-on-surface-variant)" }}>
-            From: {thread.from} · {new Date(thread.updatedAt).toLocaleString()}
+            From:{" "}
+            <button
+              onClick={() => {
+                const emailMatch = /<([^>]+)>/.exec(thread.from);
+                const email = emailMatch ? emailMatch[1] : thread.from;
+                setSenderProfile({ email });
+              }}
+              className="hover:underline font-semibold"
+              style={{ color: "var(--c-primary)" }}
+              title="View sender profile"
+            >
+              {thread.from}
+            </button>
+            {" · "}{new Date(thread.updatedAt).toLocaleString()}
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0 flex-wrap">
@@ -236,6 +260,28 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
             >
               <Icon name={scheduling.busy ? "progress_activity" : "calendar_today"} className="text-base" />
               {scheduling.busy ? "Analyzing…" : "Schedule"}
+            </button>
+          )}
+          {canAiCompose && (
+            <button
+              onClick={() => setShowRelated(showRelated === "same_sender" ? null : "same_sender")}
+              className="btn-ghost text-xs flex items-center gap-1"
+              style={{ color: showRelated === "same_sender" ? "var(--c-primary)" : "var(--c-on-surface-variant)" }}
+              title="Show related threads from same sender"
+            >
+              <Icon name="person" className="text-base" />
+              Same sender
+            </button>
+          )}
+          {canAiCompose && (
+            <button
+              onClick={() => setShowRelated(showRelated === "same_topic" ? null : "same_topic")}
+              className="btn-ghost text-xs flex items-center gap-1"
+              style={{ color: showRelated === "same_topic" ? "var(--c-primary)" : "var(--c-on-surface-variant)" }}
+              title="Show related threads by topic"
+            >
+              <Icon name="travel_explore" className="text-base" />
+              Similar
             </button>
           )}
           <button onClick={() => handleAction("archive")} className="btn-ghost p-2" title="Archive"><Icon name="archive" className="text-xl" /></button>
@@ -388,6 +434,22 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
             )}
           </div>
         )}
+        {/* Feature A3 — Related threads sidebar */}
+        {showRelated && canAiCompose && (
+          <RelatedThreadsSidebar
+            threadId={thread.id}
+            scope={showRelated}
+            onClose={() => setShowRelated(null)}
+          />
+        )}
+        {/* Feature A1 — Sender intelligence panel */}
+        {senderProfile && (
+          <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50" onClick={() => setSenderProfile(null)}>
+            <div onClick={(e) => e.stopPropagation()}>
+              <SenderProfilePanel email={senderProfile.email} onClose={() => setSenderProfile(null)} />
+            </div>
+          </div>
+        )}
         <div className="nimbus-card p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style={{ background: "var(--c-primary-container)", color: "var(--c-on-primary-container)" }}>
@@ -461,6 +523,12 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
             </button>
           </div>
         )}
+        {/* Feature A5 — OOO detection banner */}
+        {thread.from && (() => {
+          const emailMatch = /<([^>]+)>/.exec(thread.from);
+          const senderEmail = emailMatch ? emailMatch[1] : thread.from;
+          return senderEmail.includes("@") ? <OOOBanner senderEmail={senderEmail} /> : null;
+        })()}
         <div className="flex items-end gap-3 rounded-2xl px-5 py-3" style={{ background: "var(--c-surface-container)", border: "1px solid var(--c-outline-variant)" }}>
           <textarea
             value={replyBody}

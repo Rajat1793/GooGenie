@@ -578,6 +578,45 @@ export const aiApi = {
       `/v1/ai/meetings/${encodeURIComponent(eventId)}/brief`,
       { method: "POST", body: JSON.stringify({}) },
     ),
+
+  // ── Feature A1 — Sender intelligence ──────────────────────────────────
+  senderInsights: (email: string) =>
+    apiFetch<{ stats: SenderStats }>(
+      `/v1/ai/people/insights?email=${encodeURIComponent(email)}`,
+    ),
+
+  // ── Feature A3 — Conversation memory ──────────────────────────────────
+  searchRelated: (body: { thread_id: string; scope: "same_sender" | "same_topic"; limit?: number }) =>
+    apiFetch<RelatedThreadsResponse>(
+      "/v1/ai/search-emails-related",
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+
+  // ── Feature A5 — OOO detection ────────────────────────────────────────
+  checkOOO: (email: string) =>
+    apiFetch<{ isOOO: boolean; returnDate: string | null; autoReplySnippet: string | null }>(
+      "/v1/ai/check-ooo",
+      { method: "POST", body: JSON.stringify({ email }) },
+    ),
+
+  // ── Feature B2 — Smart reschedule ─────────────────────────────────────
+  suggestReschedule: (eventId: string) =>
+    apiFetch<RescheduleResponse>(
+      `/v1/calendar/events/${encodeURIComponent(eventId)}/suggest-reschedule`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+
+  // ── Feature B4 — Follow-up tracker ────────────────────────────────────
+  followUps: () => apiFetch<{ follow_ups: FollowUpRecord[] }>("/v1/me/follow-ups"),
+
+  // ── Feature B5 — Calendar gaps ────────────────────────────────────────
+  dailyGaps: () =>
+    apiFetch<{
+      date: string;
+      gaps: Array<{ start: string; end: string; durationMinutes: number }>;
+      reply_needed_count: number;
+      reply_needed_threads: unknown[];
+    }>("/v1/calendar/daily-gaps"),
 };
 
 export interface ExtractMeetingResponse {
@@ -603,6 +642,56 @@ export interface MeetingBriefResponse {
   brief: string | null;
   hint?: string;
   model?: string;
+}
+
+// ── Feature A1: Sender Intelligence ──────────────────────────────────────────
+export interface SenderStats {
+  email: string;
+  displayName: string;
+  totalThreads: number;
+  lastContactDate: string | null;
+  awaitingMyReply: number;
+  avgMyResponseHours: number | null;
+  avgTheirResponseHours: number | null;
+  recentThreads: Array<{ threadId: string; subject: string; date: string; direction: "inbound" | "outbound" }>;
+}
+
+// ── Feature A3: Conversation Memory ──────────────────────────────────────────
+export interface RelatedThreadsResponse {
+  ai_available: boolean;
+  scope: "same_sender" | "same_topic";
+  original_thread: { id: string; subject: string; from: string };
+  related_threads: Array<{
+    thread_id: string;
+    subject: string;
+    from: string;
+    snippet: string;
+    similarity: number;
+  }>;
+  hint?: string;
+}
+
+// ── Feature B2: Smart Reschedule ────────────────────────────────────────────
+export interface RescheduleResponse {
+  ai_available: boolean;
+  original_event: { id: string; title: string; starts_at: string };
+  suggestions: Array<{ start: string; end: string; label: string }>;
+  draft_email: string | null;
+  hint?: string;
+  model?: string;
+}
+
+// ── Feature B4: Follow-up Tracker ────────────────────────────────────────────
+export interface FollowUpRecord {
+  id: number;
+  userId: string;
+  tenantId: string;
+  threadId: string;
+  to: string;
+  subject: string;
+  sentAt: string;
+  followUpAt: string;
+  status: "pending" | "replied" | "expired";
 }
 
 export interface AgentResponse {
