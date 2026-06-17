@@ -213,17 +213,8 @@ export function CalendarPage() {
   const { hasFeature } = useFeatures();
   const { status: connStatus, loading: connLoading, refresh: refreshConn } = useConnectionStatus();
 
-  // Feature gate
-  if (!hasFeature("calendar_read")) {
-    return (
-      <FeatureDisabledCard
-        featureKey="calendar_read"
-        title="Calendar Locked"
-        description="You don't have access to the calendar yet. Request it from your manager and they can enable it for you."
-        icon="calendar_month"
-      />
-    );
-  }
+  // NOTE: Feature/connection gates intentionally live AFTER all hooks below
+  // so the component always renders the same number of hooks (Rules of Hooks).
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<CalendarEvent | null>(null);
   // Feature B1 — which event currently has its meeting-brief panel expanded.
@@ -268,6 +259,18 @@ export function CalendarPage() {
 
   function handleDelete(eventId: string) {
     deleteMut.mutate(eventId);
+  }
+
+  // ── Gates (placed after all hooks to keep hook count stable) ──────────
+  if (!hasFeature("calendar_read")) {
+    return (
+      <FeatureDisabledCard
+        featureKey="calendar_read"
+        title="Calendar Locked"
+        description="You don't have access to the calendar yet. Request it from your manager and they can enable it for you."
+        icon="calendar_month"
+      />
+    );
   }
 
   if (!connLoading && connStatus && !connStatus.googlecalendar) {

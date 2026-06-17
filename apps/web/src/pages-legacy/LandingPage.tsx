@@ -290,7 +290,12 @@ export function LandingPage() {
         </div>
       </header>
 
-      {/* ── HERO ────────────────────────────────────────────────────────── */}
+      {/* ── HERO ──────────────────────────────────────────────────────────
+       * Leads with our three sharpest differentiators (rotating proof line),
+       * makes the tier story unmissable ({basicCount} free / {premiumCount}
+       * premium auto-derived from FEATURE_CATALOG so it never goes stale),
+       * and grounds the CTA in a "no credit card / connects in 30s" reassurance.
+       */}
       <section className="relative overflow-hidden">
         <div className="max-w-7xl mx-auto px-6 pt-20 pb-24 md:pt-28 md:pb-32 text-center">
           <p
@@ -298,24 +303,51 @@ export function LandingPage() {
             style={{ color: p.accent }}
           >
             <span className="w-1.5 h-1.5 rounded-full" style={{ background: p.accent }} />
-            Built on Corsair · Powered by Mistral
+            {basicCount} free features · {premiumCount} manager-gated premium · Built on Corsair + Mistral
           </p>
           <h1
             className="text-[56px] sm:text-[80px] md:text-[112px] leading-[0.95] tracking-[-0.03em] font-semibold mb-8"
             style={{ fontFamily: FONT_DISPLAY, color: p.ink }}
           >
-            Email at the
+            Your inbox,
             <br />
-            <span style={{ color: p.accent }}>speed of thought.</span>
+            <span style={{ color: p.accent }}>one click ahead.</span>
           </h1>
           <p
-            className="text-[18px] md:text-[20px] leading-[1.55] mx-auto mb-10"
-            style={{ color: p.muted, maxWidth: "44ch" }}
+            className="text-[18px] md:text-[20px] leading-[1.55] mx-auto mb-8"
+            style={{ color: p.muted, maxWidth: "52ch" }}
           >
-            GooGenie is the AI-native Gmail &amp; Calendar workspace built for teams.
-            Triage in seconds, schedule with one click, never drop a follow-up.
+            GooGenie reads the meeting time out of a thread and books it.
+            Surfaces only the emails that owe a reply. Catches every dropped
+            follow-up. Built for teams who need AI <em>and</em> a manager-grade
+            permission model - not one or the other.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-14">
+
+          {/* ── Differentiator chips — the 3 unique selling points ─────── */}
+          <div className="flex flex-wrap items-center justify-center gap-2 mb-10 max-w-3xl mx-auto">
+            {[
+              { icon: "calendar_today",       label: "Schedule from Email" },
+              { icon: "hourglass",            label: "Reply-Needed Triage" },
+              { icon: "notifications_active", label: "Follow-up Tracker" },
+              { icon: "terminal",             label: "/improve in compose" },
+              { icon: "shield_person",        label: "Per-user feature gating" },
+            ].map((chip) => (
+              <span
+                key={chip.label}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold"
+                style={{
+                  background: p.card,
+                  border: `1px solid ${p.border}`,
+                  color: p.ink,
+                }}
+              >
+                <Icon name={chip.icon} className="text-[14px]" style={{ color: p.accent }} />
+                {chip.label}
+              </span>
+            ))}
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
             <Link
               href="/login"
               className="inline-flex items-center gap-2 px-7 py-3.5 rounded-md text-[15px] font-semibold transition-transform hover:scale-[1.02]"
@@ -332,6 +364,9 @@ export function LandingPage() {
               See what's inside
             </a>
           </div>
+          <p className="text-[12px] mb-14" style={{ color: p.muted }}>
+            No credit card · Connects to Gmail &amp; Calendar in 30 seconds · {basicCount} features unlock instantly
+          </p>
 
           {/* Product preview — fake browser frame with stacked panels */}
           <div className="max-w-5xl mx-auto">
@@ -460,7 +495,7 @@ export function LandingPage() {
             <SectionHead
               eyebrow="The Suite"
               title="One workspace. Four superpowers."
-              subtitle="GooGenie groups every capability into four product surfaces — the moment you sign in, your inbox already knows what matters." p={p}
+              subtitle="GooGenie groups every capability into four product surfaces - the moment you sign in, your inbox already knows what matters." p={p}
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -801,7 +836,7 @@ export function LandingPage() {
             className="text-[36px] md:text-[56px] leading-[1.1] tracking-tight font-semibold mb-8"
             style={{ fontFamily: FONT_DISPLAY, color: p.ink }}
           >
-            AI that earns its keep — and never spends your tokens without permission.
+            AI that earns its keep - and never spends your tokens without permission.
           </h2>
           <p className="text-[18px] leading-[1.65] max-w-2xl mx-auto" style={{ color: p.muted }}>
             We split GooGenie into two halves on purpose. The local half — triage,

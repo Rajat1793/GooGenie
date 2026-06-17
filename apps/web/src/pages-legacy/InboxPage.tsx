@@ -2,13 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "../lib/router-shim";
-import { emailApi, aiApi, type EmailThread, type AiSearchResult, type ReplyNeededThread } from "../api/client";
+import { emailApi, type EmailThread, type ReplyNeededThread } from "../api/client";
 import { useEmailThreads, useMarkThreadRead, useTrashThread } from "../api/hooks";
 import { useClerkReady } from "../hooks/useClerkReady";
 import { ConnectionBar, useConnectionStatus } from "../components/ConnectBanner";
 import { useFeatures } from "../contexts/FeatureContext";
 import { FeatureDisabledCard } from "../components/FeatureDisabledCard";
-import { getErrorMessage } from "../lib/errors";
 import { ComposeModal } from "../components/email/ComposeModal";
 import { ThreadPane } from "../components/email/ThreadPane";
 import { Icon } from "../components/Icon";
@@ -70,13 +69,6 @@ export function InboxPage() {
   >("all");
   const [serverSearch, setServerSearch] = useState(""); // debounced server search
 
-  // ── Semantic AI search ────────────────────────────────────────────────────
-  const canSemantic = hasFeature("ai_summary"); // reuse ai_summary as proxy for AI access
-  const [aiSearchOn, setAiSearchOn] = useState(false);
-  const [aiResults, setAiResults] = useState<AiSearchResult[] | null>(null);
-  const [aiSearchBusy, setAiSearchBusy] = useState(false);
-  const [aiSearchHint, setAiSearchHint] = useState<string | null>(null);
-
   // ── Feature A2 — Reply-needed view ───────────────────────────────────────
   const [replyNeeded, setReplyNeeded] = useState<ReplyNeededThread[]>([]);
   const [replyNeededLoading, setReplyNeededLoading] = useState(false);
@@ -102,48 +94,6 @@ export function InboxPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function runAiSearch(q: string) {
-    if (!q.trim()) { setAiResults(null); setAiSearchHint(null); return; }
-    setAiSearchBusy(true);
-    setAiSearchHint(null);
-    try {
-      const r = await aiApi.searchEmails(q.trim(), 15);
-      if (!r.ai_available) {
-        setAiSearchHint("AI not configured (server is missing MISTRAL_API_KEY).");
-        setAiResults([]);
-      } else if (r.embeddings_available === false) {
-        setAiSearchHint(r.hint ?? "Vector search unavailable on this database.");
-        setAiResults([]);
-      } else if (r.results.length === 0) {
-        setAiSearchHint("No semantically matching emails. Try indexing first.");
-        setAiResults([]);
-      } else {
-        setAiResults(r.results);
-      }
-    } catch (e) {
-      setAiSearchHint(getErrorMessage(e));
-      setAiResults([]);
-    } finally {
-      setAiSearchBusy(false);
-    }
-  }
-
-  async function indexEmails() {
-    setAiSearchBusy(true);
-    setAiSearchHint("Indexing recent emails…");
-    try {
-      const r = await aiApi.indexEmails(50);
-      if (!r.ai_available) setAiSearchHint("AI not configured.");
-      else if (r.embeddings_available === false) setAiSearchHint("Vector DB not available.");
-      else setAiSearchHint(`Indexed ${r.indexed} emails (${r.skipped} already up-to-date).`);
-    } catch (e) {
-      setAiSearchHint(getErrorMessage(e));
-    } finally {
-      setAiSearchBusy(false);
-    }
-  }
-
-
   // React Query — instant cache hits on revisit + 60s background refetch
   const { data, isLoading: loading, error, refetch } = useEmailThreads({
     q: serverSearch,
@@ -164,8 +114,6 @@ export function InboxPage() {
   //     the full Gmail account is queried (DB-backed: near-instant).
   // Pressing Enter still works (forces immediate server search).
   useEffect(() => {
-    // Don't debounce while AI semantic mode is on — that's Enter-triggered.
-    if (aiSearchOn) return;
     const trimmed = search.trim();
     // If the query just emptied, clear server search immediately
     if (!trimmed) {
@@ -174,7 +122,7 @@ export function InboxPage() {
     }
     const t = setTimeout(() => setServerSearch(trimmed), 400);
     return () => clearTimeout(t);
-  }, [search, aiSearchOn, serverSearch]);
+  }, [search, serverSearch]);
 
   // ── Pick up ?q=… from the global header search bar ────────────────────────
   // The Shell's top header has a search box that navigates to /inbox?q=<text>.
@@ -198,11 +146,10 @@ export function InboxPage() {
   // Trigger server search when user presses Enter (still works as a shortcut)
   function handleSearchKey(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
-      if (aiSearchOn) void runAiSearch(search);
-      else setServerSearch(search.trim());
+      setServerSearch(search.trim());
     }
     if (e.key === "Escape") {
-      setSearch(""); setServerSearch(""); setAiResults(null); setAiSearchHint(null);
+      setSearch(""); setServerSearch("");
     }
   }
 
@@ -217,6 +164,14 @@ export function InboxPage() {
     setSelected(thread);
     if (thread.isUnread) markLocalRead(thread.id);
   }
+
+  // Snooze action emits `googenie:refresh-inbox` so the snoozed thread
+  // disappears from the list immediately.
+  useEffect(() => {
+    const handler = () => { void refetch(); };
+    window.addEventListener("googenie:refresh-inbox", handler);
+    return () => window.removeEventListener("googenie:refresh-inbox", handler);
+  }, [refetch]);
 
   // Keep `selected` in sync if cache replaces the underlying object
   useEffect(() => {
@@ -269,26 +224,11 @@ export function InboxPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wantThreadId, threads]);
 
-    // Feature gate — show disabled card if email_read is off (MUST be after all hooks)
-    if (!hasFeature("email_read")) {
-      return (
-        <FeatureDisabledCard
-          featureKey="email_read"
-          title="Inbox Locked"
-          description="You don't have access to email yet. Request it from your manager and they can enable it for you."
-          icon="inbox"
-        />
-      );
-    }
-
-  if (!connLoading && connStatus && !connStatus.gmail) {
-    return (
-      <div className="pt-4">
-        <h1 className="font-headline text-3xl mb-6" style={{ color: "var(--c-on-surface)" }}>Inbox</h1>
-        <ConnectionBar plugins={["gmail"]} status={connStatus} loading={connLoading} onConnected={() => { refreshConn(); refetch(); }} />
-      </div>
-    );
-  }
+  // NOTE: Feature/connection gates are intentionally placed AFTER all hooks
+  // (further down, just before the main return) so the component renders the
+  // same number of hooks on every render — required by the Rules of Hooks.
+  // Returning early HERE would skip the useKeybinding calls below and trigger
+  // "Rendered fewer hooks than expected" the moment the feature toggles off.
 
   // Apply filter + search
   const CATEGORY_LABEL: Record<typeof filter, string | null> = {
@@ -319,28 +259,6 @@ export function InboxPage() {
     return searchOk && filterOk;
   });
 
-  // When AI search is on with results, override the regular filtered list with
-  // the semantic match order (preserving similarity score for badge rendering).
-  const aiOrdered: Array<EmailThread & { similarity?: number }> = (aiSearchOn && aiResults && aiResults.length > 0)
-    ? aiResults.map((r) => {
-        const existing = threads.find((t) => t.id === r.thread_id);
-        if (existing) return { ...existing, similarity: r.similarity };
-        // Build a stub thread row from the embedding metadata if we don't have it cached locally
-        return {
-          id: r.thread_id,
-          tenantId: "",
-          ownerUserId: "",
-          subject: r.subject ?? "(no subject)",
-          snippet: r.snippet ?? "",
-          from: r.from_addr ?? "unknown",
-          updatedAt: new Date().toISOString(),
-          isUnread: false,
-          labelIds: [],
-          similarity: r.similarity,
-        } satisfies EmailThread & { similarity: number };
-      })
-    : [];
-
   // Reply-needed override: pull thread metadata from the dedicated API
   // (Corsair's local DB tells us "last message is from them, no reply").
   // Falls back to subject/from from the API row so we render the list even
@@ -367,11 +285,7 @@ export function InboxPage() {
       : [];
 
   const displayList: Array<EmailThread & { similarity?: number; urgency?: number; daysWaiting?: number }> =
-    filter === "reply_needed"
-      ? replyOrdered
-      : aiSearchOn && aiResults
-      ? aiOrdered
-      : filtered;
+    filter === "reply_needed" ? replyOrdered : filtered;
 
   const unreadCount = threads.filter((t) => t.isUnread).length;
 
@@ -408,6 +322,27 @@ export function InboxPage() {
     if (!canSplitView) return;
     setLayout((cur) => (cur === "split" ? "stacked" : "split"));
   });
+
+  // ── Gates (placed after all hooks to keep hook count stable) ──────────
+  if (!hasFeature("email_read")) {
+    return (
+      <FeatureDisabledCard
+        featureKey="email_read"
+        title="Inbox Locked"
+        description="You don't have access to email yet. Request it from your manager and they can enable it for you."
+        icon="inbox"
+      />
+    );
+  }
+
+  if (!connLoading && connStatus && !connStatus.gmail) {
+    return (
+      <div className="pt-4">
+        <h1 className="font-headline text-3xl mb-6" style={{ color: "var(--c-on-surface)" }}>Inbox</h1>
+        <ConnectionBar plugins={["gmail"]} status={connStatus} loading={connLoading} onConnected={() => { refreshConn(); refetch(); }} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-[calc(100vh-112px)] -mx-8 -my-8 overflow-hidden">
@@ -499,17 +434,17 @@ export function InboxPage() {
           </div>
           {/* Search */}
           <div className="relative">
-            <Icon name={aiSearchOn ? "auto_awesome" : "search"} className="absolute left-3 top-1/2 -translate-y-1/2 text-base" style={{ color: aiSearchOn ? "var(--c-tertiary)" : "var(--c-outline)" }} />
+            <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-base" style={{ color: "var(--c-outline)" }} />
             <input
               ref={searchRef}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={handleSearchKey}
-              placeholder={aiSearchOn ? "Ask in plain English… (Enter)" : "Search Gmail (live)…"}
+              placeholder="Search Gmail (live)…"
               className="pl-9 pr-20 py-2 rounded-xl text-sm w-full outline-none"
               style={{
                 background: "var(--c-surface-container)",
-                border: `1px solid ${aiSearchOn ? "var(--c-tertiary)" : (serverSearch ? "var(--c-primary)" : "var(--c-outline-variant)")}`,
+                border: `1px solid ${serverSearch ? "var(--c-primary)" : "var(--c-outline-variant)"}`,
                 color: "var(--c-on-surface)",
               }}
             />
@@ -517,12 +452,12 @@ export function InboxPage() {
               {/* Live-search spinner: visible while the user is typing faster
                   than the 400ms debounce, or while the server search is
                   fetching results from Gmail/Corsair DB. */}
-              {!aiSearchOn && search && (loading || search.trim() !== serverSearch) && (
+              {search && (loading || search.trim() !== serverSearch) && (
                 <Icon name="progress_activity" className="text-base animate-spin" style={{ color: "var(--c-primary)" }} />
               )}
-              {(search || serverSearch || aiResults) && (
+              {(search || serverSearch) && (
                 <button
-                  onClick={() => { setSearch(""); setServerSearch(""); setAiResults(null); setAiSearchHint(null); }}
+                  onClick={() => { setSearch(""); setServerSearch(""); }}
                   className="p-0.5"
                   style={{ color: "var(--c-outline)" }}
                   title="Clear"
@@ -530,34 +465,8 @@ export function InboxPage() {
                   <Icon name="close" className="text-base" />
                 </button>
               )}
-              {canSemantic && (
-                <button
-                  onClick={() => { setAiSearchOn((v) => !v); setAiResults(null); setAiSearchHint(null); }}
-                  className="px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide"
-                  style={aiSearchOn
-                    ? { background: "var(--c-tertiary)", color: "var(--c-on-tertiary)" }
-                    : { background: "var(--c-surface-container-high)", color: "var(--c-on-surface-variant)", border: "1px solid var(--c-outline-variant)" }}
-                  title="Toggle AI semantic search"
-                >
-                  AI
-                </button>
-              )}
             </div>
           </div>
-          {aiSearchOn && (
-            <div className="mt-2 flex items-center justify-between text-[11px]" style={{ color: "var(--c-on-surface-variant)" }}>
-              <span>{aiSearchBusy ? "Searching…" : aiSearchHint ?? "Tip: \"emails about budget last week\""}</span>
-              <button
-                onClick={() => void indexEmails()}
-                disabled={aiSearchBusy}
-                className="px-2 py-0.5 rounded text-[10px] font-semibold disabled:opacity-40"
-                style={{ background: "var(--c-surface-container-high)", color: "var(--c-on-surface)", border: "1px solid var(--c-outline-variant)" }}
-                title="Index recent emails for semantic search"
-              >
-                Re-index
-              </button>
-            </div>
-          )}
         </div>
 
         {/* Thread items */}
@@ -567,15 +476,13 @@ export function InboxPage() {
           {!loading && displayList.length === 0 && !error && (
             <div className="px-4 py-8 text-center" style={{ color: "var(--c-on-surface-variant)" }}>
               <p className="text-sm">
-                {aiSearchOn && search
-                  ? `No semantic matches for "${search}"`
-                  : search
-                    ? `No results for "${search}"`
-                    : filter === "unread"
-                      ? "No unread emails"
-                      : "No threads found"}
+                {search
+                  ? `No results for "${search}"`
+                  : filter === "unread"
+                    ? "No unread emails"
+                    : "No threads found"}
               </p>
-              {search && !aiSearchOn && (
+              {search && (
                 <p className="text-xs mt-2 opacity-70">
                   Tip: Gmail-style operators work — try <code>from:</code>, <code>subject:</code>, <code>has:attachment</code>, or quoted phrases.
                 </p>

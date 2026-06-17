@@ -12,6 +12,36 @@ interface AvailabilityModalProps {
   onClose: () => void;
 }
 
+// Helper: Get browser's timezone and format datetime correctly
+function getLocalISODateTime(date: string, time: string): string {
+  // Create date in local time (not UTC)
+  const [year, month, day] = date.split("-");
+  const [hours, minutes] = time.split(":");
+  
+  const localDate = new Date(
+    parseInt(year),
+    parseInt(month) - 1,
+    parseInt(day),
+    parseInt(hours),
+    parseInt(minutes),
+    0,
+    0
+  );
+  
+  // Format as ISO 8601 but in local time with timezone offset
+  const getTimezoneOffset = () => {
+    const offset = -localDate.getTimezoneOffset();
+    const sign = offset >= 0 ? "+" : "-";
+    const absOffset = Math.abs(offset);
+    const hours = String(Math.floor(absOffset / 60)).padStart(2, "0");
+    const mins = String(absOffset % 60).padStart(2, "0");
+    return `${sign}${hours}:${mins}`;
+  };
+  
+  const isoLocal = localDate.toISOString().replace("Z", "");
+  return `${isoLocal}${getTimezoneOffset()}`;
+}
+
 export function AvailabilityModal({ onClose }: AvailabilityModalProps) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [startTime, setStartTime] = useState("09:00");
@@ -23,8 +53,8 @@ export function AvailabilityModal({ onClose }: AvailabilityModalProps) {
   async function handleCheck() {
     setChecking(true); setErr(null); setResult(null);
     try {
-      const time_min = new Date(`${date}T${startTime}`).toISOString();
-      const time_max = new Date(`${date}T${endTime}`).toISOString();
+      const time_min = getLocalISODateTime(date, startTime);
+      const time_max = getLocalISODateTime(date, endTime);
       const res = await calendarApi.checkAvailability({ time_min, time_max });
       setResult(res.availability);
     } catch (e) { setErr(getErrorMessage(e, "Failed to check")); }

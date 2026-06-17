@@ -11,6 +11,38 @@ import { useFeatures } from "../../contexts/FeatureContext";
 import { getErrorMessage } from "../../lib/errors";
 import { Icon } from "../../components/Icon";
 
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Helper: Get browser's timezone and format datetime correctly
+function getLocalISODateTime(date: string, time: string): string {
+  // Create date in local time (not UTC)
+  const [year, month, day] = date.split("-");
+  const [hours, minutes] = time.split(":");
+  
+  const localDate = new Date(
+    parseInt(year),
+    parseInt(month) - 1,
+    parseInt(day),
+    parseInt(hours),
+    parseInt(minutes),
+    0,
+    0
+  );
+  
+  // Format as ISO 8601 but in local time with timezone offset
+  const getTimezoneOffset = () => {
+    const offset = -localDate.getTimezoneOffset();
+    const sign = offset >= 0 ? "+" : "-";
+    const absOffset = Math.abs(offset);
+    const hours = String(Math.floor(absOffset / 60)).padStart(2, "0");
+    const mins = String(absOffset % 60).padStart(2, "0");
+    return `${sign}${hours}:${mins}`;
+  };
+  
+  const isoLocal = localDate.toISOString().replace("Z", "");
+  return `${isoLocal}${getTimezoneOffset()}`;
+}
+
 interface CreateEventModalProps {
   onClose: () => void;
   onCreated: (e: CalendarEvent) => void;
@@ -24,6 +56,7 @@ export function CreateEventModal({ onClose, onCreated }: CreateEventModalProps) 
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("09:30");
   const [attendees, setAttendees] = useState("");
+  const [attendeesError, setAttendeesError] = useState<string | null>(null);
   const [withMeet, setWithMeet] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -53,8 +86,8 @@ export function CreateEventModal({ onClose, onCreated }: CreateEventModalProps) 
     if (!date || !startTime || !endTime) { setConflicts([]); return; }
     const handle = setTimeout(async () => {
       try {
-        const startsAt = new Date(`${date}T${startTime}`).toISOString();
-        const endsAt = new Date(`${date}T${endTime}`).toISOString();
+        const startsAt = getLocalISODateTime(date, startTime);
+        const endsAt = getLocalISODateTime(date, endTime);
         if (new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
           if (!cancelled) setConflicts([]);
           return;
@@ -87,8 +120,8 @@ export function CreateEventModal({ onClose, onCreated }: CreateEventModalProps) 
     if (!date || !startTime || !endTime || !title.trim()) return;
     setAiResolveBusy(true);
     try {
-      const startsAt = new Date(`${date}T${startTime}`).toISOString();
-      const endsAt = new Date(`${date}T${endTime}`).toISOString();
+      const startsAt = getLocalISODateTime(date, startTime);
+      const endsAt = getLocalISODateTime(date, endTime);
       const attendeeList = attendees
         .split(",")
         .map((a) => a.trim())
@@ -137,15 +170,24 @@ export function CreateEventModal({ onClose, onCreated }: CreateEventModalProps) 
 
   async function handleCreate() {
     if (!title.trim()) { setErr("Title is required"); return; }
+    
+    // Validate attendees
+    const attendeeList = attendees.split(",").map(s => s.trim()).filter(Boolean);
+    const invalidAttendees = attendeeList.filter(a => !emailRegex.test(a));
+    if (invalidAttendees.length > 0) {
+      setErr(`Invalid email address: ${invalidAttendees[0]}`);
+      return;
+    }
+    
     setErr(null); setSaving(true);
     try {
-      const starts_at = new Date(`${date}T${startTime}`).toISOString();
-      const ends_at   = new Date(`${date}T${endTime}`).toISOString();
+      const starts_at = getLocalISODateTime(date, startTime);
+      const ends_at = getLocalISODateTime(date, endTime);
       const res = await calendarApi.createEvent({
         title,
         starts_at,
         ends_at,
-        attendees: attendees.split(",").map(s => s.trim()).filter(Boolean),
+        attendees: attendeeList,
         with_meet: withMeet,
       });
       onCreated(res.event); onClose();
@@ -380,7 +422,38 @@ export function CreateEventModal({ onClose, onCreated }: CreateEventModalProps) 
           )}
           <div>
             <label className="section-label mb-1.5 block">Attendees <span className="normal-case tracking-normal font-normal" style={{ color: "var(--c-outline)" }}>(comma-separated)</span></label>
-            <input value={attendees} onChange={(e) => setAttendees(e.target.value)} placeholder="alice@example.com, bob@example.com" className="input-field" />
+            <input
+              value={attendees}
+              onChange={(e) => {
+                setAttendees(e.target.value);
+                // Validate attendees on change
+                const attendeeList = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
+                const invalidAttendees = attendeeList.filter(a => !emailRegex.test(a));
+                if (invalidAttendees.length > 0) {
+                  setAttendeesError(`Invalid email: ${invalidAttendees[0]}`);
+                } else {
+                  setAttendeesError(null);
+                }
+              }}
+              onBlur={(e) => {
+                // Validate on blur
+                const attendeeList = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
+                const invalidAttendees = attendeeList.filter(a => !emailRegex.test(a));
+                if (invalidAttendees.length > 0) {
+                  setAttendeesError(`Invalid email: ${invalidAttendees[0]}`);
+                } else {
+                  setAttendeesError(null);
+                }
+              }}
+              placeholder="alice@example.com, bob@example.com"
+              className="input-field"
+              style={attendeesError ? { borderColor: "var(--c-error, #b3261e)" } : {}}
+            />
+            {attendeesError && (
+              <p className="text-xs mt-1" style={{ color: "var(--c-error, #b3261e)" }}>
+                {attendeesError}
+              </p>
+            )}
           </div>
           <label className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all" style={{ background: withMeet ? "color-mix(in srgb, var(--c-primary) 8%, transparent)" : "var(--c-surface-container)", border: `1px solid ${withMeet ? "color-mix(in srgb, var(--c-primary) 25%, transparent)" : "var(--c-outline-variant)"}` }}>
             <input type="checkbox" checked={withMeet} onChange={(e) => setWithMeet(e.target.checked)} className="w-4 h-4 accent-current" style={{ accentColor: "var(--c-primary)" }} />
@@ -393,7 +466,7 @@ export function CreateEventModal({ onClose, onCreated }: CreateEventModalProps) 
         </div>
         <div className="flex gap-3 mt-6">
           <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
-          <button onClick={handleCreate} disabled={saving || !title.trim()} className="btn-primary flex-1 disabled:opacity-50 flex items-center justify-center gap-2">
+          <button onClick={handleCreate} disabled={saving || !title.trim() || attendeesError !== null} className="btn-primary flex-1 disabled:opacity-50 flex items-center justify-center gap-2">
             {saving ? <Icon name="progress_activity" className="animate-spin text-base" /> : <Icon name="add" className="text-base" />}
             {saving ? "Creating…" : "Create Event"}
           </button>

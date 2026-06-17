@@ -5,8 +5,8 @@
  * only owns list/detail orchestration. Self-contained: owns its own state,
  * dispatches `emailApi.send` then closes via the parent callback.
  */
-import { useState } from "react";
-import { emailApi, aiApi } from "../../api/client";
+import { useEffect, useMemo, useState } from "react";
+import { emailApi, aiApi, snippetsApi, type SnippetRow } from "../../api/client";
 import { AI_TONES, type AiTone } from "../../lib/aiTones";
 import { getErrorMessage } from "../../lib/errors";
 import { Icon } from "../../components/Icon";
@@ -22,6 +22,25 @@ export function ComposeModal({ onClose, canAiCompose }: ComposeModalProps) {
   const canPersonalize = hasFeature("ai_personalized_compose");
   const canScheduleSend = hasFeature("schedule_send");
   const canInlineCommands = hasFeature("ai_inline_commands");
+  const canSnippets = hasFeature("snippets");
+
+  // Snippets cache for inline expansion (`;hotkey<Tab|Space>` → body).
+  const [snippetList, setSnippetList] = useState<SnippetRow[]>([]);
+  useEffect(() => {
+    if (!canSnippets) return;
+    let cancelled = false;
+    snippetsApi.list().then(
+      (r) => { if (!cancelled) setSnippetList(r.snippets); },
+      () => { /* silent — expansion just won't fire */ },
+    );
+    return () => { cancelled = true; };
+  }, [canSnippets]);
+  const snippetByHotkey = useMemo(() => {
+    const m = new Map<string, SnippetRow>();
+    for (const s of snippetList) m.set(s.hotkey.toLowerCase(), s);
+    return m;
+  }, [snippetList]);
+  const [snippetNote, setSnippetNote] = useState<string | null>(null);
 
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
@@ -229,6 +248,40 @@ export function ComposeModal({ onClose, canAiCompose }: ComposeModalProps) {
   }
 
   function handleBodyKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Snippet expansion runs FIRST so it can short-circuit Tab/Space before
+    // the inline-AI handler interprets Tab as a /command trigger.
+    if (canSnippets && (e.key === "Tab" || e.key === " ")) {
+      const ta = e.currentTarget;
+      const cursor = ta.selectionStart;
+      if (cursor === ta.selectionEnd) {
+        // Look back from the cursor for a `;hotkey` token.
+        const lineStart = body.lastIndexOf("\n", cursor - 1) + 1;
+        const beforeCursor = body.slice(lineStart, cursor);
+        const m = /(^|\s)(;([a-zA-Z0-9_-]{1,32}))$/.exec(beforeCursor);
+        if (m) {
+          const hotkey = m[3].toLowerCase();
+          const snippet = snippetByHotkey.get(hotkey);
+          if (snippet) {
+            e.preventDefault();
+            // Replace `;hotkey` (length = m[2].length) with the snippet body.
+            const tokenLen = m[2].length;
+            const replaceFrom = cursor - tokenLen;
+            const newBody = body.slice(0, replaceFrom) + snippet.body + body.slice(cursor);
+            setBody(newBody);
+            // Move cursor to end of inserted snippet on next tick.
+            const newCursor = replaceFrom + snippet.body.length;
+            requestAnimationFrame(() => {
+              ta.selectionStart = ta.selectionEnd = newCursor;
+              ta.focus();
+            });
+            setSnippetNote(`Expanded “${snippet.name}”`);
+            setTimeout(() => setSnippetNote(null), 1500);
+            return;
+          }
+        }
+      }
+    }
+
     if (!canInlineCommands) return;
     if (e.key !== "Tab") return;
     const ta = e.currentTarget;
@@ -345,10 +398,29 @@ export function ComposeModal({ onClose, canAiCompose }: ComposeModalProps) {
           value={body}
           onChange={(e) => setBody(e.target.value)}
           onKeyDown={handleBodyKeyDown}
-          placeholder={canInlineCommands ? "Compose… (type /improve, /shorten, /formal, /casual, /translate <lang> then Tab)" : "Compose…"}
+          placeholder={
+            canInlineCommands
+              ? "Compose… (type /improve, /shorten, /formal, /casual, /translate <lang> then Tab)"
+              : canSnippets
+                ? "Compose…  (tip: type ;hotkey then Tab to expand a snippet)"
+                : "Compose…"
+          }
           className="flex-1 px-6 py-4 bg-transparent text-sm outline-none resize-none min-h-[180px]"
           style={{ color: "var(--c-on-surface)" }}
         />
+        {snippetNote && (
+          <div
+            className="mx-6 mb-2 rounded-lg px-3 py-1.5 text-[11px] flex items-center gap-1.5"
+            style={{
+              background: "color-mix(in srgb, var(--c-primary) 8%, transparent)",
+              color: "var(--c-primary)",
+              border: "1px solid color-mix(in srgb, var(--c-primary) 20%, transparent)",
+            }}
+          >
+            <Icon name="code_blocks" className="text-sm" />
+            {snippetNote}
+          </div>
+        )}
         {(inlineCmdBusy || inlineCmdNote) && (
           <div
             className="mx-6 mb-2 rounded-lg px-3 py-1.5 text-[11px] flex items-center gap-1.5"

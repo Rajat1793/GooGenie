@@ -17,6 +17,7 @@ import { BookingLinksPanel } from "../../components/BookingLinksPanel";
 import { AutoCategorizePanel } from "../../components/AutoCategorizePanel";
 import { ScheduledEmailsPanel } from "../../components/ScheduledEmailsPanel";
 import { DigestPanel } from "../../components/DigestPanel";
+import { SnippetsPanel } from "../../components/SnippetsPanel";
 import { RoleBadge } from "../../components/RoleBadge";
 import { DataState } from "../../components/DataState";
 import { formatActivity, activityIcon } from "../../lib/formatActivity";
@@ -566,7 +567,7 @@ export function UserProfilePage() {
           padded={false}
         >
           <DataState loading={loadingF} error={errorF} show={featureRows.length > 0} empty="No features available.">
-            <div className="p-5 space-y-3">
+            <div className="p-5 space-y-3 max-h-[480px] overflow-y-auto">
               {canRequest && enabledCount === 0 && (
                 <p className="text-xs text-on-surface-variant px-1 mb-1">
                   You don&rsquo;t have any features enabled yet. Tap{" "}
@@ -646,6 +647,7 @@ export function UserProfilePage() {
       {/* Booking links — Calendly-style public scheduler */}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <BookingLinksPanel />
+        {hasFeature("snippets") && <SnippetsPanel />}
         {hasFeature("ai_auto_categorize") && <AutoCategorizePanel />}
         {hasFeature("schedule_send") && <ScheduledEmailsPanel />}
       </div>

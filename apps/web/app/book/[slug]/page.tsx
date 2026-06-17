@@ -24,6 +24,9 @@ interface BookingMeta {
   slots: SlotDef[];
 }
 
+// Simple email validation regex (similar to common browsers)
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function PublicBookingPage() {
   const params = useParams<{ slug: string }>();
   const slug = params?.slug ?? "";
@@ -32,10 +35,14 @@ export default function PublicBookingPage() {
   const [selected, setSelected] = useState<SlotDef | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmation, setConfirmation] = useState<{ start: string; end: string; meet?: string | null } | null>(null);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
+
+  const isEmailValid = email.trim() === "" || emailRegex.test(email.trim());
+  const canSubmit = selected && name.trim() && isEmailValid && email.trim() && !busy;
 
   useEffect(() => {
     if (!slug) return;
@@ -59,8 +66,13 @@ export default function PublicBookingPage() {
 
   async function handleConfirm() {
     if (!selected || !name.trim() || !email.trim()) return;
+    if (!isEmailValid) {
+      setEmailError("Please enter a valid email address");
+      return;
+    }
     setBusy(true);
     setConfirmErr(null);
+    setEmailError(null);
     try {
       const res = await fetch(`/api/v1/booking/${encodeURIComponent(slug)}/confirm`, {
         method: "POST",
@@ -88,10 +100,15 @@ export default function PublicBookingPage() {
 
   if (loadErr) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
-        <div className="max-w-md w-full text-center space-y-3">
-          <h1 className="text-2xl font-bold text-slate-900">Link unavailable</h1>
-          <p className="text-sm text-slate-600">{loadErr}</p>
+      <div
+        className="min-h-screen flex items-center justify-center p-6"
+        style={{ background: "var(--c-background)", color: "var(--c-on-surface)" }}
+      >
+        <div className="nimbus-card max-w-md w-full text-center space-y-3 p-8">
+          <h1 className="font-headline text-2xl font-bold" style={{ color: "var(--c-on-surface)" }}>
+            Link unavailable
+          </h1>
+          <p className="text-sm" style={{ color: "var(--c-on-surface-variant)" }}>{loadErr}</p>
         </div>
       </div>
     );
@@ -99,27 +116,46 @@ export default function PublicBookingPage() {
 
   if (!meta) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
-        <div className="text-sm text-slate-600">Loading…</div>
+      <div
+        className="min-h-screen flex items-center justify-center p-6"
+        style={{ background: "var(--c-background)" }}
+      >
+        <div className="text-sm" style={{ color: "var(--c-on-surface-variant)" }}>Loading…</div>
       </div>
     );
   }
 
   if (confirmation) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center space-y-4">
-          <div className="text-5xl">✅</div>
-          <h1 className="text-2xl font-bold text-slate-900">You&rsquo;re booked!</h1>
-          <p className="text-sm text-slate-600">
+      <div
+        className="min-h-screen flex items-center justify-center p-6"
+        style={{ background: "var(--c-background)", color: "var(--c-on-surface)" }}
+      >
+        <div className="nimbus-card max-w-md w-full p-8 text-center space-y-4">
+          <div
+            className="mx-auto w-14 h-14 rounded-full flex items-center justify-center text-2xl"
+            style={{ background: "var(--c-primary-container)", color: "var(--c-primary)" }}
+            aria-hidden
+          >
+            ✓
+          </div>
+          <h1 className="font-headline text-2xl font-bold" style={{ color: "var(--c-on-surface)" }}>
+            You&rsquo;re booked!
+          </h1>
+          <p className="text-sm" style={{ color: "var(--c-on-surface-variant)" }}>
             {new Date(confirmation.start).toLocaleString(undefined, { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" })}
             {" "}–{" "}
             {new Date(confirmation.end).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
           </p>
-          <p className="text-xs text-slate-500">An invite has been sent to {email}. Check your inbox.</p>
+          <p className="text-xs" style={{ color: "var(--c-on-surface-variant)" }}>
+            An invite has been sent to {email}. Check your inbox.
+          </p>
           {confirmation.meet && (
-            <a href={confirmation.meet} target="_blank" rel="noreferrer"
-              className="inline-block px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700"
+            <a
+              href={confirmation.meet}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-primary"
             >
               Join Google Meet
             </a>
@@ -138,28 +174,42 @@ export default function PublicBookingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div
+      className="min-h-screen"
+      style={{ background: "var(--c-background)", color: "var(--c-on-surface)" }}
+    >
       <div className="max-w-3xl mx-auto px-6 py-12">
         <header className="mb-8 text-center">
-          <div className="text-3xl mb-1">📅</div>
-          <h1 className="text-3xl font-bold text-slate-900">{meta.title}</h1>
-          <p className="text-sm text-slate-600 mt-1">
+          <div
+            className="mx-auto mb-3 w-12 h-12 rounded-full flex items-center justify-center text-xl"
+            style={{ background: "var(--c-primary-container)", color: "var(--c-primary)" }}
+            aria-hidden
+          >
+            📅
+          </div>
+          <h1 className="font-headline text-3xl font-bold" style={{ color: "var(--c-on-surface)" }}>
+            {meta.title}
+          </h1>
+          <p className="text-sm mt-1" style={{ color: "var(--c-on-surface-variant)" }}>
             {meta.duration_minutes} minutes · Pick a time that works for you
           </p>
         </header>
 
         <div className="grid md:grid-cols-[1fr_320px] gap-6">
           {/* Slots */}
-          <div className="bg-white rounded-2xl shadow-sm p-6">
+          <div className="nimbus-card p-6">
             {meta.slots.length === 0 ? (
-              <p className="text-sm text-slate-500 text-center py-8">
-                No available slots in the next {meta.slots.length === 0 ? "two weeks" : ""}. Try again later.
+              <p className="text-sm text-center py-8" style={{ color: "var(--c-on-surface-variant)" }}>
+                No available slots in the next two weeks. Try again later.
               </p>
             ) : (
               <div className="space-y-6">
                 {[...grouped.entries()].slice(0, 7).map(([day, daySlots]) => (
                   <div key={day}>
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+                    <h3
+                      className="text-[10px] font-bold uppercase tracking-widest mb-2"
+                      style={{ color: "var(--c-on-surface-variant)" }}
+                    >
                       {new Date(day).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
                     </h3>
                     <div className="grid grid-cols-3 gap-2">
@@ -169,11 +219,20 @@ export default function PublicBookingPage() {
                           <button
                             key={s.start}
                             onClick={() => setSelected(s)}
-                            className={`px-3 py-2 rounded-lg text-sm font-medium transition border ${
+                            className="px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 active:scale-[0.98]"
+                            style={
                               isSelected
-                                ? "bg-indigo-600 text-white border-indigo-600"
-                                : "bg-white text-slate-700 border-slate-200 hover:border-indigo-300"
-                            }`}
+                                ? {
+                                    background: "var(--c-primary)",
+                                    color: "var(--c-on-primary)",
+                                    border: "1px solid var(--c-primary)",
+                                  }
+                                : {
+                                    background: "var(--c-surface-container-lowest)",
+                                    color: "var(--c-on-surface)",
+                                    border: "1px solid var(--c-outline-variant)",
+                                  }
+                            }
                           >
                             {new Date(s.start).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                           </button>
@@ -187,16 +246,28 @@ export default function PublicBookingPage() {
           </div>
 
           {/* Confirm form */}
-          <aside className="bg-white rounded-2xl shadow-sm p-6 sticky top-6 self-start">
-            <h2 className="text-sm font-bold text-slate-900 mb-3">
+          <aside className="nimbus-card p-6 sticky top-6 self-start">
+            <h2
+              className="font-headline text-sm font-bold mb-3"
+              style={{ color: "var(--c-on-surface)" }}
+            >
               {selected ? "Confirm your booking" : "Pick a time to begin"}
             </h2>
             {selected && (
-              <div className="mb-4 p-3 rounded-lg bg-indigo-50 text-indigo-900 text-xs">
+              <div
+                className="mb-4 p-3 rounded-lg text-xs"
+                style={{
+                  background: "var(--c-primary-container)",
+                  color: "var(--c-on-surface)",
+                  border: "1px solid var(--c-outline-variant)",
+                }}
+              >
                 <div className="font-semibold">
                   {new Date(selected.start).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                 </div>
-                <div className="opacity-80">{meta.duration_minutes} min</div>
+                <div style={{ color: "var(--c-on-surface-variant)" }}>
+                  {meta.duration_minutes} min
+                </div>
               </div>
             )}
             <div className="space-y-3">
@@ -205,35 +276,59 @@ export default function PublicBookingPage() {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Your name"
                 disabled={!selected}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                className="input-field disabled:opacity-50"
               />
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                disabled={!selected}
-                type="email"
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
+              <div>
+                <input
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (e.target.value.trim() && !emailRegex.test(e.target.value.trim())) {
+                      setEmailError("Enter a valid email address");
+                    } else {
+                      setEmailError(null);
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value.trim() && !emailRegex.test(e.target.value.trim())) {
+                      setEmailError("Enter a valid email address");
+                    } else {
+                      setEmailError(null);
+                    }
+                  }}
+                  placeholder="you@example.com"
+                  disabled={!selected}
+                  type="email"
+                  className="input-field disabled:opacity-50"
+                  style={emailError && email.trim() ? { borderColor: "var(--c-error, #b3261e)" } : {}}
+                />
+                {emailError && (
+                  <p className="text-xs mt-1" style={{ color: "var(--c-error, #b3261e)" }}>
+                    {emailError}
+                  </p>
+                )}
+              </div>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="What's this about? (optional)"
                 disabled={!selected}
                 rows={3}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+                className="input-field disabled:opacity-50 resize-none"
               />
               {confirmErr && (
-                <p className="text-xs text-red-600">{confirmErr}</p>
+                <p className="text-xs" style={{ color: "var(--c-error, #b3261e)" }}>
+                  {confirmErr}
+                </p>
               )}
               <button
                 onClick={handleConfirm}
-                disabled={!selected || !name.trim() || !email.trim() || busy}
-                className="w-full px-4 py-2.5 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40 hover:bg-indigo-700 transition"
+                disabled={!canSubmit}
+                className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {busy ? "Booking…" : "Confirm booking"}
               </button>
-              <p className="text-[10px] text-slate-400 text-center">
+              <p className="text-[10px] text-center" style={{ color: "var(--c-on-surface-variant)" }}>
                 Powered by GooGenie
               </p>
             </div>

@@ -121,15 +121,14 @@ export async function claimDueScheduledEmails(limit = 20): Promise<ScheduledEmai
       Number(r.id),
     );
     if (ids.length === 0) return [];
-    await tx.execute(sql`
-      UPDATE scheduled_emails
-         SET status = 'sending', updated_at = NOW()
-       WHERE id = ANY(${ids})
-    `);
+    await tx
+      .update(scheduledEmails)
+      .set({ status: "sending", updatedAt: new Date() })
+      .where(inArray(scheduledEmails.id, ids));
     const updated = await tx
       .select()
       .from(scheduledEmails)
-      .where(sql`${scheduledEmails.id} = ANY(${ids})`);
+      .where(inArray(scheduledEmails.id, ids));
     return updated;
   });
   return rows.map(toRow);

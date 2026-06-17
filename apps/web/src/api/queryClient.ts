@@ -9,6 +9,7 @@
  *   - Optimistic updates: mutations apply immediately in the UI.
  */
 import { QueryClient } from "@tanstack/react-query";
+import type { ApiError } from "./client";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,7 +24,7 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
       refetchOnReconnect: true,
       retry: (failureCount, error) => {
-        const status = (error as { status?: number })?.status;
+        const status = (error as ApiError)?.status;
         // Never retry 429s — backing off is handled by the 60s background poll.
         if (status === 429) return false;
         // Retry 401s up to 2 times — covers the JWKS cold-start window on local

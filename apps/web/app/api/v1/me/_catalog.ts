@@ -94,6 +94,10 @@ export const FEATURE_CATALOG: ReadonlyArray<FeatureCatalogEntry> = [
     description: "Toggle between stacked and Superhuman-style split inbox layout." },
   { key: "schedule_send",          label: "Schedule Send",         icon: "schedule_send",       group: "Productivity", tier: "basic",
     description: "Defer email delivery to a future date/time." },
+  { key: "snooze_threads",         label: "Snooze Threads",        icon: "snooze",              group: "Productivity", tier: "basic",
+    description: "Hide a thread from inbox until a chosen wake-up time." },
+  { key: "snippets",               label: "Snippets",              icon: "code_blocks",         group: "Productivity", tier: "basic",
+    description: "Save reusable text templates and expand them inline with `;hotkey` + Tab." },
   // ADDON: AI-powered.
   { key: "ai_task_extractor",      label: "AI Tasks",              icon: "task_alt",            group: "Productivity", tier: "addon",
     description: "Extract action items from emails into a 'what's on my plate' list." },

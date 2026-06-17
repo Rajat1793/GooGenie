@@ -14,7 +14,9 @@
     "./embeddings": "./src/embeddings.ts",
     "./scheduledEmails": "./src/scheduledEmails.ts",
     "./bookingLinks": "./src/bookingLinks.ts",
-    "./tasks": "./src/tasks.ts"
+    "./tasks": "./src/tasks.ts",
+    "./snoozedThreads": "./src/snoozedThreads.ts",
+    "./snippets": "./src/snippets.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

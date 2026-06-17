@@ -14,6 +14,36 @@ interface EditEventModalProps {
   onUpdated: (e: CalendarEvent) => void;
 }
 
+// Helper: Get browser's timezone and format datetime correctly
+function getLocalISODateTime(date: string, time: string): string {
+  // Create date in local time (not UTC)
+  const [year, month, day] = date.split("-");
+  const [hours, minutes] = time.split(":");
+  
+  const localDate = new Date(
+    parseInt(year),
+    parseInt(month) - 1,
+    parseInt(day),
+    parseInt(hours),
+    parseInt(minutes),
+    0,
+    0
+  );
+  
+  // Format as ISO 8601 but in local time with timezone offset
+  const getTimezoneOffset = () => {
+    const offset = -localDate.getTimezoneOffset();
+    const sign = offset >= 0 ? "+" : "-";
+    const absOffset = Math.abs(offset);
+    const hours = String(Math.floor(absOffset / 60)).padStart(2, "0");
+    const mins = String(absOffset % 60).padStart(2, "0");
+    return `${sign}${hours}:${mins}`;
+  };
+  
+  const isoLocal = localDate.toISOString().replace("Z", "");
+  return `${isoLocal}${getTimezoneOffset()}`;
+}
+
 export function EditEventModal({ event, onClose, onUpdated }: EditEventModalProps) {
   const [title, setTitle] = useState(event.title);
   const [date, setDate] = useState(new Date(event.startsAt).toISOString().slice(0, 10));
@@ -29,8 +59,8 @@ export function EditEventModal({ event, onClose, onUpdated }: EditEventModalProp
     if (!title.trim()) { setErr("Title is required"); return; }
     setErr(null); setSaving(true);
     try {
-      const starts_at = new Date(`${date}T${startTime}`).toISOString();
-      const ends_at   = new Date(`${date}T${endTime}`).toISOString();
+      const starts_at = getLocalISODateTime(date, startTime);
+      const ends_at = getLocalISODateTime(date, endTime);
       const res = await calendarApi.updateEvent(event.id, { title, starts_at, ends_at, attendees: attendees.split(",").map(s => s.trim()).filter(Boolean), description: description || undefined, location: location || undefined });
       onUpdated(res.event); onClose();
     } catch (e) { setErr(getErrorMessage(e, "Failed to update")); }

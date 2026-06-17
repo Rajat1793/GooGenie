@@ -109,6 +109,17 @@ export async function getCalendarEvent(tenantId: string, userId: string, eventId
   } catch { return null; }
 }
 
+// ── Helper to get user's calendar timezone ────────────────────────────────────
+
+async function getUserCalendarTimeZone(tenant: any): Promise<string> {
+  try {
+    const settings = await tenant.googlecalendar.api.calendarList.get({ calendarId: 'primary' });
+    return settings?.timeZone ?? 'UTC';
+  } catch {
+    return 'UTC'; // Fallback to UTC if we can't determine timezone
+  }
+}
+
 // ── createGCalEvent ───────────────────────────────────────────────────────────
 
 export async function createGCalEvent(input: { tenantId: string; ownerUserId: string; title: string; startsAt: string; endsAt: string; attendees: string[]; description?: string; location?: string; withMeet?: boolean }): Promise<CalendarEvent> {
@@ -116,6 +127,17 @@ export async function createGCalEvent(input: { tenantId: string; ownerUserId: st
   try {
     const tenant = corsair.withTenant(input.tenantId);
     const meetRequestId = input.withMeet ? `meet-${Date.now()}-${Math.random().toString(36).slice(2, 10)}` : undefined;
+    
+    // Get user's actual timezone from their calendar settings
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const timeZone = await getUserCalendarTimeZone(tenant as any);
+    
+    // Format dateTime without timezone suffix for Google Calendar API
+    // Google Calendar API expects dateTime in local time with separate timeZone property
+    const formatDateTime = (isoString: string) => {
+      return isoString.replace(/([+-]\d{2}:\d{2}|Z)$/, ''); // Remove timezone suffix
+    };
+    
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const created = await (tenant as any).googlecalendar.api.events.create({
       calendarId: "primary",
@@ -123,8 +145,8 @@ export async function createGCalEvent(input: { tenantId: string; ownerUserId: st
       ...(input.withMeet ? { conferenceDataVersion: 1 } : {}),
       event: {
         summary: input.title,
-        start: { dateTime: input.startsAt },
-        end: { dateTime: input.endsAt },
+        start: { dateTime: formatDateTime(input.startsAt), timeZone },
+        end: { dateTime: formatDateTime(input.endsAt), timeZone },
         attendees: input.attendees.map((email) => ({ email })),
         ...(input.description ? { description: input.description } : {}),
         ...(input.location ? { location: input.location } : {}),

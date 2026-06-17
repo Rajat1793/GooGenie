@@ -10,6 +10,41 @@
  */
 import type { AiTone } from "../lib/aiTones";
 
+export interface ApiError extends Error {
+  status?: number;
+  code?: string;
+  traceId?: string;
+  retryAfter?: number;
+  body?: Record<string, unknown>;
+}
+
+function isFeatureDisabledError(error: unknown): error is ApiError {
+  const e = error as ApiError | undefined;
+  if (!e || e.status !== 403) return false;
+  // Backend uses the generic FORBIDDEN code for both role and feature-gate
+  // denials. Detect the feature-gate case by either the explicit FEATURE_DISABLED
+  // code (future-proof) or the standard messages emitted by checkFeature().
+  if (e.code === "FEATURE_DISABLED") return true;
+  const msg = (e.message ?? "").toLowerCase();
+  return (
+    msg.includes("is disabled for this account") ||
+    msg.includes("is not yet provisioned for this account")
+  );
+}
+
+async function apiFetchFeatureSafe<T>(
+  path: string,
+  fallback: T,
+  init?: RequestInit,
+): Promise<T> {
+  try {
+    return await apiFetch<T>(path, init);
+  } catch (error) {
+    if (isFeatureDisabledError(error)) return fallback;
+    throw error;
+  }
+}
+
 // Next.js Route Handlers live at /api/v1/* — everywhere else the codebase
 // uses /v1/* historically. Translate at the network edge.
 const API_PREFIX = "/api";
@@ -108,10 +143,25 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText }));
+    // res.json() can resolve to null / primitives / arrays for non-conforming
+    // responses, so we must defensively narrow before reading `.message`.
+    const raw: unknown = await res.json().catch(() => null);
+    const body: Record<string, unknown> =
+      raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+    const message =
+      (typeof body.message === "string" && body.message) ||
+      (typeof body.error === "string" && body.error) ||
+      res.statusText ||
+      "Request failed";
     // Attach the HTTP status so React Query's retry callback can inspect it
     // and avoid retrying 429s (which would only make rate-limit exhaustion worse).
-    const err = Object.assign(new Error(body.message ?? "Request failed"), { status: res.status });
+    // Also surface code / trace_id / retry_after from the standard API error shape.
+    const err = new Error(message) as ApiError;
+    err.status = res.status;
+    err.code = typeof body.code === "string" ? body.code : undefined;
+    err.traceId = typeof body.trace_id === "string" ? body.trace_id : undefined;
+    err.retryAfter = typeof body.retry_after === "number" ? body.retry_after : undefined;
+    err.body = body;
     throw err;
   }
 
@@ -385,7 +435,10 @@ export const emailApi = {
 
   // Feature A2 — "Threads waiting on me" filtered view.
   replyNeeded: (limit = 50) =>
-    apiFetch<{ threads: ReplyNeededThread[] }>(`/v1/email/reply-needed?limit=${limit}`),
+    apiFetchFeatureSafe<{ threads: ReplyNeededThread[] }>(
+      `/v1/email/reply-needed?limit=${limit}`,
+      { threads: [] },
+    ),
 
   reply: (threadId: string, body: { to: string; subject: string; body: string; message_id?: string }) =>
     apiFetch<{ message_id?: string; thread_id?: string }>(`/v1/email/threads/${threadId}/reply`, {
@@ -405,6 +458,22 @@ export const emailApi = {
   untrash: (threadId: string) =>
     apiFetch<{ success: boolean }>(`/v1/email/threads/${threadId}/untrash`, { method: "POST" }),
 
+  /** Snooze a thread until `wakeAt` (ISO-8601). The inbox endpoint hides it. */
+  snooze: (threadId: string, wakeAt: string) =>
+    apiFetch<SnoozedThreadRow>(`/v1/email/threads/${threadId}/snooze`, {
+      method: "POST",
+      body: JSON.stringify({ wake_at: wakeAt }),
+    }),
+
+  unsnooze: (threadId: string) =>
+    apiFetch<{ deleted: boolean }>(`/v1/email/threads/${threadId}/snooze`, { method: "DELETE" }),
+
+  listSnoozed: () =>
+    apiFetchFeatureSafe<{ snoozed: SnoozedThreadRow[] }>(
+      "/v1/me/snoozed",
+      { snoozed: [] },
+    ),
+
   batchModify: (ids: string[], add_label_ids: string[], remove_label_ids: string[]) =>
     apiFetch<{ success: boolean }>("/v1/email/messages/batch-modify", {
       method: "POST",
@@ -415,7 +484,10 @@ export const emailApi = {
     apiFetch<{ labels: Array<{ id: string; name: string; type: string; threadsUnread?: number }> }>("/v1/email/labels"),
 
   listDrafts: () =>
-    apiFetch<{ drafts: Array<{ id: string; snippet?: string }> }>("/v1/email/drafts"),
+    apiFetchFeatureSafe<{ drafts: Array<{ id: string; snippet?: string }> }>(
+      "/v1/email/drafts",
+      { drafts: [] },
+    ),
 
   createDraft: (body: { to: string; subject: string; body: string }) =>
     apiFetch<{ draft_id?: string }>("/v1/email/drafts", { method: "POST", body: JSON.stringify(body) }),
@@ -611,25 +683,41 @@ export const aiApi = {
     ),
 
   // ── Feature B4 — Follow-up tracker ────────────────────────────────────
-  followUps: () => apiFetch<{ follow_ups: FollowUpRecord[] }>("/v1/me/follow-ups"),
+  followUps: () =>
+    apiFetchFeatureSafe<{ follow_ups: FollowUpRecord[] }>(
+      "/v1/me/follow-ups",
+      { follow_ups: [] },
+    ),
 
   // ── Feature B5 — Calendar gaps ────────────────────────────────────────
   dailyGaps: () =>
-    apiFetch<{
+    apiFetchFeatureSafe<{
       date: string;
       gaps: Array<{ start: string; end: string; durationMinutes: number }>;
       reply_needed_count: number;
       reply_needed_threads: unknown[];
-    }>("/v1/calendar/daily-gaps"),
+    }>(
+      "/v1/calendar/daily-gaps",
+      {
+        date: new Date().toISOString().slice(0, 10),
+        gaps: [],
+        reply_needed_count: 0,
+        reply_needed_threads: [],
+      },
+    ),
 
   // ── Feature C1 — Email-to-task extractor ──────────────────────────────
-  listTasks: () => apiFetch<{ tasks: TaskRecord[] }>("/v1/me/tasks"),
+  listTasks: () => apiFetchFeatureSafe<{ tasks: TaskRecord[] }>("/v1/me/tasks", { tasks: [] }),
 
   extractTasks: () =>
-    apiFetch<ExtractTasksResponse>("/v1/me/tasks/extract", {
-      method: "POST",
-      body: JSON.stringify({}),
-    }),
+    apiFetchFeatureSafe<ExtractTasksResponse>(
+      "/v1/me/tasks/extract",
+      { scanned: 0, created: 0, skipped: 0, tasks: [] },
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+      },
+    ),
 
   updateTask: (taskId: number, status: "open" | "done" | "dismissed") =>
     apiFetch<{ task: TaskRecord }>(`/v1/me/tasks/${taskId}`, {
@@ -653,7 +741,16 @@ export const aiApi = {
     }),
 
   // ── Feature: daily_digest — "What's on my plate" ──────────────────────
-  digest: () => apiFetch<DigestResponse>("/v1/me/digest"),
+  digest: () =>
+    apiFetchFeatureSafe<DigestResponse>("/v1/me/digest", {
+      ai_available: false,
+      generated_at: new Date().toISOString(),
+      summary: null,
+      reply_needed: [],
+      upcoming_meetings: [],
+      tasks: [],
+      pending_requests: [],
+    }),
 };
 
 export interface DigestResponse {
@@ -940,4 +1037,44 @@ export const connectApi = {
       }, 5 * 60 * 1000);
     });
   }
+};
+
+// ── Snooze threads ─────────────────────────────────────────────────────────
+export interface SnoozedThreadRow {
+  id: number;
+  userId: string;
+  threadId: string;
+  wakeAt: string;
+  status: string;
+  createdAt: string;
+}
+
+// ── Snippets (text templates expanded inline in compose) ───────────────────
+export interface SnippetRow {
+  id: number;
+  userId: string;
+  name: string;
+  body: string;
+  hotkey: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const snippetsApi = {
+  list: () => apiFetch<{ snippets: SnippetRow[] }>("/v1/me/snippets"),
+
+  create: (body: { name: string; body: string; hotkey: string }) =>
+    apiFetch<SnippetRow>("/v1/me/snippets", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  update: (id: number, patch: Partial<{ name: string; body: string; hotkey: string }>) =>
+    apiFetch<SnippetRow>(`/v1/me/snippets/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+
+  delete: (id: number) =>
+    apiFetch<{ deleted: boolean }>(`/v1/me/snippets/${id}`, { method: "DELETE" }),
 };

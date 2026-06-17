@@ -17,6 +17,7 @@ import { Icon } from "../../components/Icon";
 import SenderProfilePanel from "../SenderProfilePanel";
 import RelatedThreadsSidebar from "../RelatedThreadsSidebar";
 import OOOBanner from "../OOOBanner";
+import { SnoozeMenu } from "../SnoozeMenu";
 import { useFeatures } from "../../contexts/FeatureContext";
 
 interface ThreadPaneProps {
@@ -45,6 +46,7 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
   const canSenderInsights = hasFeature("ai_sender_insights");
   const canOOO = hasFeature("ai_ooo_detection");
   const canPersonalize = hasFeature("ai_personalized_compose");
+  const canSnooze = hasFeature("snooze_threads");
 
   const [replyBody, setReplyBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -77,6 +79,11 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
   // ── Feature A3 — Conversation memory ─────────────────────────────────────
   const [showRelated, setShowRelated] = useState<"same_sender" | "same_topic" | null>(null);
 
+  // ── Snooze state ─────────────────────────────────────────────────────────
+  // Local-only optimistic flag — the source of truth is /me/snoozed which the
+  // inbox already filters. We just toast on snooze and close the pane.
+  const [snoozedUntil, setSnoozedUntil] = useState<string | null>(null);
+
   // Reset state when the user switches threads
   useEffect(() => {
     setSummary(null);
@@ -87,6 +94,7 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
     setScheduling({ busy: false, err: null, extracted: null, committingIdx: null, committedEventId: null });
     setSenderProfile(null);
     setShowRelated(null);
+    setSnoozedUntil(null);
   }, [thread.id]);
 
   async function handleReply() {
@@ -242,6 +250,51 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
     onClose();
   }
 
+  async function handleSnooze(isoWakeAt: string) {
+    try {
+      await emailApi.snooze(thread.id, isoWakeAt);
+      setSnoozedUntil(isoWakeAt);
+      const wakeStr = new Date(isoWakeAt).toLocaleString(undefined, {
+        weekday: "short",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      window.dispatchEvent(
+        new CustomEvent("googenie:toast", {
+          detail: { message: `💤 Snoozed until ${wakeStr}`, icon: "snooze" },
+        }),
+      );
+      // Refresh the inbox list so the snoozed thread disappears.
+      window.dispatchEvent(new CustomEvent("googenie:refresh-inbox"));
+      onClose();
+    } catch (e) {
+      window.dispatchEvent(
+        new CustomEvent("googenie:toast", {
+          detail: { message: getErrorMessage(e, "Failed to snooze"), icon: "error" },
+        }),
+      );
+    }
+  }
+
+  async function handleUnsnooze() {
+    try {
+      await emailApi.unsnooze(thread.id);
+      setSnoozedUntil(null);
+      window.dispatchEvent(
+        new CustomEvent("googenie:toast", {
+          detail: { message: `Thread unsnoozed`, icon: "alarm_off" },
+        }),
+      );
+      window.dispatchEvent(new CustomEvent("googenie:refresh-inbox"));
+    } catch (e) {
+      window.dispatchEvent(
+        new CustomEvent("googenie:toast", {
+          detail: { message: getErrorMessage(e, "Failed to unsnooze"), icon: "error" },
+        }),
+      );
+    }
+  }
+
   return (
     <div className="flex flex-col h-full" style={{ background: "var(--c-background)" }}>
       <div className="flex items-start justify-between px-8 py-5" style={{ borderBottom: "1px solid var(--c-outline-variant)" }}>
@@ -317,6 +370,14 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
             </button>
           )}
           <button onClick={() => handleAction("archive")} className="btn-ghost p-2" title="Archive"><Icon name="archive" className="text-xl" /></button>
+          {canSnooze && (
+            <SnoozeMenu
+              trigger={null}
+              onSnooze={handleSnooze}
+              isSnoozed={!!snoozedUntil}
+              onUnsnooze={handleUnsnooze}
+            />
+          )}
           <button onClick={() => handleAction("trash")} className="btn-ghost p-2" title="Move to trash" style={{ color: "var(--c-error)" }}><Icon name="delete" className="text-xl" /></button>
           {thread.isUnread
             ? <button onClick={() => handleAction("read")} className="btn-ghost p-2" title="Mark read"><Icon name="mark_email_read" className="text-xl" /></button>

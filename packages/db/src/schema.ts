@@ -234,3 +234,57 @@ export const tasks = pgTable(
     threadIdx: index("tasks_thread_idx").on(table.userId, table.threadId)
   })
 );
+
+/**
+ * Snoozed threads — hide a Gmail thread from inbox until `wakeAt`. The inbox
+ * list endpoint joins against this table and filters out IDs whose
+ * `status='snoozed' AND wake_at > NOW()`. When wake_at passes the row's
+ * status is lazily flipped to 'awake' on the next inbox load (no poller
+ * required for demo scale).
+ */
+export const snoozedThreads = pgTable(
+  "snoozed_threads",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
+    userId: varchar("user_id", { length: 64 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tenantId: varchar("tenant_id", { length: 64 }).notNull(),
+    threadId: varchar("thread_id", { length: 128 }).notNull(),
+    wakeAt: timestamp("wake_at", { withTimezone: true }).notNull(),
+    /** snoozed | awake | cancelled */
+    status: varchar("status", { length: 16 }).notNull().default("snoozed"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    userStatusIdx: index("snoozed_threads_user_status_idx").on(table.userId, table.status, table.wakeAt),
+    userThreadUnique: uniqueIndex("snoozed_threads_user_thread_unique").on(table.userId, table.threadId)
+  })
+);
+
+/**
+ * Reusable text templates ("snippets") that expand inside compose. The user
+ * types `;hotkey` followed by Tab or Space and the body inflates inline.
+ * Pure local-DB feature — no AI tokens.
+ */
+export const snippets = pgTable(
+  "snippets",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedByDefaultAsIdentity(),
+    userId: varchar("user_id", { length: 64 })
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tenantId: varchar("tenant_id", { length: 64 }).notNull(),
+    name: text("name").notNull(),
+    body: text("body").notNull(),
+    /** Short text trigger; user types `;<hotkey>` + Tab/Space to expand. */
+    hotkey: varchar("hotkey", { length: 32 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    userIdx: index("snippets_user_idx").on(table.userId),
+    userHotkeyUnique: uniqueIndex("snippets_user_hotkey_unique").on(table.userId, table.hotkey)
+  })
+);
