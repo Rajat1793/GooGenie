@@ -41,11 +41,13 @@ export function LoginPage() {
   const isDark = theme === "dark";
 
   // Use Clerk's polished baseTheme for dark mode, then layer minimal brand overrides.
+  // colorPrimary mirrors --c-primary from the global theme (ink-black on light,
+  // cream on dark) so Clerk's submit button matches the rest of our CTAs.
   const clerkAppearance = {
     baseTheme: isDark ? dark : undefined,
     variables: {
-      colorPrimary: isDark ? "#b2dbff" : "#2b6389",
-      borderRadius: "12px",
+      colorPrimary: isDark ? "#F2EFE7" : "#0F1115",
+      borderRadius: "8px",
       fontFamily: "inherit",
       fontSize: "14px",
     },
@@ -53,11 +55,11 @@ export function LoginPage() {
       rootBox: "w-full",
       card: "shadow-none",
       socialButtonsBlockButton:
-        "w-full rounded-xl font-semibold text-sm h-11 transition-all",
-      formFieldInput: "rounded-xl text-sm h-11",
+        "w-full rounded-lg font-semibold text-sm h-11 transition-all",
+      formFieldInput: "rounded-lg text-sm h-11",
       formFieldLabel: "text-xs font-medium",
       formButtonPrimary:
-        "w-full h-11 rounded-xl font-semibold text-sm transition-all hover:opacity-90",
+        "w-full h-11 rounded-lg font-semibold text-sm transition-all hover:opacity-90",
       footerActionLink: "font-semibold",
     },
   };
@@ -73,15 +75,15 @@ export function LoginPage() {
 
       <div className="w-full max-w-[400px] mx-4 flex flex-col items-center gap-5">
 
-        {/* Logo */}
+        {/* Logo — matches the landing-page brand mark: coral tile with sparkle */}
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-            style={{ background: "var(--c-primary)" }}>
-            <Icon name="cloud" className="text-base" style={{ color: "var(--c-on-primary)", fontVariationSettings: "FILL 1" }} />
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center"
+            style={{ background: "var(--c-tertiary)" }}>
+            <Icon name="auto_awesome" className="text-base" style={{ color: "var(--c-on-tertiary)", fontVariationSettings: "FILL 1" }} />
           </div>
           <div>
-            <h1 className="font-headline text-2xl leading-tight" style={{ color: "var(--c-primary)" }}>GooGenie</h1>
-            <p className="text-[10px] uppercase tracking-widest font-semibold"
+            <h1 className="font-headline text-2xl leading-tight font-semibold" style={{ color: "var(--c-on-surface)" }}>GooGenie</h1>
+            <p className="text-[10px] uppercase tracking-[0.18em] font-semibold"
               style={{ color: "var(--c-on-surface-variant)" }}>AI Workspace</p>
           </div>
         </div>

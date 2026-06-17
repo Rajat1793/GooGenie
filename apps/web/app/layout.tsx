@@ -29,6 +29,17 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <ClerkProvider afterSignOutUrl="/">
       <html lang="en" suppressHydrationWarning>
         <head>
+          {/* Unified Superhuman-style typography across the marketing surface
+              AND the in-app shell. Inter handles dense body copy at 13–16px;
+              Space Grotesk is the headline / display face. Both are wired
+              into the CSS variables --font-body / --font-headline in
+              src/styles/index.css. */}
+          <link rel="preconnect" href="https://fonts.googleapis.com" />
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+          <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+          />
           <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
         </head>
         <body

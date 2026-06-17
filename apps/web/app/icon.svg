@@ -1,7 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <!-- GooGenie favicon — cloud-bolt mark on rounded primary-color tile.
-       32x32 viewBox, rendered crisply at 16/32/48 by Next.js. -->
-  <rect width="32" height="32" rx="7" fill="#2b6389"/>
-  <path d="M9.5 19.2c-1.93 0-3.5-1.55-3.5-3.45 0-1.78 1.36-3.25 3.11-3.43.36-2.34 2.4-4.13 4.86-4.13 2.06 0 3.84 1.27 4.55 3.07.34-.1.69-.16 1.06-.16 1.95 0 3.53 1.55 3.53 3.46 0 1.92-1.58 3.46-3.53 3.46H9.5z" fill="#cbe6ff" stroke="#cbe6ff" stroke-width="0.6" stroke-linejoin="round"/>
-  <path d="M16.6 13.4l-2.6 4.1h2.05l-1.05 3.9 3.4-4.5h-2.05l1.05-3.5z" fill="#2b6389" stroke="#2b6389" stroke-width="0.4" stroke-linejoin="round"/>
+  <!-- GooGenie favicon — sparkle / auto_awesome mark on a near-black tile.
+       Mirrors the new landing-page logo (Inter/Space Grotesk era). -->
+  <rect width="32" height="32" rx="7" fill="#0F1115"/>
+  <!-- Four-point sparkle (Material Symbols auto_awesome simplified). -->
+  <path
+    d="M16 4 L17.6 12 L25 13.4 L17.6 14.8 L16 22.8 L14.4 14.8 L7 13.4 L14.4 12 Z"
+    fill="#E94B35"
+  />
+  <!-- Two small accent sparkles for personality. -->
+  <path
+    d="M24.5 22 L25 24 L27 24.5 L25 25 L24.5 27 L24 25 L22 24.5 L24 24 Z"
+    fill="#F7F6F2"
+  />
+  <path
+    d="M8 5.5 L8.4 7 L9.9 7.4 L8.4 7.8 L8 9.3 L7.6 7.8 L6.1 7.4 L7.6 7 Z"
+    fill="#F7F6F2"
+    opacity="0.65"
+  />
 </svg>

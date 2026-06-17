@@ -131,15 +131,15 @@ export function Shell({ children }: { children: ReactNode }) {
           width: `${sidebarWidth}px`,
         }}
       >
-        {/* Logo + collapse toggle */}
+        {/* Logo + collapse toggle — coral tile matches landing-page / login brand mark */}
         <div className={`flex items-center ${collapsed ? "justify-center px-2" : "gap-3 px-6"} py-6 mb-2 relative`}>
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--c-primary)" }}>
-            <Icon name="cloud" className="text-base" style={{ color: "var(--c-on-primary)", fontVariationSettings: "FILL 1" }} />
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: "var(--c-tertiary)" }}>
+            <Icon name="auto_awesome" className="text-base" style={{ color: "var(--c-on-tertiary)", fontVariationSettings: "FILL 1" }} />
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <h1 className="font-headline text-xl leading-tight" style={{ color: "var(--c-primary)" }}>GooGenie</h1>
-              <p className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: "var(--c-on-surface-variant)" }}>AI Workspace</p>
+              <h1 className="font-headline text-xl leading-tight font-semibold" style={{ color: "var(--c-on-surface)" }}>GooGenie</h1>
+              <p className="text-[10px] uppercase tracking-[0.18em] font-semibold" style={{ color: "var(--c-on-surface-variant)" }}>AI Workspace</p>
             </div>
           )}
         </div>

@@ -2,104 +2,128 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── CSS Variables: Light (Elegant Pastel) ─────────────────────────── */
+/* ─── CSS Variables: Light (Superhuman-inspired warm cream) ─────────────
+ *
+ * Palette mirrors the landing page so the marketing surface and the product
+ * shell feel like one continuous brand. Key choices:
+ *   - Ink-black primary so CTAs read as confident black pills (Superhuman /
+ *     Linear style) rather than coloured bubbles.
+ *   - Warm coral tertiary (#E94B35) reserved for accent moments: PREMIUM
+ *     badges, active states, brand mark, callouts.
+ *   - Cream / off-white surfaces with paper-like layering. Every elevation
+ *     step is a tiny temperature shift rather than a luminance jump, which
+ *     keeps the UI looking like a single sheet of paper at multiple depths.
+ *   - Fonts: Inter for body (excellent at 13-16px in dense product UI) +
+ *     Space Grotesk for headlines (geometric counterpoint, used for the
+ *     page-title / display utilities).
+ */
 :root {
-  --c-background: #f8f9fd;
-  --c-surface: #f8f9fd;
-  --c-surface-dim: #d9dadd;
-  --c-surface-container-lowest: #ffffff;
-  --c-surface-container-low: #f3f3f7;
-  --c-surface-container: #edeef1;
-  --c-surface-container-high: #e7e8eb;
-  --c-surface-container-highest: #e1e2e6;
-  --c-surface-variant: #e1e2e6;
-  --c-on-surface: #191c1e;
-  --c-on-surface-variant: #41474e;
-  --c-inverse-surface: #2e3133;
-  --c-inverse-on-surface: #f0f0f4;
-  --c-outline: #71787f;
-  --c-outline-variant: #c1c7cf;
-  --c-primary: #2b6389;
-  --c-on-primary: #ffffff;
-  --c-primary-container: #8cc0eb;
-  --c-on-primary-container: #0d4f74;
-  --c-primary-fixed: #cbe6ff;
-  --c-primary-fixed-dim: #98ccf8;
-  --c-secondary: #466272;
-  --c-on-secondary: #ffffff;
-  --c-secondary-container: #c6e4f7;
-  --c-on-secondary-container: #4a6677;
-  --c-tertiary: #835418;
-  --c-on-tertiary: #ffffff;
-  --c-tertiary-container: #ecae6a;
-  --c-on-tertiary-container: #6c4003;
-  --c-tertiary-fixed-dim: #faba75;
-  --c-error: #ba1a1a;
-  --c-on-error: #ffffff;
-  --c-error-container: #ffdad6;
-  --c-on-error-container: #93000a;
-  --c-ink-text: #2D3436;
-  --font-body: "Hanken Grotesk";
-  --font-headline: "EB Garamond";
-  --radius-sm: 0.375rem;
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.75rem;
-  --radius-2xl: 1rem;
-  --glass-bg: rgba(255,255,255,0.72);
-  --glass-blur: 12px;
-  --glass-border: rgba(43,99,137,0.1);
-  --glass-shadow: 0 4px 24px -4px rgba(43,99,137,0.08);
-  --sidebar-bg: #f3f3f7;
-  --sidebar-border: rgba(193,199,207,0.4);
-  --header-bg: rgba(248,249,253,0.9);
+  --c-background:                #F7F6F2;
+  --c-surface:                   #F7F6F2;
+  --c-surface-dim:               #EDE9E0;
+  --c-surface-container-lowest:  #FFFFFF;
+  --c-surface-container-low:     #FCFAF5;
+  --c-surface-container:         #F2EFE7;
+  --c-surface-container-high:    #EDE9E0;
+  --c-surface-container-highest: #E5E0D6;
+  --c-surface-variant:           #EDE9E0;
+  --c-on-surface:                #0F1115;
+  --c-on-surface-variant:        #5A5F68;
+  --c-inverse-surface:           #0F1115;
+  --c-inverse-on-surface:        #F7F6F2;
+  --c-outline:                   #B8B2A4;
+  --c-outline-variant:           #E5E0D6;
+  /* Primary = ink-black CTA (Superhuman pattern) */
+  --c-primary:                   #0F1115;
+  --c-on-primary:                #FFFFFF;
+  --c-primary-container:         #EDE9E0;
+  --c-on-primary-container:      #0F1115;
+  --c-primary-fixed:             #FFEDE8;
+  --c-primary-fixed-dim:         #FFD4C9;
+  --c-secondary:                 #4A4F58;
+  --c-on-secondary:              #FFFFFF;
+  --c-secondary-container:       #EDE9E0;
+  --c-on-secondary-container:    #2A2D33;
+  /* Tertiary = warm coral accent — sparing use only */
+  --c-tertiary:                  #E94B35;
+  --c-on-tertiary:               #FFFFFF;
+  --c-tertiary-container:        #FFEDE8;
+  --c-on-tertiary-container:     #B5331F;
+  --c-tertiary-fixed-dim:        #FF6B52;
+  --c-error:                     #DC2626;
+  --c-on-error:                  #FFFFFF;
+  --c-error-container:           #FEE2E2;
+  --c-on-error-container:        #991B1B;
+  --c-ink-text:                  #0F1115;
+  --font-body:                   "Inter";
+  --font-headline:               "Space Grotesk";
+  --radius-sm:                   0.375rem;
+  --radius-lg:                   0.5rem;
+  --radius-xl:                   0.75rem;
+  --radius-2xl:                  1rem;
+  --glass-bg:                    rgba(255,255,255,0.72);
+  --glass-blur:                  14px;
+  --glass-border:                rgba(15,17,21,0.08);
+  --glass-shadow:                0 4px 24px -4px rgba(15,17,21,0.06);
+  --sidebar-bg:                  #F2EFE7;
+  --sidebar-border:              rgba(15,17,21,0.06);
+  --header-bg:                   rgba(247,246,242,0.88);
 }
 
-/* ─── CSS Variables: Dark (Nocturnal Elegance) ───────────────────────── */
+/* ─── CSS Variables: Dark (Superhuman-inspired ink) ─────────────────────
+ *
+ * The dark palette inverts the same brand:
+ *   - True near-black surface (#0A0B0E) rather than the typical #1A1A1A,
+ *     giving OLED screens that "screen-off" feel.
+ *   - Cream primary (#F2EFE7) → buttons invert to cream-on-black.
+ *   - Brighter coral (#FF6B52) so the accent stays legible on dark.
+ */
 .dark {
-  --c-background: #111319;
-  --c-surface: #111319;
-  --c-surface-dim: #111319;
-  --c-surface-container-lowest: #0c0e14;
-  --c-surface-container-low: #191b22;
-  --c-surface-container: #1d1f26;
-  --c-surface-container-high: #282a30;
-  --c-surface-container-highest: #33343b;
-  --c-surface-variant: #33343b;
-  --c-on-surface: #e2e2ea;
-  --c-on-surface-variant: #c1c7cf;
-  --c-inverse-surface: #e2e2ea;
-  --c-inverse-on-surface: #2e3037;
-  --c-outline: #8b9199;
-  --c-outline-variant: #41474e;
-  --c-primary: #b2dbff;
-  --c-on-primary: #003450;
-  --c-primary-container: #8cc0eb;
-  --c-on-primary-container: #0d4f74;
-  --c-primary-fixed: #cbe6ff;
-  --c-primary-fixed-dim: #98ccf8;
-  --c-secondary: #edbca4;
-  --c-on-secondary: #472918;
-  --c-secondary-container: #64412e;
-  --c-on-secondary-container: #deae96;
-  --c-tertiary: #e8cbff;
-  --c-on-tertiary: #44196b;
-  --c-tertiary-container: #d5a8ff;
-  --c-on-tertiary-container: #603687;
-  --c-tertiary-fixed-dim: #deb7ff;
-  --c-error: #ffb4ab;
-  --c-on-error: #690005;
-  --c-error-container: #93000a;
-  --c-on-error-container: #ffdad6;
-  --c-ink-text: #e2e2ea;
-  --font-body: "Plus Jakarta Sans";
-  --font-headline: "Caudex";
-  --glass-bg: rgba(30,34,43,0.65);
-  --glass-blur: 20px;
-  --glass-border: rgba(255,255,255,0.05);
-  --glass-shadow: 0 0 40px -10px rgba(140,192,235,0.12);
-  --sidebar-bg: #191b22;
-  --sidebar-border: rgba(255,255,255,0.05);
-  --header-bg: rgba(17,19,25,0.9);
+  --c-background:                #0A0B0E;
+  --c-surface:                   #0A0B0E;
+  --c-surface-dim:               #000000;
+  --c-surface-container-lowest:  #000000;
+  --c-surface-container-low:     #111317;
+  --c-surface-container:         #15171C;
+  --c-surface-container-high:    #1D1F25;
+  --c-surface-container-highest: #25272D;
+  --c-surface-variant:           #15171C;
+  --c-on-surface:                #F2EFE7;
+  --c-on-surface-variant:        #9CA3AF;
+  --c-inverse-surface:           #F2EFE7;
+  --c-inverse-on-surface:        #0F1115;
+  --c-outline:                   #4A4F58;
+  --c-outline-variant:           rgba(255,255,255,0.08);
+  /* Primary inverts to cream so CTAs stay high-contrast */
+  --c-primary:                   #F2EFE7;
+  --c-on-primary:                #0F1115;
+  --c-primary-container:         #15171C;
+  --c-on-primary-container:      #F2EFE7;
+  --c-primary-fixed:             rgba(255,107,82,0.20);
+  --c-primary-fixed-dim:         #FF6B52;
+  --c-secondary:                 #9CA3AF;
+  --c-on-secondary:              #0F1115;
+  --c-secondary-container:       #1D1F25;
+  --c-on-secondary-container:    #F2EFE7;
+  --c-tertiary:                  #FF6B52;
+  --c-on-tertiary:               #FFFFFF;
+  --c-tertiary-container:        rgba(255,107,82,0.16);
+  --c-on-tertiary-container:     #FFB6A6;
+  --c-tertiary-fixed-dim:        #FF8970;
+  --c-error:                     #FF6B6B;
+  --c-on-error:                  #FFFFFF;
+  --c-error-container:           rgba(220,38,38,0.18);
+  --c-on-error-container:        #FFB4AB;
+  --c-ink-text:                  #F2EFE7;
+  --font-body:                   "Inter";
+  --font-headline:               "Space Grotesk";
+  --glass-bg:                    rgba(21,23,28,0.65);
+  --glass-blur:                  20px;
+  --glass-border:                rgba(255,255,255,0.06);
+  --glass-shadow:                0 0 40px -10px rgba(0,0,0,0.5);
+  --sidebar-bg:                  #111317;
+  --sidebar-border:              rgba(255,255,255,0.05);
+  --header-bg:                   rgba(10,11,14,0.88);
 }
 
 /* ─── Base ───────────────────────────────────────────────────────────── */
@@ -136,64 +160,78 @@
   .inner-glow { box-shadow: inset 0 0 0 1px rgba(178,219,255,0.08); }
   .sidebar { background: var(--sidebar-bg); border-right: 1px solid var(--sidebar-border); }
   .app-header { background: var(--header-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid var(--sidebar-border); }
-  .font-headline { font-family: var(--font-headline), serif; }
+  .font-headline { font-family: var(--font-headline), sans-serif; letter-spacing: -0.01em; }
+  /* Buttons — Superhuman-style: rounded-md, ink on cream, no pill shape.
+   * Slightly tighter letter-spacing and Inter semibold reads as confident. */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold tracking-wide transition-all duration-150 shadow-sm active:scale-95;
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 shadow-sm active:scale-[0.98];
     background: var(--c-primary);
     color: var(--c-on-primary);
+    letter-spacing: -0.005em;
   }
-  .btn-primary:hover { filter: brightness(1.08); }
+  .btn-primary:hover { filter: brightness(1.12); box-shadow: 0 6px 20px -8px color-mix(in srgb, var(--c-primary) 50%, transparent); }
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium tracking-wide transition-all duration-150 active:scale-95;
-    background: var(--c-surface-container-high);
-    color: var(--c-on-surface-variant);
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 active:scale-[0.98];
+    background: var(--c-surface-container-lowest);
+    color: var(--c-on-surface);
     border: 1px solid var(--c-outline-variant);
   }
-  .btn-secondary:hover { background: var(--c-surface-container-highest); color: var(--c-on-surface); }
+  .btn-secondary:hover { background: var(--c-surface-container-low); border-color: var(--c-outline); }
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm transition-all duration-150;
+    @apply inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm transition-all duration-150;
     color: var(--c-on-surface-variant);
   }
-  .btn-ghost:hover { background: var(--c-surface-container-high); color: var(--c-on-surface); }
+  .btn-ghost:hover { background: var(--c-surface-container); color: var(--c-on-surface); }
+  /* Accent button — for "Upgrade / Premium" CTAs where coral pop is wanted */
+  .btn-accent {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 shadow-sm active:scale-[0.98];
+    background: var(--c-tertiary);
+    color: var(--c-on-tertiary);
+    letter-spacing: -0.005em;
+  }
+  .btn-accent:hover { filter: brightness(1.08); box-shadow: 0 6px 20px -8px color-mix(in srgb, var(--c-tertiary) 60%, transparent); }
   .nav-item {
-    @apply flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-150;
+    @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150;
     color: var(--c-on-surface-variant);
   }
-  .nav-item:hover { background: var(--c-surface-container-high); color: var(--c-on-surface); }
+  .nav-item:hover { background: var(--c-surface-container); color: var(--c-on-surface); }
   .nav-item-active {
-    color: var(--c-primary);
-    font-weight: 700;
-    background: color-mix(in srgb, var(--c-primary) 12%, transparent);
+    color: var(--c-on-surface);
+    font-weight: 600;
+    background: var(--c-surface-container);
+    box-shadow: inset 2px 0 0 var(--c-tertiary);
   }
   .input-field {
-    @apply w-full rounded-xl px-4 py-2.5 text-sm outline-none transition-all;
+    @apply w-full rounded-lg px-4 py-2.5 text-sm outline-none transition-all;
     background: var(--c-surface-container-lowest);
     border: 1px solid var(--c-outline-variant);
     color: var(--c-on-surface);
   }
   .input-field::placeholder { color: var(--c-outline); }
-  .input-field:focus { border-color: var(--c-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-primary) 15%, transparent); }
+  .input-field:focus { border-color: var(--c-on-surface); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c-on-surface) 10%, transparent); }
   .nimbus-card {
     @apply rounded-2xl transition-all duration-200;
-    background: var(--c-surface-container);
+    background: var(--c-surface-container-lowest);
     border: 1px solid var(--c-outline-variant);
   }
   .nimbus-card-hover:hover {
-    box-shadow: 0 4px 20px -4px color-mix(in srgb, var(--c-primary) 12%, transparent);
-    border-color: color-mix(in srgb, var(--c-primary) 25%, transparent);
+    box-shadow: 0 6px 24px -6px color-mix(in srgb, var(--c-tertiary) 14%, transparent);
+    border-color: color-mix(in srgb, var(--c-tertiary) 28%, transparent);
   }
   .badge { @apply inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider; }
-  .badge-primary  { background: color-mix(in srgb, var(--c-primary) 15%, transparent); color: var(--c-primary); }
+  /* badge-primary now reads as the brand accent (coral) so PREMIUM /
+   * highlight badges actually pop instead of becoming ink-on-ink. */
+  .badge-primary  { background: var(--c-tertiary-container); color: var(--c-on-tertiary-container); }
   .badge-error    { background: color-mix(in srgb, var(--c-error) 15%, transparent); color: var(--c-error); }
-  .badge-secondary { background: color-mix(in srgb, var(--c-secondary) 12%, transparent); color: var(--c-secondary); }
-  .badge-muted    { background: var(--c-surface-container-high); color: var(--c-on-surface-variant); }
+  .badge-secondary { background: var(--c-surface-container); color: var(--c-on-surface); border: 1px solid var(--c-outline-variant); }
+  .badge-muted    { background: var(--c-surface-container); color: var(--c-on-surface-variant); }
   .ai-insight {
     @apply flex items-center gap-3 p-4 rounded-2xl;
-    background: color-mix(in srgb, var(--c-primary) 8%, var(--c-surface-container));
-    border: 1px solid color-mix(in srgb, var(--c-primary) 20%, transparent);
+    background: color-mix(in srgb, var(--c-tertiary) 7%, var(--c-surface-container-lowest));
+    border: 1px solid color-mix(in srgb, var(--c-tertiary) 22%, transparent);
   }
-  .section-label { @apply text-xs font-semibold uppercase tracking-widest; color: var(--c-on-surface-variant); }
-  .page-title { font-family: var(--font-headline), serif; @apply text-3xl tracking-tight; color: var(--c-on-surface); }
+  .section-label { @apply text-[11px] font-semibold uppercase tracking-[0.18em]; color: var(--c-on-surface-variant); }
+  .page-title { font-family: var(--font-headline), sans-serif; @apply text-3xl font-semibold; color: var(--c-on-surface); letter-spacing: -0.02em; }
 
   /* ── Missing component classes used across admin / manager / profile pages ── */
 
@@ -202,15 +240,15 @@
     @apply transition-all duration-200;
   }
   .card-hover:hover {
-    box-shadow: 0 6px 24px -4px color-mix(in srgb, var(--c-primary) 14%, transparent);
-    border-color: color-mix(in srgb, var(--c-primary) 20%, transparent);
+    box-shadow: 0 8px 28px -6px color-mix(in srgb, var(--c-tertiary) 16%, transparent);
+    border-color: color-mix(in srgb, var(--c-tertiary) 24%, transparent);
   }
 
-  /* Avatar circle */
+  /* Avatar circle — uses the coral accent so user marks pop subtly */
   .avatar-md {
     @apply w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0;
-    background: var(--c-primary-container);
-    color: var(--c-on-primary-container);
+    background: var(--c-tertiary-container);
+    color: var(--c-on-tertiary-container);
   }
 
   /* Empty / loading state centred placeholder */
@@ -219,20 +257,21 @@
     color: var(--c-on-surface-variant);
   }
 
-  /* Success badge (green-ish, using primary palette) */
+  /* Success badge — kept tertiary-coral; for true green successes use Tailwind directly */
   .badge-success {
-    background: color-mix(in srgb, var(--c-primary) 14%, transparent);
-    color: var(--c-primary);
+    background: var(--c-tertiary-container);
+    color: var(--c-on-tertiary-container);
   }
 
   /* Data table — clean striped/bordered table */
   .data-table { @apply w-full text-sm border-collapse; }
   .data-table thead tr {
-    border-bottom: 2px solid var(--c-outline-variant);
+    border-bottom: 1px solid var(--c-outline-variant);
   }
   .data-table thead th {
-    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-widest;
+    @apply px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.18em];
     color: var(--c-on-surface-variant);
+    background: var(--c-surface-container-low);
   }
   .data-table tbody tr {
     border-bottom: 1px solid var(--c-outline-variant);
@@ -240,28 +279,28 @@
   }
   .data-table tbody tr:last-child { border-bottom: none; }
   .data-table tbody tr:hover {
-    background: color-mix(in srgb, var(--c-primary) 5%, transparent);
+    background: var(--c-surface-container-low);
   }
   .data-table td { @apply px-4 py-3 align-middle; color: var(--c-on-surface); }
 
   /* Feature-access chip toggles used in ManagerTeamPage expand row */
   .feature-chip-on {
     @apply flex items-center justify-between gap-2 p-3 rounded-xl border transition-all;
-    background: color-mix(in srgb, var(--c-primary) 8%, transparent);
-    border-color: color-mix(in srgb, var(--c-primary) 25%, transparent);
+    background: color-mix(in srgb, var(--c-tertiary) 8%, var(--c-surface-container-lowest));
+    border-color: color-mix(in srgb, var(--c-tertiary) 28%, transparent);
   }
   .feature-chip-off {
     @apply flex items-center justify-between gap-2 p-3 rounded-xl border transition-all;
     background: var(--c-surface-container-low);
     border-color: var(--c-outline-variant);
-    opacity: 0.75;
+    opacity: 0.78;
   }
 }
 
 /* ─── Utilities ──────────────────────────────────────────────────────── */
 @layer utilities {
-  .text-headline { font-family: var(--font-headline), serif; }
-  .ambient-glow  { box-shadow: 0 0 40px -8px color-mix(in srgb, var(--c-primary) 20%, transparent); }
+  .text-headline { font-family: var(--font-headline), sans-serif; letter-spacing: -0.015em; }
+  .ambient-glow  { box-shadow: 0 0 40px -8px color-mix(in srgb, var(--c-tertiary) 22%, transparent); }
 }
 
 /* ─── GooGenie agent status fade ─────────────────────────────────────── */

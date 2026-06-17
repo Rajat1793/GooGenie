@@ -11,8 +11,14 @@ type StudentNode = DbUser;
 type TeacherNode = DbUser & { children: StudentNode[] };
 type BossNode    = DbUser & { children: Array<TeacherNode> };
 
-const ROLE_BG:   Record<string, string> = { super_admin: "#ffdad6", manager_admin: "#cbe6ff", user: "#c6e4f7" };
-const ROLE_FG:   Record<string, string> = { super_admin: "#ba1a1a", manager_admin: "#0d4f74", user: "#466272" };
+// Role badge palette — picked to harmonise with the cream-and-coral theme:
+//   super_admin = coral (brand accent),
+//   manager_admin = warm slate,
+//   user = soft cream tint.
+// All three keep enough contrast on the cream surface in light mode and read
+// fine on the dark surface too thanks to the alpha-blended tints.
+const ROLE_BG:   Record<string, string> = { super_admin: "#FFE3DC", manager_admin: "#E6E2D6", user: "#F2EEE4" };
+const ROLE_FG:   Record<string, string> = { super_admin: "#B5331F", manager_admin: "#3F4550", user: "#4A4F58" };
 const ROLE_LABEL: Record<string, string> = { super_admin: "Admin", manager_admin: "Manager", user: "Member" };
 
 // ── Node card ─────────────────────────────────────────────────────────────────
@@ -23,8 +29,8 @@ function OrgCard({
   user: DbUser;
   size?: "lg" | "md" | "sm";
 }) {
-  const bg = ROLE_BG[user.role] ?? "#e7e8eb";
-  const fg = ROLE_FG[user.role] ?? "#41474e";
+  const bg = ROLE_BG[user.role] ?? "#EDE9E0";
+  const fg = ROLE_FG[user.role] ?? "#4A4F58";
   const initial = user.displayName.charAt(0).toUpperCase();
 
   if (size === "lg") {
