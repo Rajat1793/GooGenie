@@ -129,7 +129,7 @@ function FeatureExpandRow({
                   {group}
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
-                  {features.map(({ key, label, icon, description }) => {
+                  {features.map(({ key, label, icon, description, tier }) => {
                     const on = toggles.get(key) ?? false;
                     const busy = mutating === key;
                     return (
@@ -137,13 +137,24 @@ function FeatureExpandRow({
                         key={key}
                         onClick={() => handleToggle(key, !on)}
                         disabled={busy}
-                        title={description ?? label}
-                        className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all disabled:opacity-50 cursor-pointer ${
+                        title={`${description ?? label}${tier === "addon" ? " (Premium — counts against AI quota)" : " (Included — free for all users)"}`}
+                        className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition-all disabled:opacity-50 cursor-pointer relative ${
                           on
                             ? "bg-primary/8 border-primary/30 text-primary"
                             : "bg-surface-container border-outline-variant/20 text-on-surface-variant hover:border-outline-variant/50"
                         }`}
                       >
+                        {tier === "addon" && (
+                          <span
+                            className="absolute top-1 right-1 text-[7px] font-bold uppercase tracking-wider px-1 py-0.5 rounded"
+                            style={{
+                              background: "color-mix(in srgb, var(--c-tertiary) 18%, transparent)",
+                              color: "var(--c-tertiary)",
+                            }}
+                          >
+                            $
+                          </span>
+                        )}
                         <Icon name={busy ? "progress_activity" : icon} className="text-xl" />
                         <span className="text-[10px] font-medium text-center leading-tight">{label}</span>
                         <span className={`text-[9px] font-semibold uppercase tracking-widest ${on ? "text-primary" : "text-outline"}`}>

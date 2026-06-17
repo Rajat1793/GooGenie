@@ -91,7 +91,39 @@ function FeatureRow({
         <Icon name={icon} className="text-base" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-ink-text capitalize">{label}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium text-ink-text capitalize">{label}</p>
+          {(() => {
+            const meta = getFeatureMeta(toggle.featureKey);
+            if (!meta) return null;
+            if (meta.tier === "addon") {
+              return (
+                <span
+                  className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded"
+                  style={{
+                    background: "color-mix(in srgb, var(--c-tertiary) 15%, transparent)",
+                    color: "var(--c-tertiary)",
+                  }}
+                  title="Premium AI feature — request access from your manager"
+                >
+                  Premium
+                </span>
+              );
+            }
+            return (
+              <span
+                className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded"
+                style={{
+                  background: "color-mix(in srgb, var(--c-primary) 12%, transparent)",
+                  color: "var(--c-primary)",
+                }}
+                title="Included for everyone — no approval needed"
+              >
+                Included
+              </span>
+            );
+          })()}
+        </div>
         {(() => {
           const meta = getFeatureMeta(toggle.featureKey);
           return meta?.description ? (
@@ -120,29 +152,52 @@ function FeatureRow({
             : "Not granted"}
         </p>
       </div>
-      {status === "disabled" && canRequest ? (
-        <button
-          onClick={() => onRequest(toggle.featureKey)}
-          disabled={busy}
-          className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50"
-        >
-          Request
-        </button>
-      ) : status === "denied" && canRequest ? (
-        <button
-          onClick={() => onRequest(toggle.featureKey)}
-          disabled={busy}
-          className="btn-ghost text-xs px-3 py-1.5 disabled:opacity-50"
-        >
-          Request again
-        </button>
-      ) : (
-        <span
-          className={`w-2 h-2 rounded-full flex-shrink-0 ${
-            status === "enabled" ? "bg-primary" : status === "pending" ? "bg-tertiary" : "bg-outline-variant"
-          }`}
-        />
-      )}
+      {(() => {
+        // Basic-tier features should always be enabled — hide the Request CTA
+        // and just show the status dot. If they're somehow disabled, the
+        // backfill migration will re-enable them on next restart.
+        const meta = getFeatureMeta(toggle.featureKey);
+        const isBasic = meta?.tier === "basic";
+        if (isBasic) {
+          return (
+            <span
+              className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                status === "enabled" ? "bg-primary" : "bg-outline-variant"
+              }`}
+              title={status === "enabled" ? "Included" : "Restart will re-enable this basic feature"}
+            />
+          );
+        }
+        if (status === "disabled" && canRequest) {
+          return (
+            <button
+              onClick={() => onRequest(toggle.featureKey)}
+              disabled={busy}
+              className="btn-primary text-xs px-3 py-1.5 disabled:opacity-50"
+            >
+              Request
+            </button>
+          );
+        }
+        if (status === "denied" && canRequest) {
+          return (
+            <button
+              onClick={() => onRequest(toggle.featureKey)}
+              disabled={busy}
+              className="btn-ghost text-xs px-3 py-1.5 disabled:opacity-50"
+            >
+              Request again
+            </button>
+          );
+        }
+        return (
+          <span
+            className={`w-2 h-2 rounded-full flex-shrink-0 ${
+              status === "enabled" ? "bg-primary" : status === "pending" ? "bg-tertiary" : "bg-outline-variant"
+            }`}
+          />
+        );
+      })()}
     </div>
   );
 }

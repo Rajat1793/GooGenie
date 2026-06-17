@@ -61,33 +61,45 @@ export async function upsertClerkUser(opts: {
   });
 
   // Seed feature toggles for the user.
-  // super_admin and manager_admin get the core features ON; students start with
-  // the core reading features so they can request the rest from their teacher.
-  // All advanced AI features (sender insights, meeting brief, follow-up tracker,
-  // task extractor, etc.) start OFF for everyone except super_admin (who bypasses
-  // the gate entirely) — users must request them and managers grant.
+  //
+  // Tiers (mirrored from apps/web/app/api/v1/me/_catalog.ts):
+  //   - BASIC: local-only / no-token features that everyone gets for free
+  //   - ADDON: AI-token-burning features that require manager approval
+  //
+  // Defaults:
+  //   - super_admin    → ALL features (bypasses gates anyway, but seed for UI clarity)
+  //   - manager_admin  → core + all basic features
+  //   - user           → core read-only + all basic features
+  //
+  // Keep this list in sync with the catalog's `tier` field.
   const CORE_FEATURES = [
     "email_read", "email_write",
     "calendar_read", "calendar_write",
     "ai_summary", "ai_compose",
   ];
-  const ADVANCED_FEATURES = [
-    // Email AI
-    "ai_sender_insights", "ai_reply_needed", "ai_related_threads",
-    "ai_auto_categorize", "ai_ooo_detection", "ai_follow_up_tracker",
-    "ai_unsubscribe_sweep", "ai_personalized_compose",
-    // Calendar AI
-    "ai_meeting_brief", "ai_smart_reschedule", "ai_schedule_from_email",
-    "ai_daily_gaps", "ai_conflict_resolver",
-    // Productivity
-    "ai_task_extractor", "ai_inline_commands", "split_inbox_view",
-    "daily_digest", "schedule_send",
+  const BASIC_FEATURES = [
+    // Local-only Email AI (no token spend)
+    "ai_sender_insights", "ai_reply_needed", "ai_ooo_detection",
+    "ai_follow_up_tracker", "ai_unsubscribe_sweep",
+    // Local-only Calendar AI
+    "ai_daily_gaps",
+    // Pure productivity / UX
+    "split_inbox_view", "schedule_send",
   ];
-  const CATALOG = [...CORE_FEATURES, ...ADVANCED_FEATURES];
+  const ADDON_FEATURES = [
+    // Token-burning Email AI
+    "ai_related_threads", "ai_auto_categorize", "ai_personalized_compose",
+    // Token-burning Calendar AI
+    "ai_meeting_brief", "ai_smart_reschedule", "ai_schedule_from_email",
+    "ai_conflict_resolver",
+    // Token-burning Productivity
+    "ai_task_extractor", "ai_inline_commands", "daily_digest",
+  ];
+  const CATALOG = [...CORE_FEATURES, ...BASIC_FEATURES, ...ADDON_FEATURES];
   const enabledByDefault: Record<string, string[]> = {
     super_admin:   CATALOG,
-    manager_admin: CORE_FEATURES,
-    user:          ["email_read", "calendar_read"],
+    manager_admin: [...CORE_FEATURES, ...BASIC_FEATURES],
+    user:          ["email_read", "calendar_read", ...BASIC_FEATURES],
   };
   const enabledSet = new Set(enabledByDefault[chosenRole] ?? ["email_read", "calendar_read"]);
 

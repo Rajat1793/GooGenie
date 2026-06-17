@@ -244,6 +244,54 @@ export async function runStartupMigrations(): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS tasks_user_idx ON tasks(user_id, status, deadline);
       CREATE INDEX IF NOT EXISTS tasks_thread_idx ON tasks(user_id, thread_id);
+
+      -- ── Tiered features ─────────────────────────────────────────────────
+      -- "basic" features (local-only, no token spend) are free for everyone.
+      CREATE TABLE IF NOT EXISTS schema_versions (
+        marker VARCHAR(128) PRIMARY KEY,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      -- (A) Always-safe: ensure every user has rows for every basic feature.
+      --     Only inserts MISSING rows — never overwrites an explicit disable.
+      WITH basic_features(feature_key) AS (
+        VALUES
+          ('ai_sender_insights'),
+          ('ai_reply_needed'),
+          ('ai_ooo_detection'),
+          ('ai_follow_up_tracker'),
+          ('ai_unsubscribe_sweep'),
+          ('ai_daily_gaps'),
+          ('split_inbox_view'),
+          ('schedule_send')
+      )
+      INSERT INTO user_feature_access (tenant_id, user_id, feature_key, is_enabled)
+      SELECT u.tenant_id, u.id, b.feature_key, TRUE
+      FROM users u CROSS JOIN basic_features b
+      ON CONFLICT (tenant_id, user_id, feature_key) DO NOTHING;
+
+      -- (B) One-shot promotion: flip pre-existing basic-feature rows from
+      --     is_enabled=false → true. Guarded by marker so we don't trample
+      --     deliberate admin disables on subsequent restarts.
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM schema_versions WHERE marker = 'feature_tiers_2026_06_basic_promo') THEN
+          UPDATE user_feature_access
+          SET is_enabled = TRUE
+          WHERE is_enabled = FALSE
+            AND feature_key IN (
+              'ai_sender_insights',
+              'ai_reply_needed',
+              'ai_ooo_detection',
+              'ai_follow_up_tracker',
+              'ai_unsubscribe_sweep',
+              'ai_daily_gaps',
+              'split_inbox_view',
+              'schedule_send'
+            );
+          INSERT INTO schema_versions (marker) VALUES ('feature_tiers_2026_06_basic_promo');
+        END IF;
+      END $$;
     `);
   } finally {
     client.release();
