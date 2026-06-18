@@ -98,6 +98,8 @@ export const FEATURE_CATALOG: ReadonlyArray<FeatureCatalogEntry> = [
     description: "Hide a thread from inbox until a chosen wake-up time." },
   { key: "snippets",               label: "Snippets",              icon: "code_blocks",         group: "Productivity", tier: "basic",
     description: "Save reusable text templates and expand them inline with `;hotkey` + Tab." },
+  { key: "booking_links",          label: "Booking Links",         icon: "event_available",     group: "Productivity", tier: "basic",
+    description: "Share a public Calendly-style link — visitors pick a slot from your free time and it's instantly added to your calendar." },
   // ADDON: AI-powered.
   { key: "ai_task_extractor",      label: "AI Tasks",              icon: "task_alt",            group: "Productivity", tier: "addon",
     description: "Extract action items from emails into a 'what's on my plate' list." },

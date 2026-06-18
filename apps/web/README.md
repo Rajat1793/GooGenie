@@ -7,7 +7,7 @@ See `migration_plan.md` for the full migration spec and `Readme.md` for an overv
 
 - Next.js 15 (App Router, React 19, Node runtime)
 - Clerk Next (`@clerk/nextjs`)
-- TanStack Query 5 (mutations + cache invalidation only)
+- TanStack Query 5 — **with `@tanstack/react-query-persist-client` + `@tanstack/query-sync-storage-persister`** so the cache survives page reloads via localStorage
 - Tailwind 3 + CSS variables (light/dark)
 - Workspace packages: `@googenie/server`, `@googenie/db`, `@googenie/contracts`
 
@@ -16,31 +16,41 @@ See `migration_plan.md` for the full migration spec and `Readme.md` for an overv
 ```
 apps/web/
   app/                  ← Next.js App Router pages + API routes
-    layout.tsx          ← ClerkProvider + QueryProvider + ThemeProvider
+    layout.tsx          ← ClerkProvider + QueryProvider (persisted) + ThemeProvider
     page.tsx            ← LandingPage (RSC delegator → src/pages-legacy)
     pricing/page.tsx
     login/page.tsx
-    (app)/              ← Authenticated route group with Shell
-      inbox/page.tsx
+    book/[slug]/page.tsx       ← Public Calendly-style booking page
+    (app)/                     ← Authenticated route group with Shell
+      inbox/page.tsx           ← Inbox + folder sub-nav via `?folder=`
       calendar/page.tsx
+      snippets/page.tsx        ← Reusable text templates (NEW)
+      booking-links/page.tsx   ← Manage booking links (NEW)
       org/page.tsx
-      profile/page.tsx
-      api-docs/page.tsx
+      profile/page.tsx         ← + "Take the tour" replay button
+      api-docs/page.tsx        ← Swagger UI (super_admin)
+      api-docs/openapi.json/   ← Spec route handler
       admin/users/page.tsx
       admin/activity/page.tsx
       manager/team/page.tsx
     api/v1/             ← Route Handlers (all `runtime = "nodejs"`)
-      health/           auth/             me/              admin/
-      manager/          email/            calendar/        ai/
-      agent/            connect/ → me/connect/             stream/
-      webhooks/         demo/tokens/      metrics/         alerts/
+      health/    auth/    me/    admin/    manager/    email/
+      calendar/  ai/      agent/ connect/ → me/connect/   stream/
+      webhooks/  demo/tokens/    metrics/  alerts/  booking/
   src/
     api/                ← Browser API client (paths relative; SSR-safe)
-    components/         ← Client components (Shell, AgentBar, modals…)
+                        ←  + queryClient.ts (qk factory: emailThreads, emailDrafts,
+                        ←    emailSent, calendarEvents, connectStatus, bookingLinks,
+                        ←    snippets) + hooks.ts (useEmailThreads, useDrafts,
+                        ←    useSentThreads, useCalendarEvents, useBookingLinks,
+                        ←    useSnippets, …)
+    components/         ← Shell, AgentBar, modals, DemoTour, BookingLinksPanel,
+                        ←  SnippetsPanel, QueryProvider (persisted), Icon, …
     contexts/           ← AuthContext, FeatureContext, ThemeContext
     hooks/              ← useLiveCacheStream, useNotifications, useClerkReady
     lib/                ← chime, storage, roles, errors, formatActivity
     pages-legacy/       ← Original Vite pages, ported via rewrite-imports.mjs
+                        ←  (includes new SnippetsPage + BookingLinksPage)
     styles/index.css    ← Tailwind + CSS variables (carried from frontend)
   scripts/
     copy-standalone-assets.mjs   ← postbuild copy (Phase 11)
@@ -50,6 +60,20 @@ apps/web/
   next.config.mjs       ← output: "standalone", transpilePackages, NFT root
   tailwind.config.js, postcss.config.js, tsconfig.json, next-env.d.ts
 ```
+
+## Performance notes
+
+- `QueryProvider` wraps the tree in `PersistQueryClientProvider`. Cache key:
+  `googenie-query-cache`. Bump the `CACHE_BUSTER` string in
+  [src/components/QueryProvider.tsx](src/components/QueryProvider.tsx) to nuke
+  every user's persisted cache when query shapes change across deploys.
+- `Shell.tsx` runs a three-wave data warm-up (300/900/1600 ms) gated on the
+  demo token being present, plus a `router.prefetch()` loop for every sidebar
+  route bundle. The `DemoTour` runs an additional two-wave warm-up while the
+  user reads the onboarding cards.
+- Server-side `TTL` constants live in
+  [packages/server/src/security/cache.ts](../../packages/server/src/security/cache.ts):
+  threads 5min, thread 10min, calendar 5min, connect 10min.
 
 ## Environment
 

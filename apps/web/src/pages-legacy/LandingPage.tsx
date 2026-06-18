@@ -298,6 +298,29 @@ export function LandingPage() {
        */}
       <section className="relative overflow-hidden">
         <div className="max-w-7xl mx-auto px-6 pt-20 pb-24 md:pt-28 md:pb-32 text-center">
+          {/* What's-new strip — pops the most recent shipped features so
+              returning visitors can see what changed at a glance. */}
+          <div className="flex justify-center mb-5">
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-transform hover:scale-[1.02]"
+              style={{
+                background: `${p.accent}14`,
+                border: `1px solid ${p.accent}44`,
+                color: p.accent,
+              }}
+            >
+              <span
+                className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                style={{ background: p.accent, color: "white" }}
+              >
+                New
+              </span>
+              <span>Booking Links · Snippets · Drafts &amp; Sent folders</span>
+              <Icon name="arrow_forward" className="text-[14px]" />
+            </Link>
+          </div>
+
           <p
             className="inline-flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.2em] mb-6"
             style={{ color: p.accent }}
@@ -390,7 +413,7 @@ export function LandingPage() {
               <div className="grid grid-cols-1 md:grid-cols-5 gap-0">
                 {/* Thread list mock */}
                 <div className="md:col-span-2 p-5" style={{ background: p.dark, borderRight: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div className="flex items-center gap-2 mb-4">
+                  <div className="flex items-center gap-2 mb-3">
                     <Icon name="inbox" className="text-[18px]" style={{ color: p.darkInk }} />
                     <span className="text-[14px] font-semibold" style={{ color: p.darkInk }}>Inbox</span>
                     <span
@@ -399,6 +422,39 @@ export function LandingPage() {
                     >
                       3
                     </span>
+                  </div>
+                  {/* Folder sub-nav — mirrors the live sidebar so users see
+                      Drafts / Sent / Reply-Needed exist before they sign up. */}
+                  <div
+                    className="flex flex-col gap-0.5 mb-3 pl-2 ml-1"
+                    style={{ borderLeft: `1px solid rgba(255,255,255,0.08)` }}
+                  >
+                    {[
+                      { key: "all",          icon: "all_inbox",         label: "All",          active: true },
+                      { key: "reply_needed", icon: "hourglass",         label: "Reply needed", badge: "3" },
+                      { key: "drafts",       icon: "drafts",            label: "Drafts" },
+                      { key: "sent",         icon: "send",              label: "Sent" },
+                    ].map((f) => (
+                      <div
+                        key={f.key}
+                        className="flex items-center gap-2 px-2 py-1 rounded-md"
+                        style={{
+                          background: f.active ? "rgba(255,255,255,0.06)" : "transparent",
+                          color: f.active ? p.darkInk : "rgba(255,255,255,0.55)",
+                        }}
+                      >
+                        <Icon name={f.icon} className="text-[12px]" />
+                        <span className="text-[11px] font-medium flex-1">{f.label}</span>
+                        {f.badge && (
+                          <span
+                            className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                            style={{ background: p.accent, color: "white" }}
+                          >
+                            {f.badge}
+                          </span>
+                        )}
+                      </div>
+                    ))}
                   </div>
                   {[
                     { from: "Priya", subj: "Q4 budget — need approval", urgent: true, badge: "REPLY NEEDED" },
@@ -502,7 +558,7 @@ export function LandingPage() {
             {[
               { icon: "inbox", label: "Inbox", desc: "Triage, sender insights, OOO detection, newsletter cleanup", href: "#inbox", color: "#4F46E5" },
               { icon: "event_available", label: "Calendar", desc: "AI briefs, smart reschedule, schedule-from-email, gap finder", href: "#calendar", color: "#0EA5E9" },
-              { icon: "auto_awesome", label: "AI Tools", desc: "Task extractor, inline commands, daily digest, schedule send", href: "#productivity", color: "#F59E0B" },
+              { icon: "auto_awesome", label: "AI Tools", desc: "Task extractor, snippets, booking links, daily digest, schedule send", href: "#productivity", color: "#F59E0B" },
               { icon: "shield_person", label: "Team Controls", desc: "RBAC, feature requests, audit log, manager grants", href: "#tiers", color: "#10B981" },
             ].map((card) => (
               <a

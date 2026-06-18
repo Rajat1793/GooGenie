@@ -66,13 +66,34 @@ Open `http://localhost:3000`, sign in with Clerk, then click **Connect** on the 
 | Feature | Where |
 |---|---|
 | Gmail inbox + compose + reply | `/inbox` |
-| Google Calendar view + create | `/calendar` |
+| Folder sidebar — All / Unread / Reply needed / Drafts / Sent / Primary / Social / Promotions / Updates / Forums | Sidebar under **Inbox** (URL: `?folder=…`) |
+| AI **Reply Needed** triage queue | `/inbox?folder=reply_needed` |
+| **Drafts** — inline Send / Edit / Delete on every Gmail draft | `/inbox?folder=drafts` |
+| **Sent** folder — last 20 sent threads with search | `/inbox?folder=sent` |
+| Google Calendar view + create + reschedule + conflict detection | `/calendar` |
+| **Snippets** — reusable text templates expanded inline with `;hotkey` + Tab | `/snippets` |
+| **Booking Links** — Calendly-style public booking pages (`/book/{slug}`) | `/booking-links` |
+| **Demo Tour** — 10-step onboarding modal, auto-opens on first visit, replayable from Profile | All authenticated pages |
 | Org chart | `/org` |
 | Feature-access requests + approval | `/profile` |
 | Real-time notifications (SSE + browser push + chime) | Bell icon |
 | Manager team management | `/manager/team` |
-| Admin user roster | `/admin/users` |
+| Admin user roster + activity log | `/admin/users`, `/admin/activity` |
 | AI agent (⌘K) — Gmail / Calendar tool calling via Mistral | Floating button |
+| OpenAPI / Swagger UI (super_admin only) | `/api-docs` |
+
+---
+
+## Performance
+
+Built for sub-second feels on every interaction:
+
+- **Persisted React Query cache** — every successful query is mirrored to `localStorage` (`googenie-query-cache`, throttled 1 write/sec, 24h max age) and restored before first paint. Hard reloads render last-known data **instantly**, then refetch silently. See [apps/web/src/components/QueryProvider.tsx](apps/web/src/components/QueryProvider.tsx).
+- **Background prefetch waves** — on Shell mount and during the Demo Tour, the inbox / calendar / drafts / sent / connect status / booking links / snippets endpoints are prefetched in three staggered waves (300/900/1600 ms) so the dev server doesn't saturate its socket pool. See [apps/web/src/components/Shell.tsx](apps/web/src/components/Shell.tsx).
+- **Route-bundle prefetch** — `router.prefetch()` is called for every sidebar entry on mount so Next dev mode can JIT-compile route chunks in the background.
+- **Server-side TTL cache** — Gmail / Calendar list calls are cached in process for 5–10 min in [packages/server/src/security/cache.ts](packages/server/src/security/cache.ts).
+- **Corsair DB-backed read path** — `fetchGmailThreads` resolves threads from the Corsair-synced Postgres mirror first, dropping per-thread Gmail API calls from ~11 to 0 on the hot path. See [packages/server/src/integrations/gmail.ts](packages/server/src/integrations/gmail.ts).
+- **Dev mode reality check** — `next dev` JIT-compiles every API route on first hit (3–5 s blank-screen feel). Run `pnpm --filter @googenie/web build && pnpm --filter @googenie/web start` for a representative perf test.
 
 ---
 
