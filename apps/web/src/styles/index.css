@@ -311,3 +311,100 @@
 .googenie-status-fade {
   animation: googenie-status-fade-in 350ms ease-out;
 }
+
+/* Claude-style "thinking" shimmer — a soft gradient sweeps left→right across
+   the active step label so the user sees the assistant is actively working
+   on that phase. */
+@keyframes googenie-thinking-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.googenie-thinking-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--c-on-surface-variant) 0%,
+    var(--c-on-surface-variant) 35%,
+    var(--c-on-surface) 50%,
+    var(--c-on-surface-variant) 65%,
+    var(--c-on-surface-variant) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: googenie-thinking-shimmer 1.6s ease-in-out infinite;
+}
+
+/* Subtle slide-in for the trace lines as each new phase becomes active. */
+@keyframes googenie-trace-slide-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.googenie-trace-line {
+  animation: googenie-trace-slide-in 220ms ease-out;
+}
+
+/* Prose styling for the assistant's markdown output. Scoped to .googenie-prose
+   so it never bleeds into the rest of the app. */
+.googenie-prose {
+  color: var(--c-on-surface);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.googenie-prose > * + * { margin-top: 0.5rem; }
+.googenie-prose h1, .googenie-prose h2, .googenie-prose h3 {
+  font-weight: 600;
+  color: var(--c-on-surface);
+  letter-spacing: -0.01em;
+}
+.googenie-prose h1 { font-size: 1rem; margin-top: 0.75rem; }
+.googenie-prose h2 { font-size: 0.95rem; margin-top: 0.75rem; }
+.googenie-prose h3 { font-size: 0.875rem; margin-top: 0.5rem; }
+.googenie-prose strong { font-weight: 600; color: var(--c-on-surface); }
+.googenie-prose em { font-style: italic; }
+.googenie-prose a {
+  color: var(--c-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.googenie-prose ul, .googenie-prose ol {
+  padding-left: 1.25rem;
+}
+.googenie-prose ul { list-style-type: disc; }
+.googenie-prose ol { list-style-type: decimal; }
+.googenie-prose li + li { margin-top: 0.25rem; }
+.googenie-prose code {
+  background: var(--c-surface-container-high);
+  color: var(--c-primary);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+}
+.googenie-prose pre {
+  background: var(--c-surface-container-high);
+  border: 1px solid var(--c-outline-variant);
+  border-radius: 0.625rem;
+  padding: 0.75rem 0.875rem;
+  overflow-x: auto;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.googenie-prose pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+.googenie-prose blockquote {
+  border-left: 3px solid var(--c-outline-variant);
+  padding: 0.1rem 0.75rem;
+  color: var(--c-on-surface-variant);
+  font-style: italic;
+}
+.googenie-prose hr {
+  border: 0;
+  border-top: 1px solid var(--c-outline-variant);
+  margin: 0.5rem 0;
+}

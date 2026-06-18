@@ -46,7 +46,23 @@ export function ComposeModal({ onClose, canAiCompose }: ComposeModalProps) {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Preload from a Drafts-folder "Edit" click. InboxPage dispatches this
+  // window event when the user clicks a draft row so we can hydrate the
+  // form without coupling the components via props.
+  useEffect(() => {
+    function handler(e: Event) {
+      const d = (e as CustomEvent<{ to?: string; subject?: string; snippet?: string }>).detail;
+      if (!d) return;
+      if (d.to) setTo(d.to);
+      if (d.subject) setSubject(d.subject);
+      if (d.snippet) setBody(d.snippet);
+    }
+    window.addEventListener("googenie:compose-from-draft", handler);
+    return () => window.removeEventListener("googenie:compose-from-draft", handler);
+  }, []);
 
   // Schedule-send state (feature: schedule_send)
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
@@ -127,6 +143,32 @@ export function ComposeModal({ onClose, canAiCompose }: ComposeModalProps) {
     }
     catch (e) { setErr(getErrorMessage(e, "Failed to send")); }
     finally { setSending(false); }
+  }
+
+  /**
+   * Persist the current message to Gmail's Drafts label without sending.
+   * Allows partial input — we just need at least one of to/subject/body so
+   * the saved draft isn't entirely blank.
+   */
+  async function handleSaveDraft() {
+    if (!to.trim() && !subject.trim() && !body.trim()) {
+      setErr("Add a recipient, subject, or body before saving");
+      return;
+    }
+    setSavingDraft(true); setErr(null);
+    try {
+      await emailApi.createDraft({ to, subject, body });
+      window.dispatchEvent(
+        new CustomEvent("googenie:toast", {
+          detail: { message: "Saved to Drafts", icon: "drafts" },
+        }),
+      );
+      onClose();
+    } catch (e) {
+      setErr(getErrorMessage(e, "Failed to save draft"));
+    } finally {
+      setSavingDraft(false);
+    }
   }
 
   async function handleAiGenerate() {
@@ -436,6 +478,15 @@ export function ComposeModal({ onClose, canAiCompose }: ComposeModalProps) {
         )}
         <div className="flex justify-end gap-2 px-6 py-4" style={{ borderTop: "1px solid var(--c-outline-variant)" }}>
           <button onClick={onClose} className="btn-secondary">Cancel</button>
+          <button
+            onClick={() => void handleSaveDraft()}
+            disabled={savingDraft || sending}
+            className="btn-secondary disabled:opacity-50 flex items-center gap-1.5"
+            title="Save as draft (no send)"
+          >
+            {savingDraft ? <Icon name="progress_activity" className="animate-spin text-base" /> : <Icon name="drafts" className="text-base" />}
+            {savingDraft ? "Saving…" : "Save Draft"}
+          </button>
           {canScheduleSend && (
             <div className="relative">
               <button

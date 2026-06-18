@@ -14,10 +14,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { aiApi, type DigestResponse } from "../api/client";
+import { useFeatures } from "../contexts/FeatureContext";
 import { Icon } from "./Icon";
 
 export function DigestPanel() {
   const router = useRouter();
+  const { loading: featuresLoading } = useFeatures();
   const [digest, setDigest] = useState<DigestResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,8 +39,14 @@ export function DigestPanel() {
   }
 
   useEffect(() => {
+    // Wait until the FeatureContext finishes loading so the parent's
+    // hasFeature("daily_digest") gate has been resolved. Without this we'd
+    // optimistically fire /me/digest under the permissive default and get
+    // a noisy 403 in the browser console for users without the add-on.
+    if (featuresLoading) return;
     void load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [featuresLoading]);
 
   if (loading) {
     return (

@@ -58,6 +58,23 @@ export function ConnectionBar({ plugins, status, loading = false, onConnected }:
     setConnecting(plugin); setErr(null);
     try {
       await connectApi.connectPlugin(plugin);
+      // After the popup signals success, the server token-write may not yet
+      // be visible to the next status probe (DB pool / Corsair internals can
+      // briefly lag). Poll the status endpoint a few times with backoff so
+      // a single false read doesn't strand the user on "Not connected".
+      let attempts = 0;
+      const maxAttempts = 6;
+      const baseDelay = 300;
+      while (attempts < maxAttempts) {
+        try {
+          const fresh = await connectApi.status();
+          if (fresh.connected[plugin]) break;
+        } catch { /* swallow — retry */ }
+        attempts++;
+        if (attempts < maxAttempts) {
+          await new Promise((r) => setTimeout(r, baseDelay * attempts));
+        }
+      }
       onConnected(plugin);
     } catch (e) {
       setErr(getErrorMessage(e, "Connection failed"));

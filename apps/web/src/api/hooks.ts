@@ -18,9 +18,36 @@ export function useEmailThreads(opts: { q?: string; enabled?: boolean } = {}) {
     queryKey: qk.emailThreads(opts.q),
     queryFn: () => emailApi.listThreads({ q: opts.q || undefined }),
     enabled: opts.enabled !== false,
-    // Background refetch every 60s while tab is visible
+    // Background refetch every 20s while tab is visible. Combined with
+    // the SSE `email.received` invalidation, new mail surfaces fast even
+    // when the Gmail webhook isn't wired (e.g. local dev without Pub/Sub).
+    refetchInterval: 20_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/** Sent folder — mirrors `useEmailThreads` but pulls from `/email/sent`. */
+export function useSentThreads(opts: { q?: string; enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: qk.emailSent(opts.q),
+    queryFn: () => emailApi.listSent({ q: opts.q || undefined }),
+    enabled: opts.enabled !== false,
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/** Drafts folder — Gmail-backed, refetched on focus + every 60s. */
+export function useDrafts(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: qk.emailDrafts(),
+    queryFn: () => emailApi.listDrafts(),
+    enabled: opts.enabled !== false,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -31,6 +58,7 @@ export function useCalendarEvents(opts: { q?: string; enabled?: boolean } = {}) 
     enabled: opts.enabled !== false,
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 }
 

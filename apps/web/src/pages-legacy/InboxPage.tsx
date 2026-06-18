@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "../lib/router-shim";
-import { emailApi, type EmailThread, type ReplyNeededThread } from "../api/client";
-import { useEmailThreads, useMarkThreadRead, useTrashThread } from "../api/hooks";
+import { emailApi, type EmailThread, type ReplyNeededThread, type DraftSummary } from "../api/client";
+import { useEmailThreads, useMarkThreadRead, useTrashThread, useSentThreads, useDrafts } from "../api/hooks";
+import { useQueryClient } from "@tanstack/react-query";
+import { qk } from "../api/queryClient";
 import { useClerkReady } from "../hooks/useClerkReady";
 import { ConnectionBar, useConnectionStatus } from "../components/ConnectBanner";
 import { useFeatures } from "../contexts/FeatureContext";
@@ -39,6 +41,7 @@ export function InboxPage() {
   // hides the right pane until a thread is selected, then renders it modal-style.
   // Persisted in localStorage so the user's preference survives reloads.
   const [layout, setLayout] = useState<"split" | "stacked">("split");
+  const [isNarrowViewport, setIsNarrowViewport] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const saved = window.localStorage.getItem(STORAGE_KEYS.inboxLayout) as "split" | "stacked" | null;
@@ -46,8 +49,37 @@ export function InboxPage() {
   }, []);
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const updateViewportMode = () => {
+      // Split mode needs enough horizontal room for sidebar + thread list + pane.
+      // On smaller widths, force stacked so content never clips off-screen.
+      setIsNarrowViewport(window.innerWidth < 1280);
+    };
+    updateViewportMode();
+    window.addEventListener("resize", updateViewportMode);
+    return () => window.removeEventListener("resize", updateViewportMode);
+  }, []);
+  useEffect(() => {
+    if (isNarrowViewport && layout === "split") {
+      setLayout("stacked");
+    }
+  }, [isNarrowViewport, layout]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     window.localStorage.setItem(STORAGE_KEYS.inboxLayout, layout);
   }, [layout]);
+
+  // Auto-open Compose if we navigated here with ?compose=1 (e.g. from the
+  // agent "Compose another" chip). Strip the param afterwards so reloads
+  // don't re-open the modal.
+  useEffect(() => {
+    if (!searchParams) return;
+    if (searchParams.get("compose") === "1" && canWrite) {
+      setComposing(true);
+      const next = new URLSearchParams(searchParams);
+      next.delete("compose");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, canWrite, setSearchParams]);
 
   // Focused-but-not-yet-opened index for j/k navigation. The user can step
   // through the list with j/k and press Enter to open the focused thread.
@@ -64,8 +96,12 @@ export function InboxPage() {
   // Gmail category tabs (Primary / Social / Promotions / Updates / Forums) with
   // pseudo-categories "all" and "unread" prepended for convenience, plus the
   // AI-driven "Reply Needed" view (Feature A2) backed by Corsair's local DB.
+  // "drafts" and "sent" swap the data source (drafts.list / sent threads) but
+  // render in the same left column to keep the inbox shell consistent.
   const [filter, setFilter] = useState<
-    "all" | "unread" | "reply_needed" | "primary" | "social" | "promotions" | "updates" | "forums"
+    | "all" | "unread" | "reply_needed"
+    | "primary" | "social" | "promotions" | "updates" | "forums"
+    | "drafts" | "sent"
   >("all");
   const [serverSearch, setServerSearch] = useState(""); // debounced server search
 
@@ -100,6 +136,20 @@ export function InboxPage() {
     enabled: ready,
   });
   const threads: EmailThread[] = data?.threads ?? [];
+
+  // Sent / Drafts folders — fetched lazily, only when their tab is active.
+  // Keeping them disabled until selection prevents two extra Gmail round-trips
+  // on every inbox load.
+  const sentQuery = useSentThreads({
+    q: serverSearch,
+    enabled: ready && filter === "sent",
+  });
+  const sentThreads: EmailThread[] = sentQuery.data?.threads ?? [];
+
+  const draftsQuery = useDrafts({ enabled: ready && filter === "drafts" });
+  const drafts: DraftSummary[] = draftsQuery.data?.drafts ?? [];
+  const qc = useQueryClient();
+  const [draftBusyId, setDraftBusyId] = useState<string | null>(null);
 
   // Optimistic mutations
   const markReadMut = useMarkThreadRead();
@@ -240,13 +290,19 @@ export function InboxPage() {
     promotions: "CATEGORY_PROMOTIONS",
     updates: "CATEGORY_UPDATES",
     forums: "CATEGORY_FORUMS",
+    drafts: null,
+    sent: null,
   };
-  const filtered = threads.filter((t) => {
+  // Source rows for filter+search depend on which folder is active.
+  // Sent uses its own React Query source; drafts have a dedicated renderer
+  // below and don't flow through `filtered` at all.
+  const baseRows: EmailThread[] = filter === "sent" ? sentThreads : threads;
+  const filtered = baseRows.filter((t) => {
     // Text search
     const searchOk = !search || t.subject.toLowerCase().includes(search.toLowerCase()) || t.snippet.toLowerCase().includes(search.toLowerCase()) || (t.from ?? "").toLowerCase().includes(search.toLowerCase());
     // Tab filter
     let filterOk: boolean;
-    if (filter === "all") filterOk = true;
+    if (filter === "all" || filter === "sent") filterOk = true;
     else if (filter === "unread") filterOk = t.isUnread === true;
     else {
       const wanted = CATEGORY_LABEL[filter];
@@ -345,10 +401,13 @@ export function InboxPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-112px)] -mx-8 -my-8 overflow-hidden">
+    // Height = `100vh - 56px` (sticky header) and `-my-8` reclaims main's
+    // `py-8` padding so the inbox fills from just below the header down to
+    // the bottom of the viewport with no leftover whitespace.
+    <div className="flex h-[calc(100vh-56px)] -mx-8 -my-8 overflow-hidden w-[calc(100%+4rem)] max-w-[calc(100%+4rem)]">
       {/* ── Thread list ── */}
       <div
-        className={`flex flex-col shrink-0 ${layout === "stacked" ? "flex-1" : "w-[380px]"}`}
+        className={`flex flex-col shrink-0 min-w-0 ${layout === "stacked" ? "flex-1" : "w-[380px]"}`}
         style={{ background: "var(--c-surface-container-low)", borderRight: "1px solid var(--c-outline-variant)" }}
       >
         <div className="px-6 pt-4 pb-3">
@@ -359,22 +418,32 @@ export function InboxPage() {
             loading={connLoading}
             onConnected={() => { refreshConn(); refetch(); }}
           />
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
+          {/* `flex-wrap` here so that in split mode (where the list column is
+              only 380px wide) the action buttons drop to a second row instead
+              of overflowing the column and spilling into the right pane. */}
+          <div className="flex flex-wrap items-center justify-between gap-y-2 mb-4">
+            <div className="flex items-center gap-2 min-w-0">
               <h2 className="font-headline text-2xl" style={{ color: "var(--c-on-surface)" }}>Inbox</h2>
               {unreadCount > 0 && (
                 <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold" style={{ background: "var(--c-primary)", color: "var(--c-on-primary)" }}>{unreadCount}</span>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
               {canSplitView && (
                 <button
-                  onClick={() => setLayout((cur) => (cur === "split" ? "stacked" : "split"))}
-                  title={`Switch to ${layout === "split" ? "stacked" : "split"} layout (Shift+S)`}
-                  className="btn-ghost py-2 px-2 text-xs flex items-center"
+                  onClick={() => {
+                    if (isNarrowViewport) return;
+                    setLayout((cur) => (cur === "split" ? "stacked" : "split"));
+                  }}
+                  title={isNarrowViewport
+                    ? "Split view needs a wider window. Resize to at least 1280px."
+                    : `Switch to ${layout === "split" ? "stacked" : "split"} layout (Shift+S)`}
+                  className="btn-ghost py-2 px-2 text-xs flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                   aria-label="Toggle inbox layout"
+                  disabled={isNarrowViewport}
                 >
                   <Icon name={layout === "split" ? "splitscreen" : "view_agenda"} className="text-base" />
+                  <span className="hidden sm:inline">{layout === "split" ? "Split" : "Stacked"}</span>
                 </button>
               )}
               {hasFeature("ai_unsubscribe_sweep") && (
@@ -405,6 +474,8 @@ export function InboxPage() {
                 { key: "all",          label: "All",          icon: "all_inbox",         requires: null },
                 { key: "unread",       label: "Unread",       icon: "mark_email_unread", requires: null },
                 { key: "reply_needed", label: "Reply needed", icon: "hourglass",         requires: "ai_reply_needed" },
+                { key: "drafts",       label: "Drafts",       icon: "drafts",            requires: null },
+                { key: "sent",         label: "Sent",         icon: "send",              requires: null },
                 { key: "primary",      label: "Primary",      icon: "inbox",             requires: null },
                 { key: "social",       label: "Social",       icon: "group",             requires: null },
                 { key: "promotions",   label: "Promotions",   icon: "local_offer",       requires: null },
@@ -428,7 +499,9 @@ export function InboxPage() {
                   ? `${f.label} (${unreadCount})`
                   : f.key === "reply_needed" && replyNeeded.length > 0
                     ? `${f.label} (${replyNeeded.length})`
-                    : f.label}
+                    : f.key === "drafts" && drafts.length > 0
+                      ? `${f.label} (${drafts.length})`
+                      : f.label}
               </button>
             ))}
           </div>
@@ -471,25 +544,82 @@ export function InboxPage() {
 
         {/* Thread items */}
         <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-0.5">
-          {loading && <div className="flex items-center justify-center py-16"><Icon name="progress_activity" className="animate-spin text-3xl" style={{ color: "var(--c-primary)" }} /></div>}
-          {error && <p className="text-sm px-4 py-8 text-center" style={{ color: "var(--c-error)" }}>{(error as Error).message}</p>}
-          {!loading && displayList.length === 0 && !error && (
-            <div className="px-4 py-8 text-center" style={{ color: "var(--c-on-surface-variant)" }}>
-              <p className="text-sm">
-                {search
-                  ? `No results for "${search}"`
-                  : filter === "unread"
-                    ? "No unread emails"
-                    : "No threads found"}
-              </p>
-              {search && (
-                <p className="text-xs mt-2 opacity-70">
-                  Tip: Gmail-style operators work — try <code>from:</code>, <code>subject:</code>, <code>has:attachment</code>, or quoted phrases.
-                </p>
+          {filter === "drafts" ? (
+            <DraftsList
+              drafts={drafts}
+              loading={draftsQuery.isLoading}
+              busyId={draftBusyId}
+              onEdit={(d) => {
+                setComposing(true);
+                // ComposeModal opens blank; persist the editable draft via
+                // a one-shot global so the modal can preload it without
+                // changing its props contract (kept tiny for the POC).
+                window.dispatchEvent(
+                  new CustomEvent("googenie:compose-from-draft", { detail: d }),
+                );
+              }}
+              onSend={async (d) => {
+                setDraftBusyId(d.id);
+                try {
+                  await emailApi.sendDraft(d.id);
+                  await qc.invalidateQueries({ queryKey: qk.emailDrafts() });
+                  await qc.invalidateQueries({ queryKey: ["email", "sent"] });
+                  await qc.invalidateQueries({ queryKey: ["email", "threads"] });
+                  window.dispatchEvent(
+                    new CustomEvent("googenie:toast", {
+                      detail: { message: "Draft sent", kind: "success" },
+                    }),
+                  );
+                } catch (e) {
+                  window.dispatchEvent(
+                    new CustomEvent("googenie:toast", {
+                      detail: { message: (e as Error).message || "Failed to send draft", kind: "error" },
+                    }),
+                  );
+                } finally {
+                  setDraftBusyId(null);
+                }
+              }}
+              onDelete={async (d) => {
+                if (!confirm("Delete this draft?")) return;
+                setDraftBusyId(d.id);
+                try {
+                  await emailApi.deleteDraft(d.id);
+                  await qc.invalidateQueries({ queryKey: qk.emailDrafts() });
+                } catch (e) {
+                  window.dispatchEvent(
+                    new CustomEvent("googenie:toast", {
+                      detail: { message: (e as Error).message || "Failed to delete draft", kind: "error" },
+                    }),
+                  );
+                } finally {
+                  setDraftBusyId(null);
+                }
+              }}
+            />
+          ) : (
+            <>
+              {(filter === "sent" ? sentQuery.isLoading : loading) && <div className="flex items-center justify-center py-16"><Icon name="progress_activity" className="animate-spin text-3xl" style={{ color: "var(--c-primary)" }} /></div>}
+              {error && <p className="text-sm px-4 py-8 text-center" style={{ color: "var(--c-error)" }}>{(error as Error).message}</p>}
+              {!loading && displayList.length === 0 && !error && (
+                <div className="px-4 py-8 text-center" style={{ color: "var(--c-on-surface-variant)" }}>
+                  <p className="text-sm">
+                    {search
+                      ? `No results for "${search}"`
+                      : filter === "unread"
+                        ? "No unread emails"
+                        : filter === "sent"
+                          ? "Nothing in Sent yet"
+                          : "No threads found"}
+                  </p>
+                  {search && (
+                    <p className="text-xs mt-2 opacity-70">
+                      Tip: Gmail-style operators work — try <code>from:</code>, <code>subject:</code>, <code>has:attachment</code>, or quoted phrases.
+                    </p>
+                  )}
+                </div>
               )}
-            </div>
-          )}
-          {displayList.map((thread, idx) => {
+              {displayList.map((thread, idx) => {
             const isActive = selected?.id === thread.id;
             const isFocused = focusedIdx === idx && !isActive;
             const sim = thread.similarity;
@@ -558,6 +688,8 @@ export function InboxPage() {
             <div className="text-center py-8 text-xs italic" style={{ color: "var(--c-on-surface-variant)" }}>
               🎉 Inbox zero on replies — nothing waiting on you.
             </div>
+          )}
+            </>
           )}
         </div>
       </div>
@@ -633,5 +765,102 @@ export function InboxPage() {
       {composing && <ComposeModal onClose={() => { setComposing(false); refetch(); }} canAiCompose={canWrite && hasFeature("ai_compose")} />}
       {unsubOpen && <UnsubscribeSweepModal onClose={() => setUnsubOpen(false)} />}
     </div>
+  );
+}
+
+// ── Drafts folder renderer ────────────────────────────────────────────────────
+//
+// Lives inline so it can share Inbox-style row chrome (rounded button, left
+// rule on hover) without exporting another file. Each row shows recipient +
+// subject + snippet plus inline Send / Delete actions; clicking the body
+// fires an `onEdit` so the parent can reopen the compose modal preloaded
+// with the draft.
+function DraftsList(props: {
+  drafts: DraftSummary[];
+  loading: boolean;
+  busyId: string | null;
+  onEdit: (d: DraftSummary) => void;
+  onSend: (d: DraftSummary) => void;
+  onDelete: (d: DraftSummary) => void;
+}) {
+  const { drafts, loading, busyId, onEdit, onSend, onDelete } = props;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Icon name="progress_activity" className="animate-spin text-3xl" style={{ color: "var(--c-primary)" }} />
+      </div>
+    );
+  }
+  if (drafts.length === 0) {
+    return (
+      <div className="px-4 py-10 text-center" style={{ color: "var(--c-on-surface-variant)" }}>
+        <Icon name="drafts" className="text-3xl mb-2" style={{ opacity: 0.4 }} />
+        <p className="text-sm">No drafts saved</p>
+        <p className="text-xs mt-1 opacity-70">Compose an email and close without sending to save a draft.</p>
+      </div>
+    );
+  }
+  return (
+    <>
+      {drafts.map((d) => {
+        const busy = busyId === d.id;
+        return (
+          <div
+            key={d.id}
+            className="w-full text-left p-4 rounded-xl transition-all duration-150 relative overflow-hidden group"
+            style={{ borderLeft: "3px solid transparent" }}
+          >
+            <button
+              type="button"
+              onClick={() => onEdit(d)}
+              className="w-full text-left"
+              disabled={busy}
+            >
+              <div className="flex items-start justify-between gap-2 mb-1 pr-2">
+                <span className="text-xs truncate font-medium" style={{ color: "var(--c-on-surface-variant)" }}>
+                  {d.to || "(no recipient)"}
+                </span>
+                <span className="text-[11px] shrink-0 flex items-center gap-1.5" style={{ color: "var(--c-on-surface-variant)" }}>
+                  <span
+                    className="px-1 rounded text-[9px] font-bold uppercase"
+                    style={{ background: "color-mix(in srgb, var(--c-tertiary) 18%, transparent)", color: "var(--c-tertiary)" }}
+                  >
+                    Draft
+                  </span>
+                  {new Date(d.updatedAt).toLocaleDateString()}
+                </span>
+              </div>
+              <p className="text-sm truncate font-semibold" style={{ color: "var(--c-on-surface)" }}>
+                {d.subject || "(no subject)"}
+              </p>
+              <p className="text-xs truncate mt-0.5" style={{ color: "var(--c-on-surface-variant)" }}>
+                {d.snippet || "Empty body — click to edit"}
+              </p>
+            </button>
+            <div className="flex items-center gap-1.5 mt-2">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onSend(d); }}
+                disabled={busy || !d.to}
+                title={d.to ? "Send this draft now" : "Add a recipient first"}
+                className="btn-primary py-1 px-2.5 text-[11px] flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Icon name={busy ? "progress_activity" : "send"} className={`text-[12px] ${busy ? "animate-spin" : ""}`} />
+                Send
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onDelete(d); }}
+                disabled={busy}
+                title="Delete this draft"
+                className="btn-ghost py-1 px-2 text-[11px] flex items-center gap-1 disabled:opacity-40"
+              >
+                <Icon name="delete" className="text-[12px]" />
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </>
   );
 }

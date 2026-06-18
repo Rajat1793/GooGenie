@@ -194,6 +194,23 @@ export function Shell({ children }: { children: ReactNode }) {
 
         {/* Bottom section */}
         <div className={`${collapsed ? "px-2" : "px-3"} pb-4 pt-3 space-y-1`} style={{ borderTop: "1px solid var(--sidebar-border)" }}>
+          {/* GooGenie Assistant launcher — opens the ChatGPT-style overlay
+              rendered by <AgentBar />. Lives in the nav drawer so it doesn't
+              float over page content and cover the inbox reply box. */}
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent("googenie:agent.toggle", { detail: { open: true } }))}
+            className={`nav-item w-full text-left ${collapsed ? "justify-center px-0" : ""}`}
+            title={collapsed ? "Ask GooGenie" : undefined}
+          >
+            <span
+              className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+              style={{ background: "linear-gradient(135deg, var(--c-primary), var(--c-tertiary))" }}
+            >
+              <span className="text-[11px]">✨</span>
+            </span>
+            {!collapsed && <span className="text-sm">Ask GooGenie</span>}
+          </button>
+
           {/* Demo banner */}
           {demoToken && !collapsed && (
             <div className="px-4 py-2 rounded-xl mb-2 flex items-center justify-between" style={{ background: "color-mix(in srgb, var(--c-tertiary) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--c-tertiary) 25%, transparent)" }}>
@@ -242,9 +259,24 @@ export function Shell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* ── Main content ── */}
+      {/*
+        The <aside> above is `position: fixed`, so it doesn't participate in
+        the parent flex layout. That means a bare `flex-1` here would size the
+        content column to 100% of the viewport, and the `marginLeft` shift
+        would push the column past the right edge of the screen (visible as
+        the Inbox header buttons disappearing off-screen).
+        Constrain the width explicitly to `100% - sidebarWidth` so the column
+        fits inside the viewport, and add `min-w-0` so children that have
+        long content (long subject lines, etc.) can shrink instead of forcing
+        horizontal overflow.
+      */}
       <div
-        className="flex-1 flex flex-col transition-[margin-left] duration-200 ease-out"
-        style={{ marginLeft: `${sidebarWidth}px` }}
+        className="flex-1 flex flex-col min-w-0 transition-[margin-left,width] duration-200 ease-out"
+        style={{
+          marginLeft: `${sidebarWidth}px`,
+          width: `calc(100% - ${sidebarWidth}px)`,
+          maxWidth: `calc(100% - ${sidebarWidth}px)`,
+        }}
       >
         {/* Top header */}
         <header className="app-header sticky top-0 z-40 h-14 flex items-center justify-end px-8">
@@ -354,7 +386,14 @@ export function Shell({ children }: { children: ReactNode }) {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 px-8 py-8">
+        {/*
+          `min-w-0` here is what actually allows inner flex children (like
+          the Inbox split view) to shrink instead of bullying the column
+          wider than the viewport. `overflow-x-hidden` is a safety net so
+          that any single wide child (long unbreakable string, etc.) can't
+          create a horizontal scrollbar on the whole page.
+        */}
+        <main className="flex-1 min-w-0 px-8 py-8 overflow-x-hidden">
           {/* Global toast for notification decisions */}
           {toast && (
             <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[300] px-5 py-3 rounded-xl shadow-xl text-sm font-medium"

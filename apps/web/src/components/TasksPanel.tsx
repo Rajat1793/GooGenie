@@ -9,10 +9,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { aiApi, type TaskRecord } from "../api/client";
+import { useFeatures } from "../contexts/FeatureContext";
 import { Icon } from "./Icon";
 
 export default function TasksPanel() {
   const router = useRouter();
+  const { loading: featuresLoading } = useFeatures();
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -31,8 +33,13 @@ export default function TasksPanel() {
   }
 
   useEffect(() => {
+    // Wait until the FeatureContext has resolved so the parent's
+    // hasFeature("ai_task_extractor") gate is authoritative. This avoids
+    // a 403 on /me/tasks for users without the add-on while features load.
+    if (featuresLoading) return;
     void load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [featuresLoading]);
 
   async function handleScan() {
     setScanning(true);

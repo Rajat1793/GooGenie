@@ -380,6 +380,7 @@ export interface ScheduledEmail {
   sendAt: string;
   status: string;
   kind: "undo" | "scheduled" | string;
+  error?: string | null;
   createdAt: string;
 }
 
@@ -392,6 +393,16 @@ export interface ReplyNeededThread {
   daysWaiting: number;
   urgency: number;
   labelIds: string[];
+}
+
+/** Row in the Drafts folder. Mirrors the server's `DraftSummary` shape. */
+export interface DraftSummary {
+  id: string;
+  threadId?: string;
+  subject: string;
+  to: string;
+  snippet: string;
+  updatedAt: string;
 }
 
 export const emailApi = {
@@ -483,8 +494,20 @@ export const emailApi = {
   listLabels: () =>
     apiFetch<{ labels: Array<{ id: string; name: string; type: string; threadsUnread?: number }> }>("/v1/email/labels"),
 
+  /** Gmail Sent folder — same shape as `listThreads`. */
+  listSent: (params?: { cursor?: string; limit?: number; q?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.q) qs.set("q", params.q);
+    const q = qs.toString();
+    return apiFetch<{ threads: EmailThread[]; total: number; next_cursor?: string }>(
+      `/v1/email/sent${q ? `?${q}` : ""}`,
+    );
+  },
+
   listDrafts: () =>
-    apiFetchFeatureSafe<{ drafts: Array<{ id: string; snippet?: string }> }>(
+    apiFetchFeatureSafe<{ drafts: DraftSummary[] }>(
       "/v1/email/drafts",
       { drafts: [] },
     ),
@@ -997,42 +1020,122 @@ export const connectApi = {
 
   /** Opens a popup window for the given plugin OAuth flow. Resolves when connected or rejects on error. */
   connectPlugin: async (plugin: "gmail" | "googlecalendar"): Promise<void> => {
-    // Step 1: get signed OAuth URL from authenticated backend endpoint
-    const { url } = await apiFetch<{ url: string; state: string }>(`/v1/me/connect/${plugin}/init`, { method: "POST" });
+    // IMPORTANT — popup-blocker workaround:
+    //
+    // Browsers (Chrome, Safari, Firefox) only allow `window.open` from inside
+    // a *synchronous* user-gesture handler. If we `await apiFetch(...)` first
+    // and then call `window.open(url)`, the await yields back to the event
+    // loop and the popup is treated as programmatic → blocked.
+    //
+    // Fix: open a blank popup **synchronously** at the very start of this
+    // function (which itself is invoked from a click handler). After the
+    // async OAuth URL fetch completes, navigate that already-open popup to
+    // the real URL. If the user has hard-blocked popups for the site, fall
+    // back to a full-page redirect so they're never stuck.
+    const popup = window.open(
+      "about:blank",
+      `connect_${plugin}`,
+      "width=500,height=650,left=400,top=100"
+    );
 
-    // Step 2: open Google's OAuth URL directly (no backend redirect needed)
+    let url: string;
+    try {
+      const init = await apiFetch<{ url: string; state: string }>(
+        `/v1/me/connect/${plugin}/init`,
+        { method: "POST" }
+      );
+      url = init.url;
+    } catch (err) {
+      try { popup?.close(); } catch { /* noop */ }
+      throw err;
+    }
+
+    if (!popup || popup.closed) {
+      // Hard-blocked: do a full-page redirect rather than failing. The
+      // OAuth callback page will land the user back on the app.
+      window.location.href = url;
+      // Return a never-resolving promise — the page is navigating away, so
+      // resolving/rejecting here is moot.
+      return new Promise<void>(() => { /* navigating away */ });
+    }
+
+    // Navigate the synchronously-opened popup to Google's consent screen.
+    try {
+      popup.location.href = url;
+    } catch {
+      // Cross-origin write to popup.location can throw in rare edge cases;
+      // fall back to full-page redirect.
+      window.location.href = url;
+      return new Promise<void>(() => { /* navigating away */ });
+    }
+
     return new Promise((resolve, reject) => {
+      // We listen on TWO independent channels and resolve on the first hit:
+      //
+      //   1. `message` from window.opener.postMessage — fast, but breaks
+      //      under strict Cross-Origin-Opener-Policy isolation (the popup
+      //      navigates Google [cross-origin] → callback [same-origin] and
+      //      the browser may have severed `window.opener` in the meantime).
+      //   2. `storage` event on `googenie:connect:result` — storage events
+      //      fire across all same-origin browsing contexts regardless of
+      //      COOP, so this works even when the postMessage path is dead.
+      //
+      // The callback page writes the payload then immediately removes the
+      // key so a stale value never lingers in localStorage between attempts.
       // `noopener` would break window.opener.postMessage from the callback,
       // so we omit it. Cross-origin Google sets COOP `same-origin-allow-popups`
       // which means we can NOT poll `popup.closed` from here without a
       // browser warning. Instead we listen exclusively for the postMessage
       // emitted by our same-origin callback page, with a 5-minute timeout.
-      const popup = window.open(url, `connect_${plugin}`, "width=500,height=650,left=400,top=100");
-      if (!popup) { reject(new Error("Popup blocked — please allow popups for this site")); return; }
-
       let settled = false;
+      const cleanup = () => {
+        window.removeEventListener("message", handler);
+        window.removeEventListener("storage", storageHandler);
+        clearTimeout(timeoutId);
+      };
+      const finishOk = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+      const finishErr = (msg: string) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error(msg));
+      };
       const handler = (e: MessageEvent) => {
         if (e.origin !== window.location.origin) return;
         if (e.data?.type === "CONNECT_SUCCESS" && e.data.plugin === plugin) {
-          settled = true;
-          window.removeEventListener("message", handler);
-          clearTimeout(timeoutId);
-          resolve();
+          finishOk();
         } else if (e.data?.type === "CONNECT_ERROR") {
-          settled = true;
-          window.removeEventListener("message", handler);
-          clearTimeout(timeoutId);
-          reject(new Error(decodeURIComponent(e.data.error ?? "Connection failed")));
+          finishErr(decodeURIComponent(e.data.error ?? "Connection failed"));
         }
       };
+      const storageHandler = (e: StorageEvent) => {
+        // The callback writes-then-removes; both fire storage events but
+        // only the write carries the payload in `newValue`.
+        if (e.key !== "googenie:connect:result" || !e.newValue) return;
+        try {
+          const data = JSON.parse(e.newValue) as { type?: string; plugin?: string; error?: string };
+          if (data.type === "CONNECT_SUCCESS" && (!data.plugin || data.plugin === plugin)) {
+            finishOk();
+          } else if (data.type === "CONNECT_ERROR") {
+            finishErr(data.error ?? "Connection failed");
+          }
+        } catch { /* malformed payload — ignore */ }
+      };
       window.addEventListener("message", handler);
+      window.addEventListener("storage", storageHandler);
 
       // Safety timeout — if the user closes the popup without completing the
       // flow we resolve quietly so the UI can refresh status. We can't poll
       // `popup.closed` directly (COOP warning) so we just give up after 5 min.
       const timeoutId = setTimeout(() => {
         if (settled) return;
-        window.removeEventListener("message", handler);
+        settled = true;
+        cleanup();
         resolve();
       }, 5 * 60 * 1000);
     });

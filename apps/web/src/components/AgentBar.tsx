@@ -14,12 +14,11 @@
  */
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "../lib/router-shim";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { aiApi, type AgentResponse } from "../api/client";
 import { useFeatures } from "../contexts/FeatureContext";
 import { getErrorMessage } from "../lib/errors";
 import { Icon } from "../components/Icon";
+import { AssistantMarkdown } from "../components/AssistantMarkdown";
 import { useKeybinding, useKeybindings, getEffectiveCombo, formatCombo } from "../contexts/KeybindingContext";
 
 export function AgentBar() {
@@ -27,25 +26,29 @@ export function AgentBar() {
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState<Array<{ user: string; reply: AgentResponse }>>([]);
-  const [statusIdx, setStatusIdx] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
+  // Index of the currently active "thinking phase" while a request is in
+  // flight. Phases are time-gated below; this mirrors Claude's UX of
+  // surfacing each step (Thinking → Reading → Analyzing → Composing
+  // → Finalizing) so the wait feels like deliberate work, not a frozen
+  // spinner.
+  const [phaseIdx, setPhaseIdx] = useState(0);
+  const phaseStartRef = useRef<number>(0);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const conversationRef = useRef<HTMLDivElement>(null);
   const { hasFeature } = useFeatures();
   const navigate = useNavigate();
 
-  // Quirky rotating "thinking…" labels. Cycled while a request is in flight
-  // so the user gets a sense of progress instead of a static dot.
-  const STATUS_MESSAGES = [
-    "🪙 Mining the inbox for gold…",
-    "🗓️ Digging up your calendar…",
-    "🔮 Consulting the AI oracle…",
-    "📬 Wrangling Gmail threads…",
-    "🤝 Negotiating with Google APIs…",
-    "✨ Summoning calendar events…",
-    "🧠 Untangling thread context…",
-    "⚡ Charging the agent's batteries…",
-    "🪄 Sprinkling AI on your inbox…",
-    "🛰️ Pinging the Corsair connector…",
+  // Claude-style thinking trace. Each phase becomes active once the
+  // elapsed time since the request started passes `at` (ms). The last
+  // phase stays active until the network response actually arrives, at
+  // which point the entire trace is replaced by the assistant message.
+  const THINKING_PHASES: Array<{ at: number; label: string; icon: string }> = [
+    { at: 0,    label: "Thinking",            icon: "auto_awesome" },
+    { at: 700,  label: "Reading your inbox",  icon: "mail" },
+    { at: 1900, label: "Analyzing context",   icon: "search" },
+    { at: 3600, label: "Composing response",  icon: "edit_note" },
+    { at: 6500, label: "Finalizing",          icon: "check" },
   ];
 
   // Strip the hidden two-phase-commit marker from displayed messages.
@@ -77,7 +80,28 @@ export function AgentBar() {
     return s;
   }
 
+  // Map nav-style chips to a destination route. Returning a path means we
+  // should navigate immediately on click (and close the drawer) instead of
+  // round-tripping the chip text through the LLM, which would just refuse
+  // because "Open Inbox" isn't an email/calendar intent.
+  function suggestionToRoute(s: string): string | null {
+    const k = s.toLowerCase().trim();
+    if (k === "open inbox" || k === "check inbox" || k === "view inbox") return "/inbox";
+    if (k === "compose another" || k === "open compose" || k === "compose") return "/inbox?compose=1";
+    if (k === "view calendar" || k === "go to calendar" || k === "open calendar") return "/calendar";
+    if (k === "schedule another") return "/calendar";
+    if (k === "reconnect gmail" || k === "connect gmail") return "/profile";
+    return null;
+  }
+
   function applySuggestion(s: string) {
+    // Nav-style chips: navigate directly instead of filling the prompt.
+    const route = suggestionToRoute(s);
+    if (route) {
+      setOpen(false);
+      navigate(route);
+      return;
+    }
     const tpl = suggestionToTemplate(s);
     setPrompt(tpl);
     // Defer focus so the value is in place before we move the caret to the end.
@@ -95,6 +119,19 @@ export function AgentBar() {
   const { bindings } = useKeybindings();
   const agentCombo = formatCombo(getEffectiveCombo(bindings, "agent.toggle"));
 
+  // External controllers (sidebar nav item, etc.) trigger open/close via a
+  // window event so they don't have to share React state with the FAB-less
+  // AgentBar mounted at the bottom of <Shell>.
+  useEffect(() => {
+    function onToggle(e: Event) {
+      const detail = (e as CustomEvent<{ open?: boolean } | undefined>).detail;
+      if (typeof detail?.open === "boolean") setOpen(detail.open);
+      else setOpen((o) => !o);
+    }
+    window.addEventListener("googenie:agent.toggle", onToggle);
+    return () => window.removeEventListener("googenie:agent.toggle", onToggle);
+  }, []);
+
   // Close on Escape.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -109,25 +146,43 @@ export function AgentBar() {
     if (open) setTimeout(() => inputRef.current?.focus(), 50);
   }, [open]);
 
-  // Click outside closes
+  // Auto-scroll the conversation to the latest message whenever new history
+  // is added or the assistant is mid-response. ChatGPT does the same so the
+  // newest turn is always visible above the input bar.
   useEffect(() => {
     if (!open) return;
-    const onClick = (e: MouseEvent) => {
-      if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [open]);
+    const el = conversationRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [history, busy, open]);
 
-  // Cycle quirky status messages while a request is in flight.
+  // Auto-grow the textarea up to a cap so long prompts wrap visibly.
   useEffect(() => {
-    if (!busy) return;
-    setStatusIdx(Math.floor(Math.random() * STATUS_MESSAGES.length));
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [prompt, open]);
+
+  // Advance the Claude-style thinking trace while a request is in flight.
+  // We tick every 200 ms and resolve the latest phase whose `at` threshold
+  // has elapsed. When `busy` flips back to false we reset to 0 so the next
+  // turn starts clean.
+  useEffect(() => {
+    if (!busy) {
+      setPhaseIdx(0);
+      return;
+    }
+    phaseStartRef.current = Date.now();
+    setPhaseIdx(0);
     const id = window.setInterval(() => {
-      setStatusIdx((i) => (i + 1) % STATUS_MESSAGES.length);
-    }, 1400);
+      const elapsed = Date.now() - phaseStartRef.current;
+      let next = 0;
+      for (let i = 0; i < THINKING_PHASES.length; i++) {
+        if (elapsed >= THINKING_PHASES[i].at) next = i;
+      }
+      setPhaseIdx(next);
+    }, 200);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy]);
@@ -175,150 +230,198 @@ export function AgentBar() {
     inputRef.current?.focus();
   }
 
+  if (!open) return null;
+
+  const STARTER_PROMPTS = [
+    { icon: "summarize", title: "Summarize my inbox", prompt: "Summarise my latest unread emails." },
+    { icon: "search", title: "Find an email", prompt: "Find emails about " },
+    { icon: "edit_note", title: "Draft a reply", prompt: "Draft a friendly thank-you reply to " },
+    { icon: "event", title: "Schedule a meeting", prompt: "Schedule 30 min with the team next week" },
+  ];
+
   return (
-    <>
-      {/* Floating launcher */}
-      {!open && (
-        <button
-          onClick={() => setOpen(true)}
-          aria-label={`Open AI agent (${agentCombo})`}
-          className="fixed bottom-6 right-6 z-[200] flex items-center gap-2 px-4 py-3 rounded-full shadow-2xl text-sm font-semibold transition-transform hover:scale-105"
-          style={{
-            background: "linear-gradient(135deg, var(--c-primary), var(--c-tertiary))",
-            color: "var(--c-on-primary)",
-          }}
+    <div
+      className="fixed inset-0 z-[250] flex items-stretch justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label="GooGenie Assistant"
+    >
+      {/* Backdrop — click to close */}
+      <div
+        onClick={() => setOpen(false)}
+        className="absolute inset-0"
+        style={{ background: "color-mix(in srgb, var(--c-scrim, #000) 55%, transparent)", backdropFilter: "blur(2px)" }}
+      />
+
+      {/* Centered chat surface — ChatGPT-style: full-height column with the
+          conversation scrolling above a pinned composer at the bottom. */}
+      <div
+        ref={drawerRef}
+        className="relative flex flex-col w-full max-w-3xl mx-auto my-0 sm:my-6 rounded-none sm:rounded-2xl shadow-2xl overflow-hidden"
+        style={{
+          background: "var(--c-surface-container-lowest)",
+          border: "1px solid var(--c-outline-variant)",
+        }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-5 py-3 border-b shrink-0"
+          style={{ borderColor: "var(--c-outline-variant)", background: "var(--c-surface-container-low)" }}
         >
-          <span className="text-base">✨</span>
-          <span>Ask GooGenie</span>
-          <kbd
-            className="ml-1 hidden sm:inline-block px-1.5 py-0.5 text-[10px] rounded font-mono"
-            style={{ background: "rgba(255,255,255,0.25)" }}
-          >
-            {agentCombo}
-          </kbd>
-        </button>
-      )}
-
-      {/* Drawer */}
-      {open && (
-        <div className="fixed inset-0 z-[250] flex items-end sm:items-center justify-center sm:justify-end p-4 sm:p-6 pointer-events-none">
-          <div
-            ref={drawerRef}
-            className="w-full sm:w-[420px] max-h-[70vh] flex flex-col rounded-2xl shadow-2xl pointer-events-auto"
-            style={{
-              background: "var(--c-surface-container-high)",
-              border: "1px solid var(--c-outline-variant)",
-            }}
-          >
-            {/* Header */}
+          <div className="flex items-center gap-2.5">
             <div
-              className="flex items-center justify-between px-4 py-3 border-b"
-              style={{ borderColor: "var(--c-outline-variant)" }}
+              className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+              style={{ background: "linear-gradient(135deg, var(--c-primary), var(--c-tertiary))" }}
             >
-              <div className="flex items-center gap-2">
-                <span className="text-lg">✨</span>
-                <span className="font-semibold text-sm" style={{ color: "var(--c-on-surface)" }}>
-                  GooGenie Assistant
-                </span>
-                {history.length > 0 && (
-                  <span
-                    className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
-                    style={{ background: "var(--c-tertiary-container)", color: "var(--c-on-tertiary-container)" }}
-                    title="Conversation memory active"
-                  >
-                    {history.length} {history.length === 1 ? "turn" : "turns"}
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                {history.length > 0 && (
-                  <button
-                    onClick={clearConversation}
-                    className="text-xs px-2 py-1 rounded hover:opacity-70 flex items-center gap-1"
-                    style={{ color: "var(--c-on-surface-variant)" }}
-                    title="Clear conversation memory"
-                  >
-                    <Icon name="refresh" className="text-sm" />
-                    Clear
-                  </button>
-                )}
-                <button
-                  onClick={() => setOpen(false)}
-                  className="text-xs px-2 py-1 rounded hover:opacity-70"
-                  style={{ color: "var(--c-on-surface-variant)" }}
-                  title="Close"
-                >
-                  ✕
-                </button>
-              </div>
+              <span className="text-base">✨</span>
             </div>
+            <div className="flex flex-col leading-tight">
+              <span className="font-semibold text-sm" style={{ color: "var(--c-on-surface)" }}>
+                GooGenie Assistant
+              </span>
+              <span className="text-[11px]" style={{ color: "var(--c-on-surface-variant)" }}>
+                {history.length === 0
+                  ? "Email & calendar copilot"
+                  : `${history.length} ${history.length === 1 ? "turn" : "turns"} in this chat`}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            {history.length > 0 && (
+              <button
+                onClick={clearConversation}
+                className="text-xs px-2.5 py-1.5 rounded-lg hover:bg-black/5 flex items-center gap-1"
+                style={{ color: "var(--c-on-surface-variant)" }}
+                title="Start a new chat"
+              >
+                <Icon name="add" className="text-sm" />
+                New chat
+              </button>
+            )}
+            <button
+              onClick={() => setOpen(false)}
+              className="p-1.5 rounded-lg hover:bg-black/5"
+              style={{ color: "var(--c-on-surface-variant)" }}
+              title={`Close (${agentCombo} to reopen)`}
+            >
+              <Icon name="close" className="text-base" />
+            </button>
+          </div>
+        </div>
 
-            {/* Conversation */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 text-sm">
-              {history.length === 0 && (
+        {/* Conversation list */}
+        <div
+          ref={conversationRef}
+          className="flex-1 overflow-y-auto"
+          style={{ background: "var(--c-surface-container-lowest)" }}
+        >
+          {history.length === 0 ? (
+            <div className="min-h-full flex items-center justify-center px-4 sm:px-6 py-8">
+              <div className="w-full max-w-2xl text-center">
                 <div
-                  className="rounded-xl p-3 text-xs space-y-2"
-                  style={{
-                    background: "var(--c-surface-container)",
-                    color: "var(--c-on-surface-variant)",
-                  }}
+                  className="mx-auto w-14 h-14 rounded-full flex items-center justify-center mb-4 shadow-sm"
+                  style={{ background: "linear-gradient(135deg, var(--c-primary), var(--c-tertiary))" }}
                 >
-                  <div className="font-medium" style={{ color: "var(--c-on-surface)" }}>
-                    Hi! I help with your email & calendar only.
-                  </div>
-                  <p className="text-[11px] leading-relaxed">
-                    I can summarize threads, draft replies, find emails, and schedule events.
-                    I won't answer general questions outside this workspace.
-                  </p>
-                  <div className="font-medium pt-1" style={{ color: "var(--c-on-surface)" }}>
-                    Try asking…
-                  </div>
-                  {[
-                    "Summarise my latest unread email",
-                    "Find emails about budget",
-                    "Schedule 30 min with the team next week",
-                    "Draft a friendly thank-you reply",
-                  ].map((s) => (
+                  <span className="text-2xl">✨</span>
+                </div>
+                <h2
+                  className="text-[22px] sm:text-2xl font-semibold mb-2 tracking-tight"
+                  style={{ color: "var(--c-on-surface)" }}
+                >
+                  How can I help with your inbox today?
+                </h2>
+                <p className="text-sm mb-8 mx-auto max-w-md" style={{ color: "var(--c-on-surface-variant)" }}>
+                  Summarize threads, draft replies, find emails, and schedule meetings — I stay focused on your mail &amp; calendar.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-left">
+                  {STARTER_PROMPTS.map((s) => (
                     <button
-                      key={s}
-                      onClick={() => setPrompt(s)}
-                      className="block w-full text-left px-2 py-1 rounded hover:bg-black/5 transition"
+                      key={s.title}
+                      onClick={() => {
+                        setPrompt(s.prompt);
+                        setTimeout(() => inputRef.current?.focus(), 0);
+                      }}
+                      className="group flex items-start gap-3 p-3.5 rounded-xl border text-left transition hover:shadow-md hover:-translate-y-0.5"
+                      style={{
+                        background: "var(--c-surface-container)",
+                        borderColor: "var(--c-outline-variant)",
+                      }}
                     >
-                      {s}
+                      <span
+                        className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition group-hover:scale-105"
+                        style={{
+                          background: "color-mix(in srgb, var(--c-primary) 12%, transparent)",
+                          color: "var(--c-primary)",
+                        }}
+                      >
+                        <Icon name={s.icon} size={18} />
+                      </span>
+                      <span className="flex flex-col min-w-0 flex-1 leading-snug">
+                        <span className="text-sm font-semibold truncate" style={{ color: "var(--c-on-surface)" }}>
+                          {s.title}
+                        </span>
+                        <span
+                          className="text-xs mt-0.5 line-clamp-2"
+                          style={{ color: "var(--c-on-surface-variant)" }}
+                        >
+                          {s.prompt.trim() || "Tap to start"}
+                        </span>
+                      </span>
                     </button>
                   ))}
-                  <p className="text-[10px] pt-1 italic flex items-center gap-1" style={{ color: "var(--c-primary)" }}>
-                    <Icon name="arrow_downward" className="text-xs" />
-                    Type your request in the box below
-                  </p>
                 </div>
-              )}
+              </div>
+            </div>
+          ) : (
+            <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-6">
               {history.map((h, i) => (
-                <div key={i} className="space-y-1.5">
-                  <div className="text-right">
+                <div key={i} className="space-y-4">
+                  {/* User message row */}
+                  <div className="flex items-start gap-3 justify-end">
                     <div
-                      className="inline-block max-w-[85%] rounded-2xl px-3 py-2"
+                      className="rounded-2xl px-4 py-2.5 max-w-[80%] text-sm leading-relaxed whitespace-pre-wrap"
                       style={{ background: "var(--c-primary)", color: "var(--c-on-primary)" }}
                     >
                       {h.user}
                     </div>
-                  </div>
-                  <div>
                     <div
-                      className="inline-block max-w-[90%] rounded-2xl px-3 py-2 whitespace-pre-wrap"
-                      style={{
-                        background: "var(--c-surface-container)",
-                        color: "var(--c-on-surface)",
-                      }}
+                      className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[11px] font-semibold"
+                      style={{ background: "var(--c-surface-container-high)", color: "var(--c-on-surface)" }}
                     >
-                      {displayMessage(h.reply.message) || "(no response)"}
+                      <Icon name="person" className="text-base" />
+                    </div>
+                  </div>
+
+                  {/* Assistant message row */}
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+                      style={{ background: "linear-gradient(135deg, var(--c-primary), var(--c-tertiary))" }}
+                    >
+                      <span className="text-xs">✨</span>
+                    </div>
+                    <div className="flex-1 min-w-0 space-y-2">
+                      <div
+                        className="rounded-2xl px-4 py-3"
+                        style={{
+                          background: "var(--c-surface-container)",
+                          color: "var(--c-on-surface)",
+                        }}
+                      >
+                        {(() => {
+                          const msg = displayMessage(h.reply.message);
+                          return msg
+                            ? <AssistantMarkdown text={msg} />
+                            : <span className="text-sm italic opacity-70">(no response)</span>;
+                        })()}
+                      </div>
                       {h.reply.email_refs && h.reply.email_refs.length > 0 && (
-                        <div className="mt-2 space-y-1">
+                        <div className="space-y-1.5">
                           {h.reply.email_refs.map((ref) => (
                             <button
                               key={ref.thread_id}
                               onClick={() => openEmailRef(ref.thread_id)}
-                              className="w-full text-left flex items-start gap-2 px-2 py-1.5 rounded-lg text-[11px] transition hover:opacity-90 group"
+                              className="w-full text-left flex items-start gap-2 px-3 py-2 rounded-xl text-xs transition hover:opacity-90 group"
                               style={{
                                 background: "var(--c-primary-container)",
                                 color: "var(--c-on-primary-container)",
@@ -337,19 +440,19 @@ export function AgentBar() {
                         </div>
                       )}
                       {h.reply.suggestions.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1.5">
                           {h.reply.suggestions.map((s) => (
                             <button
                               key={s}
                               type="button"
                               onClick={() => applySuggestion(s)}
-                              className="text-[10px] px-2 py-0.5 rounded-full transition hover:scale-105 active:scale-95 cursor-pointer"
+                              className="text-[11px] px-2.5 py-1 rounded-full transition hover:scale-105 active:scale-95 cursor-pointer"
                               style={{
                                 background: "var(--c-tertiary-container)",
                                 color: "var(--c-on-tertiary-container)",
                                 border: "1px solid var(--c-outline-variant)",
                               }}
-                              title={`Use "${s}" as a starter — you can edit before sending`}
+                              title={`Use "${s}"`}
                             >
                               {s}
                             </button>
@@ -357,7 +460,7 @@ export function AgentBar() {
                         </div>
                       )}
                       {!h.reply.ai_available && (
-                        <div className="mt-1 text-[10px] opacity-60">
+                        <div className="text-[10px] opacity-60" style={{ color: "var(--c-on-surface-variant)" }}>
                           AI unavailable — keyword fallback in use
                         </div>
                       )}
@@ -365,29 +468,85 @@ export function AgentBar() {
                   </div>
                 </div>
               ))}
+
               {busy && (
-                <div
-                  className="text-xs italic flex items-center gap-2"
-                  style={{ color: "var(--c-on-surface-variant)" }}
-                  aria-live="polite"
-                >
-                  <span
-                    className="inline-block w-1.5 h-1.5 rounded-full animate-pulse"
-                    style={{ background: "var(--c-primary)" }}
-                  />
-                  <span key={statusIdx} className="googenie-status-fade">
-                    {STATUS_MESSAGES[statusIdx]}
-                  </span>
+                <div className="flex items-start gap-3" aria-live="polite">
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+                    style={{ background: "linear-gradient(135deg, var(--c-primary), var(--c-tertiary))" }}
+                  >
+                    <span className="text-xs">✨</span>
+                  </div>
+                  <div
+                    className="rounded-2xl px-4 py-3 space-y-1.5 min-w-0"
+                    style={{
+                      background: "var(--c-surface-container)",
+                      border: "1px solid var(--c-outline-variant)",
+                    }}
+                  >
+                    {THINKING_PHASES.slice(0, phaseIdx + 1).map((p, i) => {
+                      const done = i < phaseIdx;
+                      const active = i === phaseIdx;
+                      return (
+                        <div
+                          key={p.label}
+                          className="googenie-trace-line flex items-center gap-2 text-xs"
+                        >
+                          <span
+                            className="w-4 h-4 rounded-full flex items-center justify-center shrink-0"
+                            style={{
+                              background: done
+                                ? "color-mix(in srgb, var(--c-primary) 18%, transparent)"
+                                : "transparent",
+                            }}
+                          >
+                            {done ? (
+                              <Icon
+                                name="check"
+                                className="text-[11px]"
+                                style={{ color: "var(--c-primary)" }}
+                              />
+                            ) : (
+                              <Icon
+                                name="progress_activity"
+                                className="text-[12px] animate-spin"
+                                style={{ color: "var(--c-primary)" }}
+                              />
+                            )}
+                          </span>
+                          {active ? (
+                            <span className="googenie-thinking-shimmer">
+                              {p.label}…
+                            </span>
+                          ) : (
+                            <span style={{ color: "var(--c-on-surface-variant)" }}>
+                              {p.label}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
+          )}
+        </div>
 
-            {/* Input */}
+        {/* Composer */}
+        <div
+          className="px-4 sm:px-6 pt-3 pb-4 border-t shrink-0"
+          style={{ borderColor: "var(--c-outline-variant)", background: "var(--c-surface-container-low)" }}
+        >
+          <div className="max-w-2xl mx-auto">
             <div
-              className="px-3 py-3 border-t flex gap-2"
-              style={{ borderColor: "var(--c-outline-variant)" }}
+              className="flex items-end gap-2 rounded-2xl px-3 py-2"
+              style={{
+                background: "var(--c-surface-container-lowest)",
+                border: "1px solid var(--c-outline-variant)",
+              }}
             >
-              <input
+              <textarea
                 ref={inputRef}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
@@ -397,27 +556,29 @@ export function AgentBar() {
                     void send();
                   }
                 }}
-                placeholder="Ask about your email or calendar…"
-                className="flex-1 px-3 py-2 rounded-xl text-sm outline-none"
-                style={{
-                  background: "var(--c-surface-container-lowest)",
-                  color: "var(--c-on-surface)",
-                  border: "1px solid var(--c-outline-variant)",
-                }}
+                rows={1}
+                placeholder="Message GooGenie…"
+                className="flex-1 bg-transparent text-sm outline-none resize-none leading-relaxed py-1.5 disabled:opacity-50"
+                style={{ color: "var(--c-on-surface)", maxHeight: 200 }}
                 disabled={busy}
               />
               <button
                 onClick={() => void send()}
                 disabled={busy || !prompt.trim()}
-                className="px-3 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
+                className="w-9 h-9 rounded-full flex items-center justify-center transition-transform disabled:opacity-40 disabled:cursor-not-allowed enabled:hover:scale-105"
                 style={{ background: "var(--c-primary)", color: "var(--c-on-primary)" }}
+                title="Send (Enter)"
+                aria-label="Send"
               >
-                Send
+                <Icon name={busy ? "progress_activity" : "arrow_upward"} className={`text-base ${busy ? "animate-spin" : ""}`} />
               </button>
             </div>
+            <p className="text-[10px] text-center mt-1.5" style={{ color: "var(--c-on-surface-variant)" }}>
+              Enter to send · Shift + Enter for newline · {agentCombo} to toggle
+            </p>
           </div>
         </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 }

@@ -27,6 +27,7 @@ export interface ScheduledEmail {
   sendAt: string;
   status: string;
   kind: string;
+  error: string | null;
   createdAt: string;
 }
 
@@ -41,6 +42,7 @@ function toRow(r: typeof scheduledEmails.$inferSelect): ScheduledEmail {
     sendAt: r.sendAt instanceof Date ? r.sendAt.toISOString() : String(r.sendAt),
     status: r.status,
     kind: r.kind,
+    error: r.error ?? null,
     createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
   };
 }
@@ -90,6 +92,9 @@ export async function getScheduledEmail(id: number, userId: string): Promise<Sch
 
 /** Cancel a queued email. Returns true if it was actually cancelled (still queued). */
 export async function cancelScheduledEmail(id: number, userId: string): Promise<boolean> {
+  // Allow cancelling 'queued' rows (real cancellation) and dismissing
+  // 'failed' rows (housekeeping so the user can clear stuck entries from
+  // the panel). 'sent' / 'sending' rows are off-limits.
   const res = await db
     .update(scheduledEmails)
     .set({ status: "cancelled", updatedAt: new Date() })
@@ -97,7 +102,7 @@ export async function cancelScheduledEmail(id: number, userId: string): Promise<
       and(
         eq(scheduledEmails.id, id),
         eq(scheduledEmails.userId, userId),
-        eq(scheduledEmails.status, "queued"),
+        sql`${scheduledEmails.status} IN ('queued', 'failed')`,
       ),
     )
     .returning({ id: scheduledEmails.id });

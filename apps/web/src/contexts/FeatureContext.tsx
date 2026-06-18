@@ -69,6 +69,11 @@ export function FeatureProvider({ children }: { children: ReactNode }) {
   }, [load]);
 
   function hasFeature(key: string): boolean {
+    // Until the feature list has come back from the server we default to
+    // TRUE so shell pages (calendar, inbox) don't flash a "Locked" card
+    // for a render before features arrive. Once `loaded` flips, the real
+    // toggle wins. Add-on panels (DigestPanel, TasksPanel) gate themselves
+    // on `loaded` separately so they don't fire 403-prone fetches early.
     if (!loaded) return true;
     const toggle = features.find((f) => f.featureKey === key);
     return toggle ? toggle.isEnabled : true;

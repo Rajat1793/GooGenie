@@ -567,7 +567,10 @@ export function ThreadPane({ thread, onClose, onMarkRead, onTrash, canWrite, can
           )}
         </div>
       </div>
-      <div className="px-8 py-4" style={{ borderTop: "1px solid var(--c-outline-variant)" }}>
+      <div
+        className="px-8 py-4"
+        style={{ borderTop: "1px solid var(--c-outline-variant)" }}
+      >
         {/* 1-click reply intents — small Superhuman-style suggestion chips */}
         {canAiCompose && (
           <div className="flex items-center gap-1.5 mb-2 flex-wrap">

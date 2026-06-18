@@ -305,6 +305,46 @@ async function hydrateThreads(
     .filter((x): x is EmailThread => Boolean(x));
 }
 
+// ── fetchSentThreads ─────────────────────────────────────────────────────────
+//
+// Mirror of `fetchGmailThreads` but scoped to Gmail's built-in SENT label.
+// Reuses the same `hydrateThreads` pipeline (per-thread cache → Corsair DB →
+// API fallback) so the Sent folder feels just as snappy as the inbox.
+
+export async function fetchSentThreads(
+  tenantId: string,
+  userId: string,
+  maxResults = 20,
+  searchQuery?: string,
+): Promise<EmailThread[]> {
+  if (!isCorsairConfigured()) return [];
+
+  const cacheKey = `threads-sent:${tenantId}:${userId}:${maxResults}:${searchQuery ?? ""}`;
+  const cached = cache.get<EmailThread[]>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const tenant = corsair.withTenant(tenantId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const t = tenant as any;
+
+    // When the user is searching, restrict via `q: "in:sent ..."` so Gmail
+    // applies the label filter server-side alongside the text query.
+    const q = searchQuery ? `in:sent ${searchQuery}` : undefined;
+    const listResult = await t.gmail.api.threads.list({
+      maxResults,
+      ...(q ? { q } : { labelIds: ["SENT"] }),
+    });
+    const rawThreads: Array<{ id?: string }> = listResult?.threads ?? [];
+    const orderedIds = rawThreads.map((r) => r.id).filter((x): x is string => typeof x === "string");
+    const threads = await hydrateThreads(t, tenantId, userId, orderedIds);
+    cache.set(cacheKey, threads, TTL.THREADS);
+    return threads;
+  } catch {
+    return [];
+  }
+}
+
 // ── fetchGmailThread ──────────────────────────────────────────────────────────
 
 export async function fetchGmailThread(tenantId: string, threadId: string, userId: string, scopedIds?: Set<string>): Promise<EmailThread | undefined> {
@@ -425,18 +465,82 @@ export async function batchModifyMessages(tenantId: string, ids: string[], addLa
 
 // ── Draft operations ──────────────────────────────────────────────────────────
 
-export async function listDrafts(tenantId: string, maxResults = 10): Promise<Array<{ id: string; snippet?: string }>> {
+/**
+ * Enriched draft summary used by the Drafts folder UI.
+ *
+ * `drafts.list` only returns `{ id, message: { id, threadId } }`; to render a
+ * useful list (subject / to / snippet / date) we have to fan-out one
+ * `drafts.get({ format: "METADATA" })` per draft. With our default
+ * `maxResults` of 20 that's ≤20 cheap round-trips behind a 30 s cache, which
+ * is plenty for the folder view.
+ */
+export interface DraftSummary {
+  id: string;
+  threadId?: string;
+  subject: string;
+  to: string;
+  snippet: string;
+  updatedAt: string;
+}
+
+export async function listDrafts(
+  tenantId: string,
+  maxResults = 20,
+): Promise<DraftSummary[]> {
   const cacheKey = `drafts:${tenantId}`;
-  const cached = cache.get<Array<{ id: string; snippet?: string }>>(cacheKey);
+  const cached = cache.get<DraftSummary[]>(cacheKey);
   if (cached) return cached;
   try {
     const tenant = corsair.withTenant(tenantId);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await (tenant as any).gmail.api.drafts.list({ maxResults });
-    const drafts = (result?.drafts ?? []).map((d: any) => ({ id: d.id, snippet: d.message?.snippet }));
+    const t = tenant as any;
+    const listResult = await t.gmail.api.drafts.list({ maxResults });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rawDrafts: any[] = listResult?.drafts ?? [];
+    if (rawDrafts.length === 0) {
+      cache.set(cacheKey, [], 30_000);
+      return [];
+    }
+    const enriched = await Promise.all(
+      rawDrafts.map(async (d): Promise<DraftSummary | null> => {
+        const draftId: string | undefined = d?.id;
+        if (!draftId) return null;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const full: any = await t.gmail.api.drafts.get({ id: draftId, format: "METADATA" });
+          const msg = full?.message ?? {};
+          const headers = msg.payload?.headers ?? [];
+          const internalDate = msg.internalDate
+            ? new Date(Number(msg.internalDate)).toISOString()
+            : new Date().toISOString();
+          return {
+            id: draftId,
+            threadId: msg.threadId,
+            subject: getHeader(headers, "subject") || "(no subject)",
+            to: getHeader(headers, "to") || "",
+            snippet: msg.snippet ?? "",
+            updatedAt: internalDate,
+          };
+        } catch {
+          // Fall back to the bare draft if metadata fetch fails so the row
+          // still appears (user can at least delete it).
+          return {
+            id: draftId,
+            threadId: d?.message?.threadId,
+            subject: "(no subject)",
+            to: "",
+            snippet: d?.message?.snippet ?? "",
+            updatedAt: new Date().toISOString(),
+          };
+        }
+      }),
+    );
+    const drafts = enriched.filter((x): x is DraftSummary => x !== null);
     cache.set(cacheKey, drafts, 30_000);
     return drafts;
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 export async function createDraft(tenantId: string, opts: { to: string; subject: string; body: string }): Promise<{ id?: string }> {
@@ -537,9 +641,25 @@ export async function fetchReplyNeededThreads(
     }
 
     const lowerMyEmail = userEmail?.toLowerCase() ?? "";
+    // Determine if a message was authored by the signed-in user. Gmail's
+    // SENT label is the authoritative signal — Gmail only attaches it to
+    // messages the user actually sent — so it works even when:
+    //   - the user has multiple Gmail aliases (`me.email` may differ from
+    //     the connected account's primary address)
+    //   - the user's DB email differs from the From: header used in the
+    //     thread (common when they sign up with one email and connect
+    //     a different Gmail account).
+    // Previously this was a substring match on `from`, which mis-classified
+    // emails arriving from a user's secondary address as "from me" and
+    // hid them from the Reply Needed view. We now prefer label-based
+    // detection and only fall back to the address heuristic when the
+    // message has no labelIds at all (rare cache-miss case).
     const isFromMe = (m: Msg): boolean => {
+      const labels = m.labelIds ?? [];
+      if (labels.length > 0) return labels.includes("SENT");
+      if (lowerMyEmail.length === 0) return false;
       const from = (m.from ?? "").toLowerCase();
-      return lowerMyEmail.length > 0 && from.includes(lowerMyEmail);
+      return from.includes(lowerMyEmail);
     };
 
     const out: ReplyNeededThread[] = [];

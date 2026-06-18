@@ -34,6 +34,9 @@ export function startScheduledEmailPoller(): void {
   const tick = async () => {
     try {
       const due = await claimDueScheduledEmails(20);
+      if (due.length > 0) {
+        console.log(`[scheduled-email] tick: claimed ${due.length} due rows`);
+      }
       for (const row of due) {
         try {
           const result = await sendEmail(row.tenantId, {
@@ -67,9 +70,13 @@ export function startScheduledEmailPoller(): void {
     }
   };
 
-  // First tick happens after TICK_MS so the server has a moment to settle.
+  // Kick an initial tick immediately so any rows whose send_at is already
+  // past (e.g. queued before the last server restart) are flushed without
+  // waiting a full TICK_MS. Subsequent ticks happen on the regular cadence.
+  void tick();
+
   const handle = setInterval(() => void tick(), TICK_MS);
   // Allow Node to exit even if this timer is pending (dev / tests).
   if (typeof handle.unref === "function") handle.unref();
-  console.log(`[scheduled-email] poller started (tick=${TICK_MS}ms)`);
+  console.log(`[scheduled-email] poller started (tick=${TICK_MS}ms, immediate-flush=true)`);
 }
