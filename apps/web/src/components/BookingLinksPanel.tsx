@@ -5,36 +5,45 @@
  * Profile page. Lists existing links, lets the user create a fresh one,
  * toggle active/inactive, change duration, and copy the public URL.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { meApi, type BookingLink } from "../api/client";
+import { useBookingLinks } from "../api/hooks";
+import { qk } from "../api/queryClient";
 import { getErrorMessage } from "../lib/errors";
 import { Icon } from "./Icon";
 
 export function BookingLinksPanel() {
-  const [links, setLinks] = useState<BookingLink[] | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const qc = useQueryClient();
+  // Read from the React Query cache — the DemoTour prefetches this key so
+  // first navigation is instant. `data?.links` may be undefined while the
+  // request is in flight; we render a skeleton in that case.
+  const { data, error: queryError, refetch } = useBookingLinks();
+  const links = data?.links ?? null;
+  const [localErr, setLocalErr] = useState<string | null>(null);
+  const err = localErr ?? (queryError ? getErrorMessage(queryError, "Failed to load booking links") : null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  // Pending delete — holds the booking link the user clicked "Delete" on so
+  // the confirm modal can show its title. `null` = modal closed.
+  const [confirmDelete, setConfirmDelete] = useState<BookingLink | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
+  // Invalidate the cache to trigger a refetch after mutations.
   async function refresh() {
-    try {
-      const r = await meApi.listBookingLinks();
-      setLinks(r.links);
-    } catch (e) {
-      setErr(getErrorMessage(e, "Failed to load booking links"));
-    }
+    setLocalErr(null);
+    await qc.invalidateQueries({ queryKey: qk.bookingLinks() });
+    await refetch();
   }
-
-  useEffect(() => { void refresh(); }, []);
 
   async function handleCreate() {
     setBusy(true);
-    setErr(null);
+    setLocalErr(null);
     try {
       await meApi.createBookingLink();
       await refresh();
     } catch (e) {
-      setErr(getErrorMessage(e, "Failed to create booking link"));
+      setLocalErr(getErrorMessage(e, "Failed to create booking link"));
     } finally {
       setBusy(false);
     }
@@ -45,7 +54,7 @@ export function BookingLinksPanel() {
       await meApi.updateBookingLink(link.id, { is_active: !link.isActive });
       await refresh();
     } catch (e) {
-      setErr(getErrorMessage(e));
+      setLocalErr(getErrorMessage(e));
     }
   }
 
@@ -54,17 +63,27 @@ export function BookingLinksPanel() {
       await meApi.updateBookingLink(link.id, { duration_minutes: duration });
       await refresh();
     } catch (e) {
-      setErr(getErrorMessage(e));
+      setLocalErr(getErrorMessage(e));
     }
   }
 
   async function handleDelete(link: BookingLink) {
-    if (!window.confirm(`Delete booking link "${link.title}"? This cannot be undone.`)) return;
+    // Open the themed confirm modal instead of using the native window.confirm
+    // (which doesn't match the rest of the app and got reported as jarring).
+    setConfirmDelete(link);
+  }
+
+  async function confirmDeleteNow() {
+    if (!confirmDelete) return;
+    setDeleting(true);
     try {
-      await meApi.deleteBookingLink(link.id);
+      await meApi.deleteBookingLink(confirmDelete.id);
+      setConfirmDelete(null);
       await refresh();
     } catch (e) {
-      setErr(getErrorMessage(e));
+      setLocalErr(getErrorMessage(e));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -206,6 +225,77 @@ export function BookingLinksPanel() {
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Themed delete-confirmation modal — replaces the native window.confirm
+          so it matches the rest of the app (glass surface, primary buttons,
+          inline busy state). */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !deleting) setConfirmDelete(null);
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-6"
+            style={{
+              background: "var(--c-surface-container-low)",
+              border: "1px solid var(--glass-border)",
+              boxShadow: "var(--glass-shadow)",
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="booking-delete-title"
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                style={{ background: "var(--c-error-container)" }}
+              >
+                <Icon name="delete" className="text-xl" style={{ color: "var(--c-error)" }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2
+                  id="booking-delete-title"
+                  className="font-headline text-lg leading-tight"
+                  style={{ color: "var(--c-on-surface)" }}
+                >
+                  Delete booking link?
+                </h2>
+                <p className="text-sm mt-1" style={{ color: "var(--c-on-surface-variant)" }}>
+                  <span className="font-semibold" style={{ color: "var(--c-on-surface)" }}>
+                    “{confirmDelete.title}”
+                  </span>{" "}
+                  will be permanently removed. Anyone with the link will see a “not found” page.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting}
+                className="btn-secondary disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void confirmDeleteNow()}
+                disabled={deleting}
+                className="px-4 py-2 rounded-full text-sm font-semibold disabled:opacity-50 flex items-center gap-1.5"
+                style={{ background: "var(--c-error)", color: "var(--c-on-error)" }}
+              >
+                {deleting ? (
+                  <Icon name="progress_activity" className="animate-spin text-base" />
+                ) : (
+                  <Icon name="delete" className="text-base" />
+                )}
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

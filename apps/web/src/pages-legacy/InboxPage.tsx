@@ -98,11 +98,28 @@ export function InboxPage() {
   // AI-driven "Reply Needed" view (Feature A2) backed by Corsair's local DB.
   // "drafts" and "sent" swap the data source (drafts.list / sent threads) but
   // render in the same left column to keep the inbox shell consistent.
-  const [filter, setFilter] = useState<
+  //
+  // The active folder is mirrored in the URL via `?folder=` so the sidebar
+  // can render the folder list as NavLinks (decluttering this page header).
+  type FolderKey =
     | "all" | "unread" | "reply_needed"
     | "primary" | "social" | "promotions" | "updates" | "forums"
-    | "drafts" | "sent"
-  >("all");
+    | "drafts" | "sent";
+  const VALID_FOLDERS: ReadonlyArray<FolderKey> = [
+    "all", "unread", "reply_needed",
+    "primary", "social", "promotions", "updates", "forums",
+    "drafts", "sent",
+  ];
+  const folderFromUrl = (() => {
+    const raw = searchParams?.get("folder") as FolderKey | null;
+    return raw && VALID_FOLDERS.includes(raw) ? raw : "all";
+  })();
+  const [filter, setFilter] = useState<FolderKey>(folderFromUrl);
+  // Keep state in sync if the URL changes (sidebar nav click).
+  useEffect(() => {
+    if (folderFromUrl !== filter) setFilter(folderFromUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folderFromUrl]);
   const [serverSearch, setServerSearch] = useState(""); // debounced server search
 
   // ── Feature A2 — Reply-needed view ───────────────────────────────────────
@@ -467,44 +484,7 @@ export function InboxPage() {
               </button>
             </div>
           </div>
-          {/* Filter tabs — Gmail-style category tabs */}
-          <div className="flex gap-1.5 mb-3 flex-wrap">
-            {(
-              [
-                { key: "all",          label: "All",          icon: "all_inbox",         requires: null },
-                { key: "unread",       label: "Unread",       icon: "mark_email_unread", requires: null },
-                { key: "reply_needed", label: "Reply needed", icon: "hourglass",         requires: "ai_reply_needed" },
-                { key: "drafts",       label: "Drafts",       icon: "drafts",            requires: null },
-                { key: "sent",         label: "Sent",         icon: "send",              requires: null },
-                { key: "primary",      label: "Primary",      icon: "inbox",             requires: null },
-                { key: "social",       label: "Social",       icon: "group",             requires: null },
-                { key: "promotions",   label: "Promotions",   icon: "local_offer",       requires: null },
-                { key: "updates",      label: "Updates",      icon: "info",              requires: null },
-                { key: "forums",       label: "Forums",       icon: "forum",             requires: null },
-              ] as const
-            )
-              .filter((f) => f.requires === null || hasFeature(f.requires))
-              .map((f) => (
-              <button
-                key={f.key}
-                onClick={() => setFilter(f.key)}
-                title={f.label}
-                className="px-2.5 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5"
-                style={filter === f.key
-                  ? { background: "color-mix(in srgb, var(--c-primary) 15%, transparent)", color: "var(--c-primary)", border: "1px solid color-mix(in srgb, var(--c-primary) 25%, transparent)" }
-                  : { background: "transparent", color: "var(--c-on-surface-variant)", border: "1px solid var(--c-outline-variant)" }}
-              >
-                <Icon name={f.icon} className="text-[14px]" />
-                {f.key === "unread" && unreadCount > 0
-                  ? `${f.label} (${unreadCount})`
-                  : f.key === "reply_needed" && replyNeeded.length > 0
-                    ? `${f.label} (${replyNeeded.length})`
-                    : f.key === "drafts" && drafts.length > 0
-                      ? `${f.label} (${drafts.length})`
-                      : f.label}
-              </button>
-            ))}
-          </div>
+          {/* Folder filter tabs now live in the left sidebar (under Inbox) — see Shell.tsx. */}
           {/* Search */}
           <div className="relative">
             <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-base" style={{ color: "var(--c-outline)" }} />

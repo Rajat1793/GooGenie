@@ -13,11 +13,9 @@ import {
 } from "../../api/client";
 import { getErrorMessage } from "../../lib/errors";import { PageHeader } from "../../components/PageHeader";
 import { Card } from "../../components/Card";
-import { BookingLinksPanel } from "../../components/BookingLinksPanel";
 import { AutoCategorizePanel } from "../../components/AutoCategorizePanel";
 import { ScheduledEmailsPanel } from "../../components/ScheduledEmailsPanel";
 import { DigestPanel } from "../../components/DigestPanel";
-import { SnippetsPanel } from "../../components/SnippetsPanel";
 import { RoleBadge } from "../../components/RoleBadge";
 import { DataState } from "../../components/DataState";
 import { formatActivity, activityIcon } from "../../lib/formatActivity";
@@ -495,7 +493,20 @@ export function UserProfilePage() {
 
   return (
     <div>
-      <PageHeader title="My Profile" subtitle="Your access level, feature permissions, and recent activity." />
+      <PageHeader
+        title="My Profile"
+        subtitle="Your access level, feature permissions, and recent activity."
+        action={
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent("googenie:tour.open"))}
+            className="btn-secondary text-sm flex items-center gap-1.5"
+            title="Replay the welcome tour"
+          >
+            <Icon name="auto_awesome" className="text-base" />
+            Take the tour
+          </button>
+        }
+      />
 
       {/* Toast */}
       {toast && (
@@ -644,10 +655,9 @@ export function UserProfilePage() {
         </Card>
       </div>
 
-      {/* Booking links — Calendly-style public scheduler */}
+      {/* Auto-categorize + scheduled email panels (snippets + booking links
+          now live on their own routes — see /snippets and /booking-links). */}
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <BookingLinksPanel />
-        {hasFeature("snippets") && <SnippetsPanel />}
         {hasFeature("ai_auto_categorize") && <AutoCategorizePanel />}
         {hasFeature("schedule_send") && <ScheduledEmailsPanel />}
       </div>

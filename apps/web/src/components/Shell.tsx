@@ -1,11 +1,14 @@
 "use client";
 
 import { NavLink, useNavigate } from "../lib/router-shim";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import { UserButton, useUser } from "@clerk/nextjs";
 import { useAuth } from "../contexts/AuthContext";
 import { useFeatures } from "../contexts/FeatureContext";
 import { useTheme } from "../contexts/ThemeContext";
-import { getDemoToken, setDemoToken } from "../api/client";
+import { getDemoToken, setDemoToken, emailApi, calendarApi, meApi, connectApi, snippetsApi } from "../api/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { qk } from "../api/queryClient";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useNotifications } from "../hooks/useNotifications";
 import { RoleBadge } from "./RoleBadge";
@@ -15,14 +18,31 @@ import { STORAGE_KEYS } from "../lib/storage";
 import { Icon } from "../components/Icon";
 
 const NAV = [
-  { to: "/inbox",    icon: "inbox",          label: "Inbox",       roles: ["super_admin","manager_admin","user"], featureKey: "email_read" },
-  { to: "/calendar", icon: "calendar_today", label: "Calendar",    roles: ["super_admin","manager_admin","user"], featureKey: "calendar_read" },
-  { to: "/org",      icon: "account_tree",   label: "Org Tree",    roles: ["super_admin","manager_admin","user"], featureKey: null },
-  { to: "/manager",  icon: "group",          label: "My Students", roles: ["super_admin","manager_admin"],        featureKey: null },
-  { to: "/admin",    icon: "shield_person",  label: "Admin",       roles: ["super_admin"],                       featureKey: null },
-  { to: "/api-docs", icon: "api",            label: "API Docs",    roles: ["super_admin"],                       featureKey: null },
-  { to: "/profile",  icon: "account_circle", label: "Profile",     roles: ["super_admin","manager_admin","user"], featureKey: null },
+  { to: "/inbox",         icon: "inbox",          label: "Inbox",         roles: ["super_admin","manager_admin","user"], featureKey: "email_read" },
+  { to: "/calendar",      icon: "calendar_today", label: "Calendar",      roles: ["super_admin","manager_admin","user"], featureKey: "calendar_read" },
+  { to: "/snippets",      icon: "code_blocks",    label: "Snippets",      roles: ["super_admin","manager_admin","user"], featureKey: "snippets" },
+  { to: "/booking-links", icon: "event_available",label: "Booking Links", roles: ["super_admin","manager_admin","user"], featureKey: null },
+  { to: "/org",           icon: "account_tree",   label: "Org Tree",      roles: ["super_admin","manager_admin","user"], featureKey: null },
+  { to: "/manager",       icon: "group",          label: "My Students",   roles: ["super_admin","manager_admin"],        featureKey: null },
+  { to: "/admin",         icon: "shield_person",  label: "Admin",         roles: ["super_admin"],                       featureKey: null },
+  { to: "/api-docs",      icon: "api",            label: "API Docs",      roles: ["super_admin"],                       featureKey: null },
+  { to: "/profile",       icon: "account_circle", label: "Profile",       roles: ["super_admin","manager_admin","user"], featureKey: null },
 ] as const;
+
+// Sub-navigation rendered under the Inbox entry. Each item just pushes a
+// `?folder=` param; InboxPage reads it and swaps the active filter.
+const INBOX_FOLDERS: ReadonlyArray<{ key: string; icon: string; label: string; featureKey: string | null }> = [
+  { key: "all",          icon: "all_inbox",         label: "All",          featureKey: null },
+  { key: "unread",       icon: "mark_email_unread", label: "Unread",       featureKey: null },
+  { key: "reply_needed", icon: "hourglass",         label: "Reply needed", featureKey: "ai_reply_needed" },
+  { key: "drafts",       icon: "drafts",            label: "Drafts",       featureKey: null },
+  { key: "sent",         icon: "send",              label: "Sent",         featureKey: null },
+  { key: "primary",      icon: "inbox",             label: "Primary",      featureKey: null },
+  { key: "social",       icon: "group",             label: "Social",       featureKey: null },
+  { key: "promotions",   icon: "local_offer",       label: "Promotions",   featureKey: null },
+  { key: "updates",      icon: "info",              label: "Updates",      featureKey: null },
+  { key: "forums",       icon: "forum",             label: "Forums",       featureKey: null },
+];
 
 const COLLAPSED_W = 72;
 const EXPANDED_W = 256;
@@ -33,6 +53,92 @@ export function Shell({ children }: { children: ReactNode }) {
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
   const { hasFeature } = useFeatures();
+
+  // Used to decide when to render the Inbox folder sub-nav.
+  const pathname = usePathname() ?? "";
+  const sp = useSearchParams();
+  const activeFolder = sp?.get("folder") || "all";
+
+  // Warm up every sidebar route on mount so first navigation feels instant.
+  // Next's <Link> only prefetches on hover/in-viewport (and not at all in dev
+  // mode), which made Snippets / Booking Links feel sluggish on first click
+  // because the route chunk had to JIT-compile after the click. Manually
+  // prefetching kicks compilation off as soon as the user logs in.
+  const router = useRouter();
+  const qc = useQueryClient();
+  useEffect(() => {
+    for (const item of NAV) {
+      try { router.prefetch(item.to); } catch { /* prefetch is best-effort */ }
+    }
+  }, [router]);
+
+  // ── Data warm-up ─────────────────────────────────────────────────────────
+  // Independent of the DemoTour (which only auto-opens for first-time users),
+  // pre-populate the React Query cache for every page in the sidebar so
+  // returning users also get instant navigation. We stagger in three waves:
+  //   1) ~300ms — current-page-adjacent reads (inbox, calendar, connect)
+  //   2) ~900ms — folder views (drafts, sent)
+  //   3) ~1600ms — profile-adjacent (booking links, snippets)
+  // Browsers cap HTTP/1.1 to ~6 sockets per origin; staggering keeps the
+  // dev server from queueing requests behind webpack JIT compilation, which
+  // is what was leaving calls stuck in "pending" for several seconds.
+  useEffect(() => {
+    // Only warm up once an auth token is available. Without this, prefetches
+    // race the auth bootstrap and consume the 1.5s timeout, defeating the
+    // entire point. Demo token is sync; Clerk token resolves via apiFetch.
+    if (typeof window === "undefined") return;
+    if (!getDemoToken()) return;
+
+    const t1 = setTimeout(() => {
+      void qc.prefetchQuery({
+        queryKey: qk.emailThreads(),
+        queryFn: () => emailApi.listThreads({}),
+        staleTime: 30_000,
+      });
+      void qc.prefetchQuery({
+        queryKey: qk.calendarEvents(),
+        queryFn: () => calendarApi.listEvents({}),
+        staleTime: 30_000,
+      });
+      void qc.prefetchQuery({
+        queryKey: qk.connectStatus(),
+        queryFn: () => connectApi.status(),
+        staleTime: 30_000,
+      });
+    }, 300);
+
+    const t2 = setTimeout(() => {
+      void qc.prefetchQuery({
+        queryKey: qk.emailDrafts(),
+        queryFn: () => emailApi.listDrafts(),
+        staleTime: 30_000,
+      });
+      void qc.prefetchQuery({
+        queryKey: qk.emailSent(),
+        queryFn: () => emailApi.listSent({}),
+        staleTime: 30_000,
+      });
+    }, 900);
+
+    const t3 = setTimeout(() => {
+      void qc.prefetchQuery({
+        queryKey: qk.bookingLinks(),
+        queryFn: () => meApi.listBookingLinks(),
+        staleTime: 30_000,
+      });
+      void qc.prefetchQuery({
+        queryKey: qk.snippets(),
+        queryFn: () => snippetsApi.list(),
+        staleTime: 30_000,
+      });
+    }, 1600);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [qc]);
 
   const [collapsed, setCollapsed] = useState<boolean>(false);
   // SSR-safe: read localStorage after mount, never during render.
@@ -177,17 +283,49 @@ export function Shell({ children }: { children: ReactNode }) {
               );
             }
             return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                title={collapsed ? item.label : undefined}
-                className={({ isActive }) =>
-                  "nav-item " + (isActive ? "nav-item-active" : "") + (collapsed ? " justify-center px-0" : "")
-                }
-              >
-                <Icon name={item.icon} className="text-[20px] shrink-0" />
-                {!collapsed && <span className="text-sm">{item.label}</span>}
-              </NavLink>
+              <div key={item.to}>
+                <NavLink
+                  to={item.to}
+                  title={collapsed ? item.label : undefined}
+                  className={({ isActive }) =>
+                    "nav-item " + (isActive ? "nav-item-active" : "") + (collapsed ? " justify-center px-0" : "")
+                  }
+                >
+                  <Icon name={item.icon} className="text-[20px] shrink-0" />
+                  {!collapsed && <span className="text-sm">{item.label}</span>}
+                </NavLink>
+
+                {/* Inbox folder sub-nav — surfaces the Gmail-style category
+                    tabs (All / Unread / Reply needed / Drafts / Sent /
+                    Primary / Social / Promotions / Updates / Forums) right
+                    under the Inbox entry so the inbox header stays
+                    uncluttered. Visible only on the inbox route and when the
+                    sidebar is expanded. Each entry pushes `?folder=` and
+                    InboxPage syncs its filter state from that param. */}
+                {item.to === "/inbox" && !collapsed && pathname.startsWith("/inbox") && (
+                  <div
+                    className="ml-3 mt-1 mb-1 pl-3 space-y-0.5"
+                    style={{ borderLeft: "1px solid var(--sidebar-border)" }}
+                  >
+                    {INBOX_FOLDERS
+                      .filter((f) => f.featureKey === null || hasFeature(f.featureKey))
+                      .map((f) => {
+                        const isActive = activeFolder === f.key;
+                        return (
+                          <NavLink
+                            key={f.key}
+                            to={`/inbox?folder=${f.key}`}
+                            title={f.label}
+                            className={"nav-item py-1.5 " + (isActive ? "nav-item-active" : "")}
+                          >
+                            <Icon name={f.icon} className="text-[16px] shrink-0" />
+                            <span className="text-[13px]">{f.label}</span>
+                          </NavLink>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>

@@ -108,6 +108,7 @@ import {
   ShieldOff,
   Sparkles,
   Star,
+  PartyPopper,
   Sun,
   Tag,
   Telescope,
@@ -290,6 +291,7 @@ const ICON_MAP: Record<string, LucideIcon | ComponentType<SVGProps<SVGSVGElement
   mail_x: MailX,
   shield_off: ShieldOff,
   circle_dot: CircleDot,
+  celebration: PartyPopper,
 };
 
 const FALLBACK = Info;

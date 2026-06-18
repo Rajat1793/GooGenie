@@ -8,7 +8,7 @@
  * the user clicks, then reconciles when the server responds.
  */
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { emailApi, calendarApi, meApi, type EmailThread, type CalendarEvent } from "./client";
+import { emailApi, calendarApi, meApi, snippetsApi, type EmailThread, type CalendarEvent } from "./client";
 import { qk, queryClient } from "./queryClient";
 
 // ── Reads ──────────────────────────────────────────────────────────────────
@@ -59,6 +59,31 @@ export function useCalendarEvents(opts: { q?: string; enabled?: boolean } = {}) 
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
+  });
+}
+
+/**
+ * Booking links — Calendly-style public booking pages.
+ * Long-lived data (rarely changes), so no background refetch interval.
+ * The 30s default staleTime + the tour's prefetch means the Booking Links
+ * page renders instantly from cache on first navigation.
+ */
+export function useBookingLinks(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: qk.bookingLinks(),
+    queryFn: () => meApi.listBookingLinks(),
+    enabled: opts.enabled !== false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** Snippets — same shape as bookingLinks; cache-friendly, no polling. */
+export function useSnippets(opts: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: qk.snippets(),
+    queryFn: () => snippetsApi.list(),
+    enabled: opts.enabled !== false,
+    refetchOnWindowFocus: false,
   });
 }
 

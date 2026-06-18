@@ -49,4 +49,8 @@ export const qk = {
   calendarEvent: (id: string) => ["calendar", "event", id] as const,
   connectStatus: () => ["connect", "status"] as const,
   meProfile: () => ["me", "profile"] as const,
+  // Profile-adjacent resources, hoisted into React Query so the tour prefetch
+  // populates the same cache the panels read on mount (no double-fetch).
+  bookingLinks: () => ["me", "booking-links"] as const,
+  snippets: () => ["me", "snippets"] as const,
 };

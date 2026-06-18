@@ -22,4 +22,6 @@ export const STORAGE_KEYS = {
   inboxLayout: "googenie-inbox-layout",
   /** User-customised keyboard shortcuts (JSON map of action → key combo). */
   keybindings: "googenie-keybindings",
+  /** "1" once the user has finished or skipped the welcome tour. */
+  tourCompleted: "googenie-tour-completed",
 } as const;

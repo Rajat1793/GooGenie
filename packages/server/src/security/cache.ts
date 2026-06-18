@@ -39,10 +39,17 @@ class TtlCache {
 // Single shared cache instance
 export const cache = new TtlCache();
 
-// TTL constants
+// TTL constants.
+//
+// Bumped from 30s/60s to several minutes because Gmail/Calendar list calls
+// are the dominant source of latency (200-1500ms each upstream). React Query
+// already does its own background refetch every 20-60s, so this cache only
+// needs to absorb the burst of parallel requests from prefetch waves +
+// component remounts. A stale-for-5-minutes value is still fresher than the
+// 60s React Query refetch interval guarantees on the wire.
 export const TTL = {
-  THREADS:   30_000,  // 30s — inbox list
-  THREAD:    60_000,  // 60s — single thread
-  CALENDAR:  30_000,  // 30s — calendar events
-  CONNECT:  120_000,  // 2m  — connection status
+  THREADS:  300_000,  // 5m  — inbox list (was 30s)
+  THREAD:   600_000,  // 10m — single thread body (was 60s)
+  CALENDAR: 300_000,  // 5m  — calendar events (was 30s)
+  CONNECT:  600_000,  // 10m — connection status (was 2m)
 };

@@ -6,8 +6,11 @@
  * Snippets are expanded inline in ComposeModal: the user types `;hotkey`
  * followed by Tab or Space and the body inflates at the cursor.
  */
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { snippetsApi, type SnippetRow } from "../api/client";
+import { useSnippets } from "../api/hooks";
+import { qk } from "../api/queryClient";
 import { getErrorMessage } from "../lib/errors";
 import { Icon } from "./Icon";
 
@@ -20,22 +23,22 @@ interface DraftSnippet {
 const EMPTY_DRAFT: DraftSnippet = { name: "", hotkey: "", body: "" };
 
 export function SnippetsPanel() {
-  const [snippets, setSnippets] = useState<SnippetRow[] | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const qc = useQueryClient();
+  // Read from the React Query cache populated by DemoTour's prefetch —
+  // first navigation to /snippets renders instantly from cache.
+  const { data, error: queryError, refetch } = useSnippets();
+  const snippets = data?.snippets ?? null;
+  const [localErr, setLocalErr] = useState<string | null>(null);
+  const err = localErr ?? (queryError ? getErrorMessage(queryError, "Failed to load snippets") : null);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<DraftSnippet>(EMPTY_DRAFT);
   const [editingId, setEditingId] = useState<number | null>(null);
 
   async function refresh() {
-    try {
-      const r = await snippetsApi.list();
-      setSnippets(r.snippets);
-    } catch (e) {
-      setErr(getErrorMessage(e, "Failed to load snippets"));
-    }
+    setLocalErr(null);
+    await qc.invalidateQueries({ queryKey: qk.snippets() });
+    await refetch();
   }
-
-  useEffect(() => { void refresh(); }, []);
 
   function resetDraft() {
     setDraft(EMPTY_DRAFT);
@@ -44,15 +47,15 @@ export function SnippetsPanel() {
 
   async function handleSave() {
     if (!draft.name.trim() || !draft.hotkey.trim() || !draft.body.trim()) {
-      setErr("Name, hotkey and body are all required.");
+      setLocalErr("Name, hotkey and body are all required.");
       return;
     }
     if (!/^[a-z0-9_-]{1,32}$/i.test(draft.hotkey)) {
-      setErr("Hotkey must be 1–32 chars: letters, digits, _ or -.");
+      setLocalErr("Hotkey must be 1–32 chars: letters, digits, _ or -.");
       return;
     }
     setBusy(true);
-    setErr(null);
+    setLocalErr(null);
     try {
       if (editingId !== null) {
         await snippetsApi.update(editingId, {
@@ -66,7 +69,7 @@ export function SnippetsPanel() {
       resetDraft();
       await refresh();
     } catch (e) {
-      setErr(getErrorMessage(e, "Failed to save snippet"));
+      setLocalErr(getErrorMessage(e, "Failed to save snippet"));
     } finally {
       setBusy(false);
     }
@@ -84,7 +87,7 @@ export function SnippetsPanel() {
       if (editingId === s.id) resetDraft();
       await refresh();
     } catch (e) {
-      setErr(getErrorMessage(e));
+      setLocalErr(getErrorMessage(e));
     }
   }
 
