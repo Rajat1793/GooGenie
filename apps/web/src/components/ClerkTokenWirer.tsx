@@ -75,6 +75,17 @@ export function ClerkTokenWirer() {
             window.dispatchEvent(new CustomEvent("googenie:admin-select.open"));
           }, 0);
         }
+        // Students (`user`) with no Teacher assigned: same first-login prompt,
+        // routed to ManagerSelectModal so they can pick a teacher to report to.
+        if (
+          r.needsManager &&
+          r.user.role === "user" &&
+          window.sessionStorage.getItem("googenie:manager-select.skipped") !== "1"
+        ) {
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent("googenie:manager-select.open"));
+          }, 0);
+        }
         prefetchUserData().catch(() => null);
         // NOTE: We intentionally do NOT auto-redirect to Google OAuth here.
         // The ConnectionBar shown on Inbox/Calendar already prompts users to

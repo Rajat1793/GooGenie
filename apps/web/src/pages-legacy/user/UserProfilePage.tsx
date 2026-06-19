@@ -18,6 +18,7 @@ import { ScheduledEmailsPanel } from "../../components/ScheduledEmailsPanel";
 import { DigestPanel } from "../../components/DigestPanel";
 import { RoleBadge } from "../../components/RoleBadge";
 import { MyAdminCard } from "../../components/MyAdminCard";
+import { MyManagerCard } from "../../components/MyManagerCard";
 import { DataState } from "../../components/DataState";
 import { formatActivity, activityIcon } from "../../lib/formatActivity";
 import { broadcastRequestUpdate } from "../../hooks/useNotifications";
@@ -554,6 +555,7 @@ export function UserProfilePage() {
           event). Useful for managers who skipped the first-login prompt or
           want to switch admins. */}
       {role === "manager_admin" && <MyAdminCard />}
+      {role === "user" && <MyManagerCard />}
 
       {/* Incoming requests banner (managers + big bosses) */}
       {isManager && pendingIncomingCount > 0 && (

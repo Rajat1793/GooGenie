@@ -14,6 +14,7 @@ import { useNotifications } from "../hooks/useNotifications";
 import { RoleBadge } from "./RoleBadge";
 import { AgentBar } from "./AgentBar";
 import { AdminSelectModal } from "./AdminSelectModal";
+import { ManagerSelectModal } from "./ManagerSelectModal";
 import { playChime } from "../lib/chime";
 import { STORAGE_KEYS } from "../lib/storage";
 import { Icon } from "../components/Icon";
@@ -583,6 +584,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </div>
       <AgentBar />
       <AdminSelectModal />
+      <ManagerSelectModal />
     </div>
   );
 }

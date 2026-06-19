@@ -1,7 +1,7 @@
 /**
  * User service — all user/hierarchy operations backed by PostgreSQL.
  */
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray, isNull, or } from "drizzle-orm";
 import { db, schema } from "./client";
 // Role is duplicated here (not imported from @googenie/server) to keep this
 // package free of server-only dependencies. Keep the literal union in sync
@@ -187,6 +187,118 @@ export async function listAllRoleTenantUsers(): Promise<DbUser[]> {
     }
   }
   return [...byEmail.values()];
+}
+
+// ── Admin subtree scoping ──────────────────────────────────────────────────────
+// Each super_admin owns a "subtree":
+//   - themselves
+//   - manager_admins (teachers) whose managerUserId === adminId
+//   - users (students) whose managerUserId ∈ {those managers}
+// Other admins' subtrees are intentionally invisible to enforce per-admin
+// data isolation. Orphans (teachers/students with no manager) are included
+// optionally so any admin can claim them.
+
+export interface AdminSubtree {
+  adminId: string;
+  managerIds: string[];   // teachers directly under this admin
+  userIds: string[];      // students under those teachers
+  allIds: Set<string>;    // adminId ∪ managerIds ∪ userIds (NOT orphans)
+}
+
+export async function getAdminSubtree(adminId: string): Promise<AdminSubtree> {
+  const direct = await db
+    .select()
+    .from(schema.users)
+    .where(eq(schema.users.managerUserId, adminId));
+  const managerIds = (direct as DbUser[])
+    .filter((r) => r.role === "manager_admin")
+    .map((r) => r.id);
+  let userIds: string[] = [];
+  if (managerIds.length > 0) {
+    const students = await db
+      .select()
+      .from(schema.users)
+      .where(inArray(schema.users.managerUserId, managerIds));
+    userIds = (students as DbUser[])
+      .filter((r) => r.role === "user")
+      .map((r) => r.id);
+  }
+  return {
+    adminId,
+    managerIds,
+    userIds,
+    allIds: new Set([adminId, ...managerIds, ...userIds]),
+  };
+}
+
+/**
+ * Returns the users an admin is allowed to see:
+ *   admin + their teachers + their students
+ *   (+ optionally orphan teachers/students with no manager assigned)
+ */
+export async function listAdminScopedUsers(
+  adminId: string,
+  opts: { includeOrphans?: boolean } = { includeOrphans: true },
+): Promise<DbUser[]> {
+  const { managerIds, userIds } = await getAdminSubtree(adminId);
+  const out: DbUser[] = [];
+
+  const admin = await getUserById(adminId);
+  if (admin) out.push(admin);
+
+  if (managerIds.length > 0) {
+    const teachers = await db
+      .select()
+      .from(schema.users)
+      .where(inArray(schema.users.id, managerIds));
+    out.push(...(teachers as DbUser[]));
+  }
+  if (userIds.length > 0) {
+    const students = await db
+      .select()
+      .from(schema.users)
+      .where(inArray(schema.users.id, userIds));
+    out.push(...(students as DbUser[]));
+  }
+
+  if (opts.includeOrphans) {
+    const orphans = await db
+      .select()
+      .from(schema.users)
+      .where(
+        and(
+          isNull(schema.users.managerUserId),
+          or(
+            eq(schema.users.role, "manager_admin" as Role),
+            eq(schema.users.role, "user" as Role),
+          ),
+        ),
+      );
+    out.push(...(orphans as DbUser[]));
+  }
+
+  // Dedup by id (admin themselves could be re-added if they ever appeared as
+  // their own descendent via stale data).
+  const byId = new Map<string, DbUser>();
+  for (const u of out) byId.set(u.id, u);
+  return [...byId.values()];
+}
+
+/**
+ * Walks the manager chain up to find the super_admin ancestor for a given user.
+ * Returns the admin's DB id, or `null` if the user isn't anchored to any admin.
+ * Max two hops in current data model (user → teacher → admin).
+ */
+export async function findRootAdminId(userId: string): Promise<string | null> {
+  const visited = new Set<string>();
+  let current: DbUser | null = await getUserById(userId);
+  while (current && !visited.has(current.id)) {
+    if (current.role === "super_admin") return current.id;
+    visited.add(current.id);
+    if (!current.managerUserId) return null;
+    current = await getUserById(current.managerUserId);
+  }
+  return null;
 }
 
 // ── Get user by email+tenantId ─────────────────────────────────────────────────
