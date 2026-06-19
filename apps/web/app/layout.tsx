@@ -26,7 +26,16 @@ const themeBootstrap = `
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <ClerkProvider afterSignOutUrl="/">
+    // `signInFallbackRedirectUrl` / `signUpFallbackRedirectUrl` are the
+    // app-wide fallbacks Clerk uses whenever no `redirect_url` query param is
+    // present after auth. Without these, fresh sign-ins return to the page
+    // that triggered the flow (typically `/`), causing a flash of the landing
+    // page before our LandingPage useEffect re-redirects to /inbox.
+    <ClerkProvider
+      afterSignOutUrl="/"
+      signInFallbackRedirectUrl="/inbox"
+      signUpFallbackRedirectUrl="/inbox"
+    >
       <html lang="en" suppressHydrationWarning>
         <head>
           {/* Unified Superhuman-style typography across the marketing surface

@@ -18,7 +18,7 @@ export function LoginPage() {
   const [demoAccounts, setDemoAccounts] = useState<Array<{ role: string; label: string; token: string; email: string }>>([]);
   const [demoLoading, setDemoLoading] = useState(false);
 
-  if (isLoaded && isSignedIn) return <Navigate to="/" replace />;
+  if (isLoaded && isSignedIn) return <Navigate to="/inbox" replace />;
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.pendingRole, tab);
@@ -116,9 +116,18 @@ export function LoginPage() {
           </div>
         </div>
 
-        {/* Clerk form — renders its own card */}
+        {/* Clerk form — renders its own card.
+            `fallbackRedirectUrl` + `signUpFallbackRedirectUrl` tell Clerk to
+            land on /inbox after auth completes, instead of returning to the
+            referrer (the landing page) which would briefly flash before our
+            own client-side redirect kicked in. */}
         <div className="w-full">
-          <SignIn routing="hash" appearance={clerkAppearance} />
+          <SignIn
+            routing="hash"
+            appearance={clerkAppearance}
+            fallbackRedirectUrl="/inbox"
+            signUpFallbackRedirectUrl="/inbox"
+          />
         </div>
 
         {/* Demo quick-login — only shown when demo tokens are configured */}

@@ -17,6 +17,7 @@ import { AutoCategorizePanel } from "../../components/AutoCategorizePanel";
 import { ScheduledEmailsPanel } from "../../components/ScheduledEmailsPanel";
 import { DigestPanel } from "../../components/DigestPanel";
 import { RoleBadge } from "../../components/RoleBadge";
+import { MyAdminCard } from "../../components/MyAdminCard";
 import { DataState } from "../../components/DataState";
 import { formatActivity, activityIcon } from "../../lib/formatActivity";
 import { broadcastRequestUpdate } from "../../hooks/useNotifications";
@@ -547,6 +548,12 @@ export function UserProfilePage() {
           <p className="text-xs text-on-surface-variant uppercase tracking-widest">features on</p>
         </div>
       </div>
+
+      {/* Manager-admin only: which Big Boss they report to. Reuses the
+          AdminSelectModal mounted in Shell.tsx (we just fire the open
+          event). Useful for managers who skipped the first-login prompt or
+          want to switch admins. */}
+      {role === "manager_admin" && <MyAdminCard />}
 
       {/* Incoming requests banner (managers + big bosses) */}
       {isManager && pendingIncomingCount > 0 && (

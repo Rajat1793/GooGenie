@@ -13,9 +13,11 @@ import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useNotifications } from "../hooks/useNotifications";
 import { RoleBadge } from "./RoleBadge";
 import { AgentBar } from "./AgentBar";
+import { AdminSelectModal } from "./AdminSelectModal";
 import { playChime } from "../lib/chime";
 import { STORAGE_KEYS } from "../lib/storage";
 import { Icon } from "../components/Icon";
+import { useKeybindings, formatCombo, getEffectiveCombo } from "../contexts/KeybindingContext";
 
 const NAV = [
   { to: "/inbox",         icon: "inbox",          label: "Inbox",         roles: ["super_admin","manager_admin","user"], featureKey: "email_read" },
@@ -53,6 +55,8 @@ export function Shell({ children }: { children: ReactNode }) {
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
   const { hasFeature } = useFeatures();
+  const { trigger: triggerKeybinding, bindings } = useKeybindings();
+  const shortcutsCombo = formatCombo(getEffectiveCombo(bindings, "shortcuts.open"));
 
   // Used to decide when to render the Inbox folder sub-nav.
   const pathname = usePathname() ?? "";
@@ -349,6 +353,41 @@ export function Shell({ children }: { children: ReactNode }) {
             {!collapsed && <span className="text-sm">Ask GooGenie</span>}
           </button>
 
+          {/* Keyboard shortcuts launcher — sits directly under the Ask
+              GooGenie button. Opens the KeybindingsModal via the same
+              action the user could fire with mod+/.  We trigger the
+              already-registered handler instead of duplicating modal
+              state. */}
+          <button
+            onClick={() => {
+              const handled = triggerKeybinding("shortcuts.open");
+              // Fallback for the very first render before the modal has had
+              // a chance to register its handler.
+              if (!handled) {
+                window.dispatchEvent(new KeyboardEvent("keydown", { key: "/", metaKey: true, ctrlKey: true }));
+              }
+            }}
+            className={`nav-item w-full text-left ${collapsed ? "justify-center px-0" : ""}`}
+            title={collapsed ? `Shortcuts (${shortcutsCombo})` : undefined}
+          >
+            <Icon name="keyboard" className="text-[20px] shrink-0" />
+            {!collapsed && (
+              <span className="text-sm flex-1 flex items-center justify-between">
+                <span>Shortcuts</span>
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded"
+                  style={{
+                    background: "var(--c-surface-container-highest)",
+                    color: "var(--c-on-surface-variant)",
+                    border: "1px solid var(--c-outline-variant)",
+                  }}
+                >
+                  {shortcutsCombo}
+                </span>
+              </span>
+            )}
+          </button>
+
           {/* Demo banner */}
           {demoToken && !collapsed && (
             <div className="px-4 py-2 rounded-xl mb-2 flex items-center justify-between" style={{ background: "color-mix(in srgb, var(--c-tertiary) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--c-tertiary) 25%, transparent)" }}>
@@ -543,6 +582,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </main>
       </div>
       <AgentBar />
+      <AdminSelectModal />
     </div>
   );
 }

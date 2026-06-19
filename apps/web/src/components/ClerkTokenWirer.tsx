@@ -61,6 +61,20 @@ export function ClerkTokenWirer() {
           })
         );
         window.localStorage.removeItem(STORAGE_KEYS.pendingRole);
+        // Manager-admins with no Big Boss assigned: prompt them to pick one.
+        // Skippable; AdminSelectModal honours a sessionStorage flag so we
+        // don't nag on every navigation within the same session.
+        if (
+          r.needsManager &&
+          r.user.role === "manager_admin" &&
+          window.sessionStorage.getItem("googenie:admin-select.skipped") !== "1"
+        ) {
+          // Defer one tick so the Shell (which hosts the modal) is mounted
+          // before we dispatch — otherwise the listener isn't registered yet.
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent("googenie:admin-select.open"));
+          }, 0);
+        }
         prefetchUserData().catch(() => null);
         // NOTE: We intentionally do NOT auto-redirect to Google OAuth here.
         // The ConnectionBar shown on Inbox/Calendar already prompts users to
