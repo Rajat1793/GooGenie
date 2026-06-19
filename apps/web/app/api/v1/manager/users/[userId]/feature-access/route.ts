@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { withApiMiddleware } from "@googenie/server";
+import { withApiMiddleware, createApiError, statusFromApiError } from "@googenie/server";
+import { ALWAYS_ON_FEATURES } from "@googenie/server/auth/requireAuth";
 import { validateBody } from "@googenie/server/lib/validateNext";
 import { managerFeatureAccessSchema } from "@googenie/server/contracts/schemas";
 import { getUserById } from "@googenie/db/users";
@@ -52,6 +53,20 @@ export const PATCH = withApiMiddleware(async (req, { auth, traceId, params }) =>
   if (!target) return notFound("Target user not found", traceId);
   if (target.managerUserId !== me.id && auth!.role !== "super_admin") {
     return forbidden("Target user is not in your scope", traceId);
+  }
+
+  // Baseline features (inbox + calendar viewing) cannot be revoked — they are
+  // a free capability for every authenticated user.
+  if (ALWAYS_ON_FEATURES.has(body.feature_key) && body.is_enabled === false) {
+    return NextResponse.json(
+      createApiError(
+        "BAD_REQUEST",
+        `Feature '${body.feature_key}' is a baseline capability and cannot be disabled.`,
+        false,
+        traceId,
+      ),
+      { status: statusFromApiError("BAD_REQUEST") },
+    );
   }
 
   await upsertFeatureAccess({

@@ -93,6 +93,13 @@ export async function requireRole(req: Request, roles: Role[]): Promise<AuthOk |
 }
 
 /**
+ * Baseline features every authenticated user keeps regardless of role or
+ * per-user toggles. Viewing the inbox and calendar is considered a core
+ * capability of the product — managers/admins cannot revoke it.
+ */
+export const ALWAYS_ON_FEATURES = new Set<string>(["email_read", "calendar_read"]);
+
+/**
  * DB-backed feature gate. super_admin bypasses.
  */
 export async function requireFeature(
@@ -103,6 +110,8 @@ export async function requireFeature(
   if (!res.ok) return res;
   const { auth, traceId } = res;
   if (auth.role === ROLE.SUPER_ADMIN) return res;
+  // Always-on baseline (inbox + calendar viewing) — never gated.
+  if (ALWAYS_ON_FEATURES.has(featureKey)) return res;
 
   try {
     const dbUser =

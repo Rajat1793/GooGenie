@@ -2,6 +2,7 @@
 import type { NextFunction, Request, Response } from "express";
 
 import { ROLE } from "./roles";
+import { ALWAYS_ON_FEATURES } from "./requireAuth";
 import { createApiError } from "../security/errors";
 import { getUserById, getUserByClerkId } from "@googenie/db/users";
 import { listFeatureAccessForUser } from "@googenie/db/featureRequests";
@@ -22,6 +23,12 @@ export function requireFeature(featureKey: string) {
 
     // Super-admin always bypasses feature checks
     if (auth.role === ROLE.SUPER_ADMIN) {
+      next();
+      return;
+    }
+
+    // Baseline (inbox + calendar viewing) — always allowed.
+    if (ALWAYS_ON_FEATURES.has(featureKey)) {
       next();
       return;
     }
