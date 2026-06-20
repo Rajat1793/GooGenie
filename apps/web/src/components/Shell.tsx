@@ -266,7 +266,16 @@ export function Shell({ children }: { children: ReactNode }) {
         </button>
 
         {/* Navigation */}
-        <nav className={`flex-1 ${collapsed ? "px-2" : "px-3"} space-y-0.5`}>
+        {/*
+          `min-h-0 overflow-y-auto` is critical: the sidebar is a
+          fixed-height flex column and this nav uses `flex-1`. Without
+          `min-h-0` the flex item refuses to shrink below its content size,
+          so when the Inbox sub-folder list expands, nav grows past the
+          viewport and pushes the bottom section (Ask GooGenie, Shortcuts,
+          theme toggle, user chip) off-screen. With these classes the nav
+          scrolls internally and the footer stays pinned.
+        */}
+        <nav className={`flex-1 min-h-0 overflow-y-auto ${collapsed ? "px-2" : "px-3"} space-y-0.5`}>
           {navToShow.map((item) => {
             const featureLocked = item.featureKey !== null && !hasFeature(item.featureKey);
             if (featureLocked) {
